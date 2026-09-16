@@ -587,7 +587,7 @@ function glItem(d){const od=isOverdue(d)?`<span class="od">überfällig ${-daysU
 
 function renderSteuerung(){
   const host=document.getElementById('view-steuerung');
-  if(!state.deals.length){host.innerHTML=emptyState();wireEmpty(host);return;}
+  if(!state.deals.length){host.innerHTML=emptyState()+teamPanel();wireEmpty(host);wireTeamPanel(host);return;}
   const open=state.deals.filter(d=>d.status==='open');
   const analyse=open.filter(d=>A_STAGES.includes(d.stage));
   const handover=open.filter(d=>d.stage==='Analyse & Doku'&&!(d.berater||'').trim());
@@ -640,6 +640,9 @@ function renderSteuerung(){
   host.querySelectorAll('.gl[data-id]').forEach(el=>el.addEventListener('click',()=>openModal(el.dataset.id)));
   const br=host.querySelector('#btnReports');if(br)br.addEventListener('click',openReports);
   const bc=host.querySelector('#btnCeo');if(bc)bc.addEventListener('click',openCeoUpdate);
+  wireTeamPanel(host);
+}
+function wireTeamPanel(host){
   const ta=host.querySelector('#tmAdd');
   if(ta)ta.addEventListener('click',async()=>{
     const name=host.querySelector('#tmName').value.trim();
