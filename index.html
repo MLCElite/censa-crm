@@ -173,6 +173,15 @@
   .histline{font-size:11px;color:var(--ink-3);margin-top:4px}
   .gptoggle{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;cursor:pointer;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:9px 12px}
   .gptoggle input{width:16px;height:16px;accent-color:var(--warn)}
+  .chatwrap{max-width:780px;display:flex;flex-direction:column;height:calc(100vh - 150px);min-height:340px}
+  .chatlog{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 2px}
+  .msg{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:9px 12px;max-width:85%;font-size:13px;line-height:1.4;align-self:flex-start}
+  .msg.me{align-self:flex-end;background:var(--brand-bg);border-color:transparent}
+  .msg.sys{align-self:center;background:var(--surface-3);color:var(--ink-2);font-size:12px;max-width:100%;text-align:center;border:0;padding:6px 14px;border-radius:20px}
+  .msg .mh{font-size:11px;color:var(--ink-3);font-weight:700;margin-bottom:2px}
+  .msg .lk{color:var(--brand-ink);cursor:pointer;text-decoration:underline}
+  .chatin{display:flex;gap:8px;padding-top:10px}
+  .tabbadge{background:var(--bad);color:#fff;font-size:10px;font-weight:800;border-radius:10px;padding:1px 6px;margin-left:5px;vertical-align:middle}
 </style>
 
 <header>
@@ -185,6 +194,7 @@
     <button data-tab="pipeline">Pipeline</button>
     <button data-tab="liste">Liste</button>
     <button data-tab="dashboard">Dashboard</button>
+    <button data-tab="chat">Chat</button>
   </div>
   <div class="spacer"></div>
   <div class="kpi" id="meBadge"></div>
@@ -205,6 +215,7 @@
   <div id="view-pipeline" class="hide"></div>
   <div id="view-liste" class="hide"></div>
   <div id="view-dashboard" class="hide"></div>
+  <div id="view-chat" class="hide"></div>
 </main>
 
 <div class="ov" id="ov"><div class="modal" id="modal"></div></div>
@@ -571,7 +582,7 @@ function wireDialer(host,d){
     if(o==='skip'){host.__skip[d.id]=1;renderTelefon();return;}
     if(o==='open'){openModal(d.id);return;}
     d.calls=d.calls||[];d.calls.push(Object.assign({ts:new Date().toISOString(),outcome:o},meta()));
-    if(o==='termin'){d.stage='Analysetermin vereinbart';dbPersist(d);render();openModal(d.id);toast('Termin! Datum + Analyst im Lead eintragen');return;}
+    if(o==='termin'){d.stage='Analysetermin vereinbart';chatSys('📅 Neuer Analysetermin: '+(d.name||d.org||'—')+' · Zuordnung über die Tages-Dispo',d);dbPersist(d);render();openModal(d.id);toast('Termin! Datum (AG) im Lead eintragen – zugeordnet wird über die Dispo');return;}
     if(o==='rueckruf'){d.stage='In Bearbeitung';dbPersist(d);render();openModal(d.id);toast('Rückruf – Wiedervorlage-Datum eintragen');return;}
     if(o==='nichterreicht'){if(d.stage==='Neuer Lead')d.stage='In Bearbeitung';naStamp(d);host.__skip[d.id]=1;dbPersist(d);render();toast('n.a. mit Datum vermerkt – nächster Lead');return;}
     if(o==='keininteresse'){d.status='lost';d.lostReason='Kein Interesse';d.lostDate=todayStr();d.lostBy='Telefonist';d.wiedervorlage=new Date(Date.now()+61*86400000).toISOString().slice(0,10);dbPersist(d);render();toast('Kein Interesse – Reaktivierung in 2 Monaten');return;}
@@ -602,6 +613,10 @@ function renderSteuerung(){
   const setterOpen=state.deals.filter(d=>d.status==='open'&&['Neuer Lead','In Bearbeitung'].includes(d.stage));
   const teGroups=grpBy(setterOpen,'telefonist','— ohne Telefonist —');
   const inbox=state.deals.filter(d=>d.geprueft===false);
+  const dispoA=open.filter(d=>d.stage==='Analysetermin vereinbart'&&!(d.analyst||'').trim());
+  const anNames=[...new Set([...TEAM.filter(m=>m.rolle==='analyst').map(m=>m.name),...state.deals.map(d=>d.analyst).filter(Boolean)])].sort();
+  const beNames=[...new Set([...TEAM.filter(m=>m.rolle==='berater').map(m=>m.name),...state.deals.map(d=>d.berater).filter(Boolean)])].sort();
+  const dRow=(d,role,names)=>`<div class="gl" style="cursor:default;flex-wrap:wrap"><span class="gn" style="cursor:pointer" data-open="${d.id}">${esc(d.name||d.org||'—')}</span><span class="ph tnum">${esc((role==='analyst'?d.datumAG:d.datumBG)||d.wiedervorlage||'— Termin fehlt —')}</span><select data-dsel="${d.id}" style="width:150px;padding:5px 8px;font-size:12px"><option value="">wählen…</option>${names.map(n=>`<option>${esc(n)}</option>`).join('')}</select><button class="mini-btn" data-dispo="${d.id}" data-role="${role}">Zuordnen</button></div>`;
   const t0=todayStr();
   const proto={};
   state.deals.forEach(d=>(d.calls||[]).forEach(c=>{
@@ -637,9 +652,27 @@ function renderSteuerung(){
     <div class="panel"><h3>Reaktivierung fällig <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— „Kein Interesse", alle 2 Monate; Lead öffnen → „Wieder freigeben"</span></h3>${reakt.length?`<div class="st-list">${reakt.slice(0,40).map(glItem).join('')}</div>`:'<div class="empty-col">Aktuell nichts fällig.</div>'}</div>
     ${(()=>{const svc=state.deals.filter(d=>d.status==='won'&&daysUntil(d.wiedervorlage)!=null&&daysUntil(d.wiedervorlage)<=3);return `<div class="panel"><h3>Servicetermine fällig <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— Pflicht binnen 2 Wochen nach Abschluss</span></h3>${svc.length?`<div class="st-list">${svc.slice(0,40).map(d=>`<div class="gl" data-id="${d.id}"><span class="gn">${esc(d.name||d.org||'—')}</span><span class="ph">Berater: ${esc(d.berater||'—')}</span>${isOverdue(d)?`<span class="od">überfällig ${-daysUntil(d.wiedervorlage)}T</span>`:`<span class="ph tnum">bis ${esc(d.wiedervorlage)}</span>`}</div>`).join('')}</div>`:'<div class="empty-col">Keine fälligen Servicetermine.</div>'}</div>`;})()}
     <div class="panel"><h3>Analysten · offene Analysen</h3><div class="st-list">${anGroups.length?anGroups.map(([a,list])=>`<details class="grp"><summary>${esc(a)}<span class="cnt">${list.length} offen · ${list.filter(d=>d.stage==='Analyse & Doku'&&!(d.berater||'').trim()).length} übergabereif</span></summary><div class="inner">${list.map(glItem).join('')}</div></details>`).join(''):'<div class="empty-col">Keine offenen Analysen.</div>'}</div></div>
-    <div class="panel"><h3>⚠ Übergabe an Berater nötig <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— Analyse fertig, kein Berater</span></h3>${handover.length?`<div class="st-list">${handover.map(glItem).join('')}</div>`:'<div class="empty-col">Alles zugeteilt 👍</div>'}</div>
+    <div class="panel"><h3>📋 Tages-Dispo – Termine zuordnen <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— am Tagesende neue Termine dem passenden Mitarbeiter zuweisen; die Person sieht es sofort in ihrer Liste und im Chat</span></h3>
+      ${dispoA.length?`<div class="ehgt" style="margin:2px 0 6px">Analysen ohne Analyst (${dispoA.length})</div><div class="st-list">${dispoA.map(d=>dRow(d,'analyst',anNames)).join('')}</div>`:''}
+      ${handover.length?`<div class="ehgt" style="margin:12px 0 6px">Beratungen – Analyse fertig, ohne Berater (${handover.length})</div><div class="st-list">${handover.map(d=>dRow(d,'berater',beNames)).join('')}</div>`:''}
+      ${(!dispoA.length&&!handover.length)?'<div class="empty-col">Nichts zuzuordnen – alles verteilt 👍</div>':''}
+    </div>
     <div class="panel"><h3>Berater · offene Beratungen</h3><div class="st-list">${beGroups.length?beGroups.map(([b,list])=>{const od=list.filter(isOverdue).length;return `<details class="grp"><summary>${esc(b)}<span class="cnt">${list.length} offen${od?` · <span style="color:var(--bad)">${od} überfällig</span>`:''}</span></summary><div class="inner">${list.map(glItem).join('')}</div></details>`;}).join(''):'<div class="empty-col">Keine offenen Beratungen.</div>'}</div></div>`;
   host.querySelectorAll('.gl[data-id]').forEach(el=>el.addEventListener('click',()=>openModal(el.dataset.id)));
+  host.querySelectorAll('[data-open]').forEach(el=>el.addEventListener('click',()=>openModal(el.dataset.open)));
+  host.querySelectorAll('[data-dispo]').forEach(b=>b.addEventListener('click',()=>{
+    const id=b.dataset.dispo,role=b.dataset.role;
+    const sel=host.querySelector('select[data-dsel="'+id+'"]');
+    const name=((sel&&sel.value)||'').trim();
+    if(!name){toast('Bitte zuerst einen Namen wählen');return;}
+    const d=state.deals.find(x=>x.id===id);if(!d)return;
+    d[role]=name;d.geprueft=true;
+    dbPersist(d);
+    const nm=d.name||d.org||'—';
+    const term=role==='analyst'?d.datumAG:d.datumBG;
+    chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet: '+nm+' → '+name+(term?' ('+term+')':''),d);
+    toast(nm+' → '+name);render();
+  }));
   const br=host.querySelector('#btnReports');if(br)br.addEventListener('click',openReports);
   const bc=host.querySelector('#btnCeo');if(bc)bc.addEventListener('click',openCeoUpdate);
   wireTeamPanel(host);
@@ -665,6 +698,56 @@ function wireTeamPanel(host){
     try{await teamCol.doc(mm.id).delete();toast('Zugang entfernt');}catch(e){toast('Entfernen fehlgeschlagen');}
   }));
 }
+/* ---------- Team-Chat / Info-Feed ---------- */
+let chatCol=null, chatUnsub=null, CHAT=[];
+const CHATSEEN='censa_chat_seen';
+function chatName(){return ME?ME.name:(AUTH_USER?(AUTH_USER.email||'').split('@')[0]:'');}
+async function chatPost(text,opts){
+  if(MODE!=='db'||!chatCol||!text)return;
+  const m={ts:new Date().toISOString(),von:chatName(),text:String(text).slice(0,1200)};
+  if(opts&&opts.sys)m.sys=true;
+  if(opts&&opts.dealId){m.dealId=opts.dealId;m.dealName=(opts.dealName||'').slice(0,60);}
+  try{await chatCol.doc('c'+Date.now().toString(36)+Math.random().toString(36).slice(2,7)).set(m);}catch(e){}
+}
+function chatSys(text,d){chatPost(text,{sys:true,dealId:d?d.id:null,dealName:d?(d.name||d.org||''):''});}
+function ensureChatUI(){
+  const host=document.getElementById('view-chat');
+  if(!host||host.__built)return;host.__built=true;
+  host.innerHTML=`<div class="chatwrap"><div class="chatlog" id="chatLog"></div>
+    <div class="chatin"><input id="chatMsg" placeholder="Nachricht ans Team… (Enter zum Senden)" maxlength="1200"><button class="btn pri" id="chatSend">Senden</button></div></div>`;
+  const send=()=>{const inp=document.getElementById('chatMsg');const v=inp.value.trim();if(!v)return;inp.value='';chatPost(v);};
+  document.getElementById('chatSend').addEventListener('click',send);
+  document.getElementById('chatMsg').addEventListener('keydown',e=>{if(e.key==='Enter')send();});
+}
+function updateChatLog(){
+  const log=document.getElementById('chatLog');if(!log)return;
+  if(MODE!=='db'){log.innerHTML='<div class="msg sys">Der Team-Chat ist aktiv, sobald du angemeldet bist.</div>';return;}
+  const meN=chatName();
+  log.innerHTML=CHAT.length?CHAT.map(m=>{
+    const t=m.ts?new Date(m.ts):null;
+    const zeit=t?(String(t.getDate()).padStart(2,'0')+'.'+String(t.getMonth()+1).padStart(2,'0')+'. '+t.toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'})):'';
+    const link=m.dealId?` <span class="lk" data-open="${esc(m.dealId)}">→ ${esc(m.dealName||'Lead')}</span>`:'';
+    if(m.sys)return `<div class="msg sys">${zeit} · ${esc(m.text)}${link}</div>`;
+    const mine=m.von===meN;
+    return `<div class="msg${mine?' me':''}"><div class="mh">${esc(m.von||'?')} · ${zeit}</div>${esc(m.text)}${link}</div>`;
+  }).join(''):'<div class="msg sys">Noch keine Nachrichten – schreib die erste! Termin-Änderungen erscheinen hier automatisch.</div>';
+  log.querySelectorAll('[data-open]').forEach(el=>el.addEventListener('click',()=>openModal(el.dataset.open)));
+  log.scrollTop=log.scrollHeight;
+  const chatVisible=!document.getElementById('view-chat').classList.contains('hide');
+  if(chatVisible)markChatSeen();else updateChatBadge();
+}
+function updateChatBadge(){
+  const btn=document.querySelector('.tabs button[data-tab="chat"]');if(!btn)return;
+  let seen='';try{seen=localStorage.getItem(CHATSEEN)||'';}catch(_){}
+  const meN=chatName();
+  const n=CHAT.filter(m=>(m.ts||'')>seen&&m.von!==meN).length;
+  btn.innerHTML='Chat'+(n?'<span class="tabbadge">'+(n>99?'99+':n)+'</span>':'');
+}
+function markChatSeen(){
+  if(CHAT.length){try{localStorage.setItem(CHATSEEN,CHAT[CHAT.length-1].ts||'');}catch(_){}}
+  updateChatBadge();
+}
+
 /* ---------- GP / Recruiting-Kandidaten (nur Admins) ---------- */
 function renderGP(){
   const host=document.getElementById('view-gp');if(!host)return;
@@ -790,8 +873,10 @@ function naStamp(d){const dt=fmtD();d.notizen=('n.a. '+dt+(d.notizen?' | '+d.not
 function naInfo(d){const na=(d.calls||[]).filter(c=>c.outcome==='nichterreicht');return na.length?`<span class="tg od">n.a. ${na.length}× · zuletzt ${fmtD(na[na.length-1].ts)}</span>`:'';}
 function openModal(id){
   const d=id?state.deals.find(x=>x.id===id):blank();
+  if(id&&!d){toast('Lead nicht gefunden oder für dich nicht sichtbar');return;}
   editId=id;
   const isNew=!id;
+  const before={wv:d.wiedervorlage||'',ag:d.datumAG||'',bg:d.datumBG||''};
   const m=document.getElementById('modal');
   m.innerHTML=`
     <h2>${isNew?'Neuer Lead':esc(d.name||d.org||'Lead')}</h2>
@@ -829,6 +914,8 @@ function openModal(id){
       <div class="fld"><label>Berater</label><input id="m-be" value="${esc(d.berater)}"></div>
       <div class="fld"><label>Telefonist</label><input id="m-telf" value="${esc(d.telefonist||'')}">${(d.telHist&&d.telHist.length)?`<div class="histline">Frühere Anrufer: ${esc(d.telHist.join(', '))}</div>`:''}</div>
       <div class="fld"><label>Wiedervorlage</label><input type="date" id="m-wv" value="${esc(d.wiedervorlage)}"></div>
+      <div class="fld"><label>Analysetermin (AG)</label><input id="m-dag" value="${esc(d.datumAG||'')}" placeholder="z. B. 22.09. 14:00"></div>
+      <div class="fld"><label>Beratungstermin (BG)</label><input id="m-dbg" value="${esc(d.datumBG||'')}" placeholder="z. B. 25.09. 10:00"></div>
       <div class="fld full"><label>Phase</label>
         <div class="spick" id="m-stagepick">${STAGES.map(s=>`<button type="button" class="chip" data-s="${esc(s)}" aria-pressed="${d.stage===s?'true':'false'}">${esc(s)}</button>`).join('')}</div>
       </div>
@@ -873,19 +960,26 @@ function openModal(id){
     d.potenzial=m.querySelector('#m-pot').value;d.briefing=m.querySelector('#m-brief').value;
     d.umsatz=m.querySelector('#m-umsatz').value;d.gewinn=m.querySelector('#m-gewinn').value;d.anlage=m.querySelector('#m-anlage').value;
     const sc=sp.querySelector('.chip[aria-pressed="true"]');d.stage=sc?sc.dataset.s:d.stage;
-    d.wiedervorlage=m.querySelector('#m-wv').value;d.notizen=m.querySelector('#m-notiz').value;};
+    d.wiedervorlage=m.querySelector('#m-wv').value;d.notizen=m.querySelector('#m-notiz').value;
+    const dag=m.querySelector('#m-dag'),dbg=m.querySelector('#m-dbg');
+    if(dag)d.datumAG=dag.value.trim();if(dbg)d.datumBG=dbg.value.trim();};
+  const terminEvents=()=>{if(isNew)return;const nm=d.name||d.org||'—';
+    if((d.datumAG||'')!==before.ag&&d.datumAG)chatSys('📅 Analysetermin '+(before.ag?'geändert':'gesetzt')+': '+nm+' – '+d.datumAG,d);
+    if((d.datumBG||'')!==before.bg&&d.datumBG)chatSys('📅 Beratungstermin '+(before.bg?'geändert':'gesetzt')+': '+nm+' – '+d.datumBG,d);
+    if((d.wiedervorlage||'')!==before.wv&&d.wiedervorlage)chatSys('🔁 Wiedervorlage: '+nm+' – '+d.wiedervorlage.split('-').reverse().join('.'),d);};
   const persist=()=>{if(isNew&&!state.deals.includes(d))state.deals.unshift(d);dbPersist(d);render();};
   const callMeta=()=>{const dur=m.querySelector('#m-dur'),no=m.querySelector('#m-cnote');const o={};if(dur&&dur.value)o.dur=parseFloat(dur.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
   const fb=m.querySelector('#m-frei');
   if(fb)fb.addEventListener('click',()=>{collect();d.geprueft=true;persist();closeModal();toast('Freigegeben – jetzt in der Liste dem Telefonisten zuteilen');});
-  m.querySelector('#m-save').addEventListener('click',()=>{collect();d.status='open';persist();closeModal();toast('Gespeichert');});
-  m.querySelector('#m-won').addEventListener('click',()=>{collect();d.status='won';
+  m.querySelector('#m-save').addEventListener('click',()=>{collect();d.status='open';terminEvents();persist();closeModal();toast('Gespeichert');});
+  m.querySelector('#m-won').addEventListener('click',()=>{collect();d.status='won';chatSys('🏆 Gewonnen: '+(d.name||d.org||'—'),d);
     const sd=new Date(Date.now()+14*86400000).toISOString().slice(0,10);
     d.wiedervorlage=sd;d.notizen=('SERVICETERMIN (Pflicht) bis '+sd.split('-').reverse().join('.')+' | '+(d.notizen||'')).trim(' |');
     persist();closeModal();toast('Gewonnen – Servicetermin-Erinnerung in 14 Tagen gesetzt');});
   m.querySelector('#m-lost').addEventListener('click',()=>{collect();d.status='lost';if(!d.lostReason)d.lostReason='Kein Abschluss';
     d.lostDate=todayStr();d.lostBy=lostByFromStage(d.stage);
     if(d.lostReason==='Kein Interesse'&&!d.wiedervorlage)d.wiedervorlage=new Date(Date.now()+61*86400000).toISOString().slice(0,10);
+    chatSys('❌ Verloren: '+(d.name||d.org||'—')+(d.lostReason?' – '+d.lostReason:''),d);
     persist();closeModal();toast('Verloren ('+d.lostBy+') – Datum erfasst');});
   const rb=m.querySelector('#m-reopen');
   if(rb)rb.addEventListener('click',()=>{collect();
@@ -898,7 +992,7 @@ function openModal(id){
   if(m.querySelector('#m-del'))m.querySelector('#m-del').addEventListener('click',()=>{if(confirm('Diesen Datensatz löschen?')){state.deals=state.deals.filter(x=>x.id!==d.id);dbRemove(d.id);render();closeModal();toast('Gelöscht');}});
   m.querySelectorAll('.ob').forEach(b=>b.addEventListener('click',()=>{
     collect();d.calls=d.calls||[];d.calls.push(Object.assign({ts:new Date().toISOString(),outcome:b.dataset.o},callMeta()));
-    if(b.dataset.o==='termin'){d.stage='Analysetermin vereinbart';d.status='open';}
+    if(b.dataset.o==='termin'){d.stage='Analysetermin vereinbart';d.status='open';chatSys('📅 Neuer Analysetermin: '+(d.name||d.org||'—')+(d.datumAG?' – '+d.datumAG:'')+' · Zuordnung über die Tages-Dispo',d);}
     else if(b.dataset.o==='keininteresse'){d.status='lost';d.lostReason='Kein Interesse';}
     else if(b.dataset.o==='rueckruf'){d.stage='In Bearbeitung';}
     else{d.stage=(d.stage==='Neuer Lead'?'In Bearbeitung':d.stage);naStamp(d);}
@@ -1063,7 +1157,8 @@ function loadDemo(){
 /* ---------- tabs ---------- */
 document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
-  ['steuerung','gp','telefon','pipeline','liste','dashboard'].forEach(t=>document.getElementById('view-'+t).classList.toggle('hide',t!==b.dataset.tab));
+  ['steuerung','gp','telefon','pipeline','liste','dashboard','chat'].forEach(t=>document.getElementById('view-'+t).classList.toggle('hide',t!==b.dataset.tab));
+  if(b.dataset.tab==='chat'){ensureChatUI();updateChatLog();markChatSeen();}
 }));
 
 /* ---------- init: Firebase Anmeldung + Datenbank ---------- */
@@ -1099,8 +1194,9 @@ lsLoad();render();
     AUTH_USER=u||null;
     if(unsubDeals){unsubDeals();unsubDeals=null;}
     if(unsubTeam){unsubTeam();unsubTeam=null;}
+    if(chatUnsub){chatUnsub();chatUnsub=null;}
     if(!u){
-      MODE='local';ME=null;TEAM=[];state.deals=[];
+      MODE='local';ME=null;TEAM=[];state.deals=[];CHAT=[];updateChatLog();updateChatBadge();
       setDbState('🔑 Bitte anmelden','var(--warn)');
       applyRoleUI();render();showLogin();
       return;
@@ -1126,6 +1222,12 @@ lsLoad();render();
       unsubTeam=teamCol.limit(200).onSnapshot(snap=>{
         TEAM=snap.docs.map(s=>{const m=Object.assign({},s.data()||{});m.id=s.id;return m;});
         onTeamUpdate();
+      },err=>{});
+      chatCol=fs.collection('chat');
+      ensureChatUI();
+      chatUnsub=chatCol.orderBy('ts','desc').limit(200).onSnapshot(snap=>{
+        CHAT=snap.docs.map(s=>s.data()).reverse();
+        updateChatLog();
       },err=>{});
     }catch(e){
       setDbState('🔴 '+((e&&e.code)||'Fehler')+' – kein Datenzugriff','var(--bad)');
