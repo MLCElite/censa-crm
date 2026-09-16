@@ -180,6 +180,7 @@
   <h1>CENSA&nbsp;CRM</h1>
   <div class="tabs">
     <button data-tab="steuerung" class="on">CEO</button>
+    <button data-tab="gp">GP</button>
     <button data-tab="telefon">Telefon</button>
     <button data-tab="pipeline">Pipeline</button>
     <button data-tab="liste">Liste</button>
@@ -199,6 +200,7 @@
 <div id="migBanner" class="hide" style="background:var(--warn-bg);color:var(--warn);padding:10px 18px;font-size:13px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span id="migText"></span><button class="btn" id="migBtn" style="padding:6px 12px;font-size:12.5px">Jetzt übertragen</button><button class="btn" id="migSkip" style="padding:6px 12px;font-size:12.5px">Später</button></div>
 <main>
   <div id="view-steuerung"></div>
+  <div id="view-gp" class="hide"></div>
   <div id="view-telefon" class="hide"></div>
   <div id="view-pipeline" class="hide"></div>
   <div id="view-liste" class="hide"></div>
@@ -274,6 +276,7 @@ function applyRoleUI(){
   document.querySelectorAll('.tabs button').forEach(b=>{
     if(b.dataset.tab==='steuerung')b.classList.toggle('hide',!admin);
     if(b.dataset.tab==='dashboard')b.classList.toggle('hide',!admin);
+    if(b.dataset.tab==='gp')b.classList.toggle('hide',!admin);
   });
   if(!admin){
     const cur=document.querySelector('.tabs button.on');
@@ -350,7 +353,7 @@ function fmtEH(x){return x.toFixed(1).replace('.',',');}
 /* ---------- render ---------- */
 function render(){
   document.getElementById('kpiDials').textContent=dialsToday();
-  renderPipeline();renderListe();renderDashboard();renderSteuerung();renderTelefon();save();
+  renderPipeline();renderListe();renderDashboard();renderSteuerung();renderTelefon();renderGP();save();
 }
 function badge(t){return t==='GmbH'?'<span class="tg gmbh">GmbH</span>':'<span class="tg privat">Privat</span>';}
 
@@ -633,7 +636,6 @@ function renderSteuerung(){
     <div class="panel"><h3>Telefonisten · offene Anruf-Leads</h3><div class="st-list">${teGroups.length?teGroups.map(([t,list])=>{const wv=list.filter(d=>daysUntil(d.wiedervorlage)!=null&&daysUntil(d.wiedervorlage)<=0).length;return `<details class="grp"><summary>${esc(t)}<span class="cnt">${list.length} offen${wv?` · <span style="color:var(--warn)">${wv} Rückrufe fällig</span>`:''}</span></summary><div class="inner">${list.slice(0,40).map(glItem).join('')}</div></details>`;}).join(''):'<div class="empty-col">Keine offenen Anruf-Leads.</div>'}</div></div>
     <div class="panel"><h3>Reaktivierung fällig <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— „Kein Interesse", alle 2 Monate; Lead öffnen → „Wieder freigeben"</span></h3>${reakt.length?`<div class="st-list">${reakt.slice(0,40).map(glItem).join('')}</div>`:'<div class="empty-col">Aktuell nichts fällig.</div>'}</div>
     ${(()=>{const svc=state.deals.filter(d=>d.status==='won'&&daysUntil(d.wiedervorlage)!=null&&daysUntil(d.wiedervorlage)<=3);return `<div class="panel"><h3>Servicetermine fällig <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— Pflicht binnen 2 Wochen nach Abschluss</span></h3>${svc.length?`<div class="st-list">${svc.slice(0,40).map(d=>`<div class="gl" data-id="${d.id}"><span class="gn">${esc(d.name||d.org||'—')}</span><span class="ph">Berater: ${esc(d.berater||'—')}</span>${isOverdue(d)?`<span class="od">überfällig ${-daysUntil(d.wiedervorlage)}T</span>`:`<span class="ph tnum">bis ${esc(d.wiedervorlage)}</span>`}</div>`).join('')}</div>`:'<div class="empty-col">Keine fälligen Servicetermine.</div>'}</div>`;})()}
-    ${(()=>{const gps=state.deals.filter(d=>d.gp);return gps.length?`<div class="panel"><h3>Potenzielle Geschäftspartner <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— fürs Recruiting vorgemerkt</span></h3><div class="st-list">${gps.slice(0,40).map(glItem).join('')}</div></div>`:'';})()}
     <div class="panel"><h3>Analysten · offene Analysen</h3><div class="st-list">${anGroups.length?anGroups.map(([a,list])=>`<details class="grp"><summary>${esc(a)}<span class="cnt">${list.length} offen · ${list.filter(d=>d.stage==='Analyse & Doku'&&!(d.berater||'').trim()).length} übergabereif</span></summary><div class="inner">${list.map(glItem).join('')}</div></details>`).join(''):'<div class="empty-col">Keine offenen Analysen.</div>'}</div></div>
     <div class="panel"><h3>⚠ Übergabe an Berater nötig <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— Analyse fertig, kein Berater</span></h3>${handover.length?`<div class="st-list">${handover.map(glItem).join('')}</div>`:'<div class="empty-col">Alles zugeteilt 👍</div>'}</div>
     <div class="panel"><h3>Berater · offene Beratungen</h3><div class="st-list">${beGroups.length?beGroups.map(([b,list])=>{const od=list.filter(isOverdue).length;return `<details class="grp"><summary>${esc(b)}<span class="cnt">${list.length} offen${od?` · <span style="color:var(--bad)">${od} überfällig</span>`:''}</span></summary><div class="inner">${list.map(glItem).join('')}</div></details>`;}).join(''):'<div class="empty-col">Keine offenen Beratungen.</div>'}</div></div>`;
@@ -662,6 +664,44 @@ function wireTeamPanel(host){
     if(!confirm('Zugang "'+mm.name+'" entfernen?'))return;
     try{await teamCol.doc(mm.id).delete();toast('Zugang entfernt');}catch(e){toast('Entfernen fehlgeschlagen');}
   }));
+}
+/* ---------- GP / Recruiting-Kandidaten (nur Admins) ---------- */
+function renderGP(){
+  const host=document.getElementById('view-gp');if(!host)return;
+  if(!isAdmin()){host.innerHTML='';return;}
+  const gps=state.deals.filter(d=>d.gp);
+  if(!gps.length){host.innerHTML='<div class="emptybig"><div class="big">Keine potenziellen Geschäftspartner</div>Markiere einen Lead im Formular als „Potenzieller Geschäftspartner" oder importiere eine Recruiting-Liste – hier erscheinen alle Kandidaten.</div>';return;}
+  const q=(host.__q||'').toLowerCase(),fb=host.__bez||'',fs=host.__st||'';
+  const bez=[...new Set(gps.map(d=>d.bezirk).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  const rows=gps.filter(d=>{
+    if(fb&&(d.bezirk||'')!==fb)return false;
+    if(fs&&d.status!==fs)return false;
+    if(q){const s=((d.name||'')+' '+(d.org||'')+' '+(d.telefon||'')+' '+(d.ort||'')+' '+(d.bezirk||'')+' '+(d.notizen||'')).toLowerCase();if(!s.includes(q))return false;}
+    return true;
+  });
+  rows.sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+  const open=gps.filter(d=>d.status==='open').length,won=gps.filter(d=>d.status==='won').length;
+  const kontakt=gps.filter(d=>(d.calls||[]).length).length;
+  host.innerHTML=`
+    <div class="cards">
+      <div class="mc"><div class="l">GP-Kandidaten</div><div class="v tnum">${gps.length}</div></div>
+      <div class="mc"><div class="l">Offen</div><div class="v tnum">${open}</div></div>
+      <div class="mc"><div class="l">Bereits kontaktiert</div><div class="v tnum">${kontakt}</div></div>
+      <div class="mc good"><div class="l">Gewonnen</div><div class="v tnum">${won}</div></div>
+    </div>
+    <div class="filters">
+      <input id="gSearch" placeholder="Suche Name, Firma, Notizen…" value="${esc(host.__q||'')}">
+      <select id="gBez"><option value="">Alle Bezirke</option>${bez.map(x=>`<option${fb===x?' selected':''}>${esc(x)}</option>`).join('')}</select>
+      <select id="gSt"><option value="">Alle Status</option><option value="open"${fs==='open'?' selected':''}>Offen</option><option value="won"${fs==='won'?' selected':''}>Gewonnen</option><option value="lost"${fs==='lost'?' selected':''}>Verloren</option></select>
+      <span class="kpi" style="margin-left:auto">${rows.length} Kandidaten</span>
+    </div>
+    <div class="tablewrap"><table><thead><tr><th>Name</th><th>Firma</th><th>Telefon</th><th>Bezirk</th><th>Phase</th><th>Anrufe</th><th>Info</th></tr></thead><tbody>
+      ${rows.map(d=>`<tr data-id="${d.id}"><td><b>${esc(d.name||'—')}</b></td><td>${esc(d.org||'')}</td><td class="tnum">${esc(d.telefon||'')}</td><td>${esc(d.bezirk||d.ort||'')}</td><td>${d.status==='won'?'<span style="color:var(--good);font-weight:700">Gewonnen</span>':d.status==='lost'?'<span style="color:var(--bad)">Verloren</span>':esc(d.stage)}</td><td class="tnum">${(d.calls||[]).length}</td><td style="max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((d.notizen||'').slice(0,90))}</td></tr>`).join('')}
+    </tbody></table></div>`;
+  host.querySelector('#gSearch').addEventListener('input',e=>{host.__q=e.target.value;const pos=e.target.selectionStart;renderGP();const np=host.querySelector('#gSearch');np.focus();np.setSelectionRange(pos,pos);});
+  host.querySelector('#gBez').addEventListener('change',e=>{host.__bez=e.target.value;renderGP();});
+  host.querySelector('#gSt').addEventListener('change',e=>{host.__st=e.target.value;renderGP();});
+  host.querySelectorAll('tbody tr').forEach(tr=>tr.addEventListener('click',()=>openModal(tr.dataset.id)));
 }
 function teamPanel(){
   if(MODE!=='db')return `<div class="panel"><h3>Team &amp; Zugänge</h3><div class="empty-col">Zugänge sind aktiv, sobald das CRM online mit Datenbank läuft.</div></div>`;
@@ -1023,7 +1063,7 @@ function loadDemo(){
 /* ---------- tabs ---------- */
 document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
-  ['steuerung','telefon','pipeline','liste','dashboard'].forEach(t=>document.getElementById('view-'+t).classList.toggle('hide',t!==b.dataset.tab));
+  ['steuerung','gp','telefon','pipeline','liste','dashboard'].forEach(t=>document.getElementById('view-'+t).classList.toggle('hide',t!==b.dataset.tab));
 }));
 
 /* ---------- init: Firebase Anmeldung + Datenbank ---------- */
