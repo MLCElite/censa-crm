@@ -725,6 +725,25 @@ function renderSteuerung(){
     </div>
     ${inbox.length?`<div class="panel" style="border-color:var(--warn)"><h3>📥 Posteingang – neue Listen prüfen <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— nur du siehst das; erst prüfen, dann in der Liste einem Telefonisten zuteilen (Zuteilen gibt automatisch frei)</span></h3><div class="st-list">${inbox.slice(0,60).map(d=>`<div class="gl" data-id="${d.id}"><span class="gn">${esc(d.name||d.org||'—')}</span><span class="ph">${esc(d.quelle||'')}${d.bezirk?' · '+esc(d.bezirk):''}</span><span class="ph tnum">${esc(d.telefon||'')}</span></div>`).join('')}${inbox.length>60?`<div class="empty-col">… und ${inbox.length-60} weitere (Liste-Tab → Filter nutzen)</div>`:''}</div></div>`:''}
     <div class="panel"><h3>Telefon-Protokoll heute <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— wer hat wann telefoniert, wie lange, mit welchem Ergebnis</span></h3>${protoHtml||'<div class="empty-col">Heute noch keine Anrufe protokolliert.</div>'}</div>
+    ${(()=>{
+      const cutoff=new Date(Date.now()-30*86400000).toISOString();
+      const acts=ACT.filter(a=>(a.ts||'')>=cutoff);
+      const per={};
+      acts.forEach(a=>{const n=a.name||a.email||'?';const p=(per[n]=per[n]||{logins:0,days:{},last:''});p.logins++;p.days[(a.ts||'').slice(0,10)]=1;if((a.ts||'')>p.last)p.last=a.ts;});
+      const call={};
+      state.deals.forEach(d=>(d.calls||[]).forEach(c=>{
+        if((c.ts||'')<cutoff)return;
+        const who=c.von||d.telefonist||'?';
+        const o=(call[who]=call[who]||{n:0,term:0,min:0});o.n++;if(c.outcome==='termin')o.term++;o.min+=(parseFloat(c.dur)||0);
+      }));
+      const names=[...new Set([...TEAM.map(x=>x.name),...Object.keys(per),...Object.keys(call)])].filter(n=>n&&n!=='?').sort();
+      if(!names.length)return '';
+      const fmtLast=iso=>{if(!iso)return '<span style="color:var(--bad);font-weight:700">noch nie</span>';const dt=new Date(iso);const diff=Math.floor((Date.now()-dt.getTime())/86400000);const s=String(dt.getDate()).padStart(2,'0')+'.'+String(dt.getMonth()+1).padStart(2,'0')+'. '+dt.toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'});return diff>=3?('<span style="color:var(--bad);font-weight:700">'+s+' (vor '+diff+' Tagen!)</span>'):s;};
+      return `<div class="panel"><h3>📊 Aktivität je Mitarbeiter <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— letzte 30 Tage: wer schaut in die App, wer telefoniert – deine Basis für Bewertung &amp; Lead-Vergabe</span></h3>
+        <div class="tablewrap"><table style="min-width:680px"><thead><tr><th>Name</th><th>Rolle</th><th>Letzter Login</th><th>Aktive Tage</th><th>App geöffnet</th><th>Anrufe</th><th>Termine</th><th>Minuten</th></tr></thead><tbody>
+        ${names.map(n=>{const p=per[n]||{logins:0,days:{},last:''};const c=call[n]||{n:0,term:0,min:0};const mem=TEAM.find(x=>x.name===n);return `<tr style="cursor:default"><td><b>${esc(n)}</b></td><td>${esc(mem?mem.rolle:'—')}</td><td>${fmtLast(p.last)}</td><td class="tnum">${Object.keys(p.days).length}</td><td class="tnum">${p.logins}</td><td class="tnum">${c.n}</td><td class="tnum">${c.term}</td><td class="tnum">${Math.round(c.min)}</td></tr>`;}).join('')}
+        </tbody></table></div></div>`;
+    })()}
     ${teamPanel()}
     <div class="panel"><h3>Telefonisten · offene Anruf-Leads</h3><div class="st-list">${teGroups.length?teGroups.map(([t,list])=>{const wv=list.filter(d=>daysUntil(d.wiedervorlage)!=null&&daysUntil(d.wiedervorlage)<=0).length;return `<details class="grp"><summary>${esc(t)}<span class="cnt">${list.length} offen${wv?` · <span style="color:var(--warn)">${wv} Rückrufe fällig</span>`:''}</span></summary><div class="inner">${list.slice(0,40).map(glItem).join('')}</div></details>`;}).join(''):'<div class="empty-col">Keine offenen Anruf-Leads.</div>'}</div></div>
     <div class="panel"><h3>Reaktivierung fällig <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— „Kein Interesse", alle 2 Monate; Lead öffnen → „Wieder freigeben"</span></h3>${reakt.length?`<div class="st-list">${reakt.slice(0,40).map(glItem).join('')}</div>`:'<div class="empty-col">Aktuell nichts fällig.</div>'}</div>
@@ -839,6 +858,18 @@ function markChatSeen(){
   if(CHAT.length){try{localStorage.setItem(CHATSEEN,CHAT[CHAT.length-1].ts||'');}catch(_){}}
   updateChatBadge();
 }
+
+/* ---------- Aktivitäts-Tracking (App-Öffnungen je Mitarbeiter) ---------- */
+let actCol=null, actUnsub=null, ACT=[], __lastAct=0;
+async function logActivity(){
+  if(MODE!=='db'||!actCol||!AUTH_USER)return;
+  const now=Date.now();
+  if(now-__lastAct<4*3600000)return;
+  __lastAct=now;
+  const rec={ts:new Date().toISOString(),name:chatName(),email:(AUTH_USER.email||''),rolle:myRole()||''};
+  try{await actCol.doc('a'+now.toString(36)+Math.random().toString(36).slice(2,6)).set(rec);}catch(e){}
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')logActivity();});
 
 /* ---------- GP / Recruiting-Kandidaten (nur Admins) ---------- */
 function renderGP(){
@@ -1383,8 +1414,9 @@ lsLoad();render();
     if(unsubDeals){unsubDeals();unsubDeals=null;}
     if(unsubTeam){unsubTeam();unsubTeam=null;}
     if(chatUnsub){chatUnsub();chatUnsub=null;}
+    if(actUnsub){actUnsub();actUnsub=null;}
     if(!u){
-      MODE='local';ME=null;TEAM=[];state.deals=[];CHAT=[];updateChatLog();updateChatBadge();
+      MODE='local';ME=null;TEAM=[];state.deals=[];CHAT=[];ACT=[];__lastAct=0;updateChatLog();updateChatBadge();
       setDbState('🔑 Bitte anmelden','var(--warn)');
       applyRoleUI();render();showLogin();
       return;
@@ -1416,6 +1448,12 @@ lsLoad();render();
       chatUnsub=chatCol.orderBy('ts','desc').limit(200).onSnapshot(snap=>{
         CHAT=snap.docs.map(s=>{const x=Object.assign({},s.data());x._id=s.id;return x;}).reverse();
         updateChatLog();
+      },err=>{});
+      actCol=fs.collection('activity');
+      logActivity();
+      actUnsub=actCol.orderBy('ts','desc').limit(1500).onSnapshot(snap=>{
+        ACT=snap.docs.map(s=>s.data());
+        if(isAdmin())renderSteuerung();
       },err=>{});
     }catch(e){
       setDbState('🔴 '+((e&&e.code)||'Fehler')+' – kein Datenzugriff','var(--bad)');
