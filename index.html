@@ -748,7 +748,7 @@ function renderSteuerung(){
     dbPersist(d);
     const nm=d.name||d.org||'—';
     const term=role==='analyst'?d.datumAG:d.datumBG;
-    chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet: '+nm+' → '+name+(term?' ('+term+')':''),d);
+    chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet: '+nm+' → '+name+(term?' ('+term+')':''),d,name);
     toast(nm+' → '+name);render();
   }));
   const br=host.querySelector('#btnReports');if(br)br.addEventListener('click',openReports);
@@ -785,9 +785,15 @@ async function chatPost(text,opts){
   const m={ts:new Date().toISOString(),von:chatName(),text:String(text).slice(0,1200)};
   if(opts&&opts.sys)m.sys=true;
   if(opts&&opts.dealId){m.dealId=opts.dealId;m.dealName=(opts.dealName||'').slice(0,60);}
+  if(opts&&opts.ackWer){m.needAck=true;m.ackWer=String(opts.ackWer).slice(0,40);m.ackBy=[];}
   try{await chatCol.doc('c'+Date.now().toString(36)+Math.random().toString(36).slice(2,7)).set(m);}catch(e){}
 }
-function chatSys(text,d){chatPost(text,{sys:true,dealId:d?d.id:null,dealName:d?(d.name||d.org||''):''});}
+function chatSys(text,d,ackWer){chatPost(text,{sys:true,dealId:d?d.id:null,dealName:d?(d.name||d.org||''):'',ackWer:ackWer||null});}
+async function chatAck(id){
+  if(!chatCol)return;
+  const n=chatName();if(!n)return;
+  try{await chatCol.doc(id).update({ackBy:firebase.firestore.FieldValue.arrayUnion(n)});}catch(e){toast('Bestätigen fehlgeschlagen');}
+}
 function ensureChatUI(){
   const host=document.getElementById('view-chat');
   if(!host||host.__built)return;host.__built=true;
@@ -805,11 +811,19 @@ function updateChatLog(){
     const t=m.ts?new Date(m.ts):null;
     const zeit=t?(String(t.getDate()).padStart(2,'0')+'.'+String(t.getMonth()+1).padStart(2,'0')+'. '+t.toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'})):'';
     const link=m.dealId?` <span class="lk" data-open="${esc(m.dealId)}">→ ${esc(m.dealName||'Lead')}</span>`:'';
-    if(m.sys)return `<div class="msg sys">${zeit} · ${esc(m.text)}${link}</div>`;
+    let ack='';
+    if(m.needAck){
+      const by=m.ackBy||[];
+      if(by.length)ack+=`<div style="margin-top:4px;font-size:11px;color:var(--good);font-weight:700">✔ Gesehen: ${esc(by.join(', '))}</div>`;
+      if(m.ackWer&&!by.includes(m.ackWer))ack+=`<div style="margin-top:3px;font-size:11px;color:var(--bad);font-weight:700">⏳ Warten auf Bestätigung von ${esc(m.ackWer)}</div>`;
+      if(m._id&&!by.includes(meN))ack+=`<div style="margin-top:5px"><button class="mini-btn" data-ack="${esc(m._id)}" style="border-color:var(--good);color:var(--good)">✔ Gesehen &amp; bestätigt</button></div>`;
+    }
+    if(m.sys)return `<div class="msg sys">${zeit} · ${esc(m.text)}${link}${ack}</div>`;
     const mine=m.von===meN;
-    return `<div class="msg${mine?' me':''}"><div class="mh">${esc(m.von||'?')} · ${zeit}</div>${esc(m.text)}${link}</div>`;
+    return `<div class="msg${mine?' me':''}"><div class="mh">${esc(m.von||'?')} · ${zeit}</div>${esc(m.text)}${link}${ack}</div>`;
   }).join(''):'<div class="msg sys">Noch keine Nachrichten – schreib die erste! Termin-Änderungen erscheinen hier automatisch.</div>';
   log.querySelectorAll('[data-open]').forEach(el=>el.addEventListener('click',()=>openModal(el.dataset.open)));
+  log.querySelectorAll('[data-ack]').forEach(el=>el.addEventListener('click',()=>chatAck(el.dataset.ack)));
   log.scrollTop=log.scrollHeight;
   const chatVisible=!document.getElementById('view-chat').classList.contains('hide');
   if(chatVisible)markChatSeen();else updateChatBadge();
@@ -1089,8 +1103,8 @@ function openModal(id){
     const dag=m.querySelector('#m-dag'),dbg=m.querySelector('#m-dbg');
     if(dag)d.datumAG=dag.value.trim();if(dbg)d.datumBG=dbg.value.trim();};
   const terminEvents=()=>{if(isNew)return;const nm=d.name||d.org||'—';
-    if((d.datumAG||'')!==before.ag&&d.datumAG)chatSys('📅 Analysetermin '+(before.ag?'geändert':'gesetzt')+': '+nm+' – '+d.datumAG,d);
-    if((d.datumBG||'')!==before.bg&&d.datumBG)chatSys('📅 Beratungstermin '+(before.bg?'geändert':'gesetzt')+': '+nm+' – '+d.datumBG,d);
+    if((d.datumAG||'')!==before.ag&&d.datumAG)chatSys('📅 Analysetermin '+(before.ag?'GEÄNDERT (war '+before.ag+')':'gesetzt')+': '+nm+' – '+d.datumAG,d,before.ag?(d.analyst||d.telefonist||null):null);
+    if((d.datumBG||'')!==before.bg&&d.datumBG)chatSys('📅 Beratungstermin '+(before.bg?'GEÄNDERT (war '+before.bg+')':'gesetzt')+': '+nm+' – '+d.datumBG,d,before.bg?(d.berater||d.analyst||null):null);
     if((d.wiedervorlage||'')!==before.wv&&d.wiedervorlage)chatSys('🔁 Wiedervorlage: '+nm+' – '+d.wiedervorlage.split('-').reverse().join('.'),d);};
   const persist=()=>{if(isNew&&!state.deals.includes(d))state.deals.unshift(d);dbPersist(d);render();};
   const callMeta=()=>{const dur=m.querySelector('#m-dur'),no=m.querySelector('#m-cnote');const o={};if(dur&&dur.value)o.dur=parseFloat(dur.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
@@ -1131,7 +1145,7 @@ function openModal(id){
     const alt=d.datumAG;
     d.datumAG='';d.stage='In Bearbeitung';d.status='open';d.wiedervorlage=todayStr();
     d.notizen=('AG ABGESAGT (war '+alt+') am '+todayStr().split('-').reverse().join('.')+' – neu terminisieren | '+(d.notizen||''));
-    chatSys('❗ Analysetermin ABGESAGT: '+(d.name||d.org||'—')+' (war '+alt+') – '+(d.telefonist?('Telefonist '+d.telefonist):'Telefonist')+' bitte neu terminisieren!',d);
+    chatSys('❗ Analysetermin ABGESAGT: '+(d.name||d.org||'—')+' (war '+alt+') – '+(d.telefonist?('Telefonist '+d.telefonist):'Telefonist')+' bitte neu terminisieren!',d,d.telefonist||null);
     persist();closeModal();toast('Abgesagt – Lead liegt wieder ganz oben beim Telefonisten');});
   const bgx=m.querySelector('#cal-bg-x');
   if(bgx)bgx.addEventListener('click',()=>{
@@ -1141,7 +1155,7 @@ function openModal(id){
     const alt=d.datumBG;
     d.datumBG='';d.stage='Analyse & Doku';d.status='open';d.wiedervorlage=todayStr();
     d.notizen=('BG ABGESAGT (war '+alt+') am '+todayStr().split('-').reverse().join('.')+' – neu terminisieren | '+(d.notizen||''));
-    chatSys('❗ Beratungstermin ABGESAGT: '+(d.name||d.org||'—')+' (war '+alt+') – '+(d.berater?('Berater '+d.berater):'Berater')+'/'+(d.analyst||'Analyst')+' bitte neu terminisieren!',d);
+    chatSys('❗ Beratungstermin ABGESAGT: '+(d.name||d.org||'—')+' (war '+alt+') – '+(d.berater?('Berater '+d.berater):'Berater')+'/'+(d.analyst||'Analyst')+' bitte neu terminisieren!',d,d.berater||d.analyst||null);
     persist();closeModal();toast('Abgesagt – Termin muss neu gesetzt werden');});
   m.querySelector('#m-save').addEventListener('click',()=>{collect();d.status='open';terminEvents();persist();closeModal();toast('Gespeichert');});
   m.querySelector('#m-won').addEventListener('click',()=>{collect();d.status='won';chatSys('🏆 Gewonnen: '+(d.name||d.org||'—'),d);
@@ -1400,7 +1414,7 @@ lsLoad();render();
       chatCol=fs.collection('chat');
       ensureChatUI();
       chatUnsub=chatCol.orderBy('ts','desc').limit(200).onSnapshot(snap=>{
-        CHAT=snap.docs.map(s=>s.data()).reverse();
+        CHAT=snap.docs.map(s=>{const x=Object.assign({},s.data());x._id=s.id;return x;}).reverse();
         updateChatLog();
       },err=>{});
     }catch(e){
