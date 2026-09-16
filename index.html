@@ -898,6 +898,32 @@ function blank(){return {id:uid(),name:'',org:'',kundentyp:'Privat',quelle:'',te
 function bezFromPLZ(v){const m=/\b(1\d{2}0)\b/.exec((v||'')+'');if(!m)return '';const n=parseInt(m[1].slice(1,3),10);return n>=1&&n<=23?('Wien '+n):'';}
 function normTel(t){t=(t||'').trim();if(!t)return t;if(/[A-Za-z:]/.test(t))return t;const d=t.replace(/[^\d+]/g,'');if(d.startsWith('+43'))return '+43 '+d.slice(3);if(d.startsWith('0043'))return '+43 '+d.slice(4);if(d.startsWith('0')&&d.length>=9)return '+43 '+d.slice(1);return t;}
 function lostByFromStage(s){if(A_STAGES.includes(s))return 'Analyst';if(B_STAGES.includes(s))return 'Berater';return 'Telefonist';}
+/* ---------- Kalender: Termin-Text parsen + Google/ICS-Eintrag ---------- */
+function parseTermin(s){
+  s=(s||'').trim();if(!s)return null;
+  const m=/(\d{1,2})\.(\d{1,2})\.?\s*(\d{2,4})?\D*?(?:(\d{1,2})[:.h](\d{2}))?\s*$/.exec(s)||/(\d{1,2})\.(\d{1,2})\.?\s*(\d{2,4})?(?:\D+?(\d{1,2})[:.h](\d{2}))?/.exec(s);
+  if(!m)return null;
+  const now=new Date();
+  let y=m[3]?parseInt(m[3],10):now.getFullYear();
+  if(y<100)y+=2000;
+  const mo=parseInt(m[2],10)-1,da=parseInt(m[1],10);
+  const hh=m[4]!=null?parseInt(m[4],10):9,mi=m[5]!=null?parseInt(m[5],10):0;
+  if(mo<0||mo>11||da<1||da>31)return null;
+  let dt=new Date(y,mo,da,hh,mi);
+  if(!m[3]&&dt.getTime()<now.getTime()-86400000)dt=new Date(y+1,mo,da,hh,mi);
+  return dt;
+}
+function calPad(n){return String(n).padStart(2,'0');}
+function calFmt(dt){return dt.getFullYear()+calPad(dt.getMonth()+1)+calPad(dt.getDate())+'T'+calPad(dt.getHours())+calPad(dt.getMinutes())+'00';}
+function calGoogle(title,dt,details,loc){
+  const end=new Date(dt.getTime()+3600000);
+  return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(title)+'&dates='+calFmt(dt)+'/'+calFmt(end)+'&ctz=Europe/Vienna&details='+encodeURIComponent(details||'')+'&location='+encodeURIComponent(loc||'');
+}
+function calICS(title,dt,details,loc){
+  const end=new Date(dt.getTime()+3600000);
+  const ics='BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//CENSA CRM//DE\r\nBEGIN:VEVENT\r\nUID:'+Date.now()+'@censa-crm\r\nDTSTART:'+calFmt(dt)+'\r\nDTEND:'+calFmt(end)+'\r\nSUMMARY:'+(title||'').replace(/[\r\n;]/g,' ')+'\r\nDESCRIPTION:'+(details||'').replace(/[\r\n]/g,' ')+'\r\nLOCATION:'+(loc||'').replace(/[\r\n]/g,' ')+'\r\nEND:VEVENT\r\nEND:VCALENDAR';
+  const a=document.createElement('a');a.href='data:text/calendar;charset=utf-8,'+encodeURIComponent(ics);a.download='censa-termin.ics';a.click();
+}
 function fmtD(ts){const x=ts?new Date(ts):new Date();return String(x.getDate()).padStart(2,'0')+'.'+String(x.getMonth()+1).padStart(2,'0')+'.';}
 function naStamp(d){const dt=fmtD();d.notizen=('n.a. '+dt+(d.notizen?' | '+d.notizen:''));}
 function naInfo(d){const na=(d.calls||[]).filter(c=>c.outcome==='nichterreicht');return na.length?`<span class="tg od">n.a. ${na.length}× · zuletzt ${fmtD(na[na.length-1].ts)}</span>`:'';}
@@ -946,6 +972,14 @@ function openModal(id){
       <div class="fld"><label>Wiedervorlage</label><input type="date" id="m-wv" value="${esc(d.wiedervorlage)}"></div>
       <div class="fld"><label>Analysetermin (AG)</label><input id="m-dag" value="${esc(d.datumAG||'')}" placeholder="z. B. 22.09. 14:00"></div>
       <div class="fld"><label>Beratungstermin (BG)</label><input id="m-dbg" value="${esc(d.datumBG||'')}" placeholder="z. B. 25.09. 10:00"></div>
+      <div class="fld full"><label>In den Kalender eintragen <span style="font-weight:500;color:var(--ink-3);text-transform:none">— fertig ausgefüllt mit Kunde, Adresse &amp; Telefon; ICS für Apple/Outlook</span></label>
+        <div style="display:flex;gap:7px;flex-wrap:wrap">
+          <button type="button" class="mini-btn" id="cal-ag-g">📅 AG → Google Kalender</button>
+          <button type="button" class="mini-btn" id="cal-ag-i">AG → ICS-Datei</button>
+          <button type="button" class="mini-btn" id="cal-bg-g">📅 BG → Google Kalender</button>
+          <button type="button" class="mini-btn" id="cal-bg-i">BG → ICS-Datei</button>
+        </div>
+      </div>
       <div class="fld full"><label>Phase</label>
         <div class="spick" id="m-stagepick">${STAGES.map(s=>`<button type="button" class="chip" data-s="${esc(s)}" aria-pressed="${d.stage===s?'true':'false'}">${esc(s)}</button>`).join('')}</div>
       </div>
@@ -1001,6 +1035,22 @@ function openModal(id){
   const callMeta=()=>{const dur=m.querySelector('#m-dur'),no=m.querySelector('#m-cnote');const o={};if(dur&&dur.value)o.dur=parseFloat(dur.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
   const fb=m.querySelector('#m-frei');
   if(fb)fb.addEventListener('click',()=>{collect();d.geprueft=true;persist();closeModal();toast('Freigegeben – jetzt in der Liste dem Telefonisten zuteilen');});
+  const calWire=(gSel,iSel,which)=>{
+    const get=()=>{
+      const inp=m.querySelector(which==='ag'?'#m-dag':'#m-dbg');
+      const dt=parseTermin(inp?inp.value:'');
+      if(!dt){toast('Bitte zuerst den Termin eintragen, z. B. 22.09. 14:00');return null;}
+      const kunde=m.querySelector('#m-name').value||(m.querySelector('#m-org')?m.querySelector('#m-org').value:'')||'Kunde';
+      const title=(which==='ag'?'Analyse: ':'Beratung: ')+kunde;
+      const loc=[m.querySelector('#m-str').value,m.querySelector('#m-plz').value,m.querySelector('#m-ort').value].filter(Boolean).join(', ');
+      const det='Tel: '+(m.querySelector('#m-tel').value||'-')+(m.querySelector('#m-brief').value?' | Briefing: '+m.querySelector('#m-brief').value:'');
+      return {title,dt,det,loc};
+    };
+    const g=m.querySelector(gSel);if(g)g.addEventListener('click',()=>{const x=get();if(x)window.open(calGoogle(x.title,x.dt,x.det,x.loc),'_blank');});
+    const i=m.querySelector(iSel);if(i)i.addEventListener('click',()=>{const x=get();if(x)calICS(x.title,x.dt,x.det,x.loc);});
+  };
+  calWire('#cal-ag-g','#cal-ag-i','ag');
+  calWire('#cal-bg-g','#cal-bg-i','bg');
   m.querySelector('#m-save').addEventListener('click',()=>{collect();d.status='open';terminEvents();persist();closeModal();toast('Gespeichert');});
   m.querySelector('#m-won').addEventListener('click',()=>{collect();d.status='won';chatSys('🏆 Gewonnen: '+(d.name||d.org||'—'),d);
     const sd=new Date(Date.now()+14*86400000).toISOString().slice(0,10);
