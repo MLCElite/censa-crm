@@ -240,6 +240,9 @@ const FIREBASE_CONFIG={
   messagingSenderId:"289633541904",
   appId:"1:289633541904:web:3fbcada3344a6b32c50f95"
 };
+/* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
+   Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
+const OFFICE_MAIL="";
 /* =============================================================================== */
 const STAGES=['Neuer Lead','In Bearbeitung','Analysetermin vereinbart','Analyse & Doku','Beratungstermin vereinbart','Beratung / Angebot'];
 const KEY='imperium_crm_v1';
@@ -960,9 +963,15 @@ function parseTermin(s){
 }
 function calPad(n){return String(n).padStart(2,'0');}
 function calFmt(dt){return dt.getFullYear()+calPad(dt.getMonth()+1)+calPad(dt.getDate())+'T'+calPad(dt.getHours())+calPad(dt.getMinutes())+'00';}
-function calGoogle(title,dt,details,loc,guest){
+function calGoogle(title,dt,details,loc,guests){
   const end=new Date(dt.getTime()+3600000);
-  return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(title)+'&dates='+calFmt(dt)+'/'+calFmt(end)+'&ctz=Europe/Vienna&details='+encodeURIComponent(details||'')+'&location='+encodeURIComponent(loc||'')+(guest?'&add='+encodeURIComponent(guest):'');
+  const gl=(guests||[]).filter(Boolean).join(',');
+  return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(title)+'&dates='+calFmt(dt)+'/'+calFmt(end)+'&ctz=Europe/Vienna&details='+encodeURIComponent(details||'')+'&location='+encodeURIComponent(loc||'')+(gl?'&add='+encodeURIComponent(gl):'');
+}
+function teamMail(name){
+  if(!(name||'').trim())return '';
+  const mm=TEAM.find(x=>(x.name||'').toLowerCase()===name.trim().toLowerCase());
+  return mm?(mm.email||''):'';
 }
 function terminText(dt){return calPad(dt.getDate())+'.'+calPad(dt.getMonth()+1)+'.'+dt.getFullYear()+' um '+calPad(dt.getHours())+':'+calPad(dt.getMinutes())+' Uhr';}
 function calICS(title,dt,details,loc){
@@ -1027,6 +1036,8 @@ function openModal(id){
           <button type="button" class="mini-btn" id="cal-bg-g">📅 BG → Google Kalender + Kunde</button>
           <button type="button" class="mini-btn" id="cal-bg-w">📲 BG per WhatsApp bestätigen</button>
           <button type="button" class="mini-btn" id="cal-bg-i">BG → ICS</button>
+          <button type="button" class="mini-btn" id="cal-ag-x" style="color:var(--bad)">❗ AG abgesagt</button>
+          <button type="button" class="mini-btn" id="cal-bg-x" style="color:var(--bad)">❗ BG abgesagt</button>
         </div>
       </div>
       <div class="fld full"><label>Phase</label>
@@ -1094,12 +1105,14 @@ function openModal(id){
       const title=(which==='ag'?'Analyse: ':'Beratung: ')+kunde;
       const loc=[m.querySelector('#m-str').value,m.querySelector('#m-plz').value,m.querySelector('#m-ort').value].filter(Boolean).join(', ');
       const det='Tel: '+(m.querySelector('#m-tel').value||'-')+(m.querySelector('#m-brief').value?' | Briefing: '+m.querySelector('#m-brief').value:'');
-      const guest=(m.querySelector('#m-email')?m.querySelector('#m-email').value.trim():'');
-      return {title,dt,det,loc,guest,kunde};
+      const kundeMail=(m.querySelector('#m-email')?m.querySelector('#m-email').value.trim():'');
+      const maMail=teamMail(which==='ag'?m.querySelector('#m-an').value:m.querySelector('#m-be').value);
+      const guests=[kundeMail,maMail,OFFICE_MAIL];
+      return {title,dt,det,loc,guests,kundeMail,kunde};
     };
     const g=m.querySelector(gSel);if(g)g.addEventListener('click',()=>{const x=get();if(!x)return;
-      if(!x.guest)toast('Tipp: E-Mail des Kunden eintragen, dann wird er automatisch eingeladen');
-      window.open(calGoogle(x.title,x.dt,x.det,x.loc,x.guest),'_blank');});
+      if(!x.kundeMail)toast('Tipp: E-Mail des Kunden eintragen, dann wird er automatisch eingeladen');
+      window.open(calGoogle(x.title,x.dt,x.det,x.loc,x.guests),'_blank');});
     const i=m.querySelector(iSel);if(i)i.addEventListener('click',()=>{const x=get();if(x)calICS(x.title,x.dt,x.det,x.loc);});
     const w=m.querySelector(wSel);if(w)w.addEventListener('click',()=>{const x=get();if(!x)return;
       const tel=(m.querySelector('#m-tel').value||'').replace(/\D/g,'');
@@ -1110,6 +1123,26 @@ function openModal(id){
   };
   calWire('#cal-ag-g','#cal-ag-i','#cal-ag-w','ag');
   calWire('#cal-bg-g','#cal-bg-i','#cal-bg-w','bg');
+  const agx=m.querySelector('#cal-ag-x');
+  if(agx)agx.addEventListener('click',()=>{
+    collect();
+    if(!d.datumAG){toast('Kein Analysetermin eingetragen');return;}
+    if(!confirm('Analysetermin ('+d.datumAG+') als abgesagt markieren?\n\nDer Lead geht zurück in die Anrufliste von '+(d.telefonist||'— kein Telefonist —')+'.'))return;
+    const alt=d.datumAG;
+    d.datumAG='';d.stage='In Bearbeitung';d.status='open';d.wiedervorlage=todayStr();
+    d.notizen=('AG ABGESAGT (war '+alt+') am '+todayStr().split('-').reverse().join('.')+' – neu terminisieren | '+(d.notizen||''));
+    chatSys('❗ Analysetermin ABGESAGT: '+(d.name||d.org||'—')+' (war '+alt+') – '+(d.telefonist?('Telefonist '+d.telefonist):'Telefonist')+' bitte neu terminisieren!',d);
+    persist();closeModal();toast('Abgesagt – Lead liegt wieder ganz oben beim Telefonisten');});
+  const bgx=m.querySelector('#cal-bg-x');
+  if(bgx)bgx.addEventListener('click',()=>{
+    collect();
+    if(!d.datumBG){toast('Kein Beratungstermin eingetragen');return;}
+    if(!confirm('Beratungstermin ('+d.datumBG+') als abgesagt markieren?'))return;
+    const alt=d.datumBG;
+    d.datumBG='';d.stage='Analyse & Doku';d.status='open';d.wiedervorlage=todayStr();
+    d.notizen=('BG ABGESAGT (war '+alt+') am '+todayStr().split('-').reverse().join('.')+' – neu terminisieren | '+(d.notizen||''));
+    chatSys('❗ Beratungstermin ABGESAGT: '+(d.name||d.org||'—')+' (war '+alt+') – '+(d.berater?('Berater '+d.berater):'Berater')+'/'+(d.analyst||'Analyst')+' bitte neu terminisieren!',d);
+    persist();closeModal();toast('Abgesagt – Termin muss neu gesetzt werden');});
   m.querySelector('#m-save').addEventListener('click',()=>{collect();d.status='open';terminEvents();persist();closeModal();toast('Gespeichert');});
   m.querySelector('#m-won').addEventListener('click',()=>{collect();d.status='won';chatSys('🏆 Gewonnen: '+(d.name||d.org||'—'),d);
     const sd=new Date(Date.now()+14*86400000).toISOString().slice(0,10);
@@ -1201,7 +1234,7 @@ async function importCSV(text){
     if(isRech)d.geprueft=false;
     if(isBestand){
       d.kundentyp=g('Kundentyp')||'Privat';d.org=g('Organisation');d.name=g('Name');d.telefon=g('Telefon');d.ort=g('Ort');
-      d.email=g('Email')||g('E-Mail');
+      d.email=g('Email')||g('E-Mail');d.strasse=g('Strasse');d.plz=g('PLZ');
       d.bezirk=g('Bezirk')||bezFromPLZ(g('PLZ'))||bezFromPLZ(g('Ort'));d.telefonist=g('Telefonist')||d.telefonist;
       if(g('Wiedervorlage'))d.wiedervorlage=g('Wiedervorlage');
       d.quelle=g('Quelle')||'Bestand';d.analyst=g('Analyst');d.berater=g('Berater');
