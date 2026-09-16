@@ -173,6 +173,18 @@
   .histline{font-size:11px;color:var(--ink-3);margin-top:4px}
   .gptoggle{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;cursor:pointer;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:9px 12px}
   .gptoggle input{width:16px;height:16px;accent-color:var(--warn)}
+  .pchip{appearance:none;border:1px dashed var(--line);background:var(--surface-2);color:var(--ink-2);font-family:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:20px;cursor:pointer;transition:.13s}
+  .pchip::before{content:"+ "}
+  .pchip[aria-pressed="true"]{background:var(--privat-bg);color:var(--privat-ink);border-style:solid;border-color:transparent}
+  .pchip[aria-pressed="true"]::before{content:"✓ "}
+  .upicker{display:flex;flex-wrap:wrap;gap:7px;margin:6px 0 2px}
+  .udetail{border:1px solid var(--line);border-radius:9px;padding:9px 11px;margin-top:7px;background:var(--surface)}
+  .udetail .dhead{display:flex;align-items:center;gap:9px}
+  .udetail .dname{font-size:12.5px;font-weight:700;color:var(--privat-ink);flex:1}
+  .udetail .drow{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px}
+  .udetail input,.udetail select{padding:6px 9px;font-size:12px}
+  .ubkat{font-size:11.5px;font-weight:700;margin:12px 0 2px;color:var(--ink-2);text-transform:uppercase;letter-spacing:.4px}
+  .ubkat:first-child{margin-top:2px}
   .chatwrap{max-width:780px;display:flex;flex-direction:column;height:calc(100vh - 150px);min-height:340px}
   .chatlog{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 2px}
   .msg{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:9px 12px;max-width:85%;font-size:13px;line-height:1.4;align-self:flex-start}
@@ -1033,7 +1045,7 @@ function openModal(id){
   editId=id;
   const isNew=!id;
   const before={wv:d.wiedervorlage||'',ag:d.datumAG||'',bg:d.datumBG||''};
-  const m=document.getElementById('modal');
+  const m=document.getElementById('modal');m.classList.remove('wide');
   m.innerHTML=`
     <h2>${isNew?'Neuer Lead':esc(d.name||d.org||'Lead')}</h2>
     <div class="sub">${isNew?'Datensatz anlegen':'Status: '+(d.status==='won'?'Gewonnen':d.status==='lost'?'Verloren ('+esc(d.lostReason||'')+')':esc(d.stage))}</div>
@@ -1112,6 +1124,7 @@ function openModal(id){
     </div>
     <div class="modal-foot">
       <button class="btn pri" id="m-save">Speichern</button>
+      ${!isNew?`<button class="btn" id="m-ueb" ${d.uebergabe?'style="color:var(--good)"':''}>📋 Übergabe${d.uebergabe?' ✓':''}</button>`:''}
       <button class="btn" id="m-won" style="color:var(--good)">Gewonnen</button>
       <button class="btn" id="m-lost" style="color:var(--bad)">Verloren</button>
       <button class="btn" id="m-close">Schließen</button>
@@ -1215,6 +1228,8 @@ function openModal(id){
     d.notizen=('REAKTIVIERT am '+todayStr().split('-').reverse().join('.')+' – neuen Telefonisten zuteilen. Frühere Anrufer: '+(d.telHist||[]).join(', ')+' | '+(d.notizen||'')).trim(' |');
     persist();closeModal();toast('Wieder freigegeben – neuen Telefonisten zuteilen');});
   m.querySelector('#m-close').addEventListener('click',closeModal);
+  const ub2=m.querySelector('#m-ueb');
+  if(ub2)ub2.addEventListener('click',()=>{collect();dbPersist(d);openUebergabe(d.id);});
   const cl=m.querySelector('#m-call');if(cl)cl.addEventListener('click',()=>{d.calls=d.calls||[];d.calls.push(Object.assign({ts:new Date().toISOString(),outcome:'angerufen'},callMeta()));dbPersist(d);document.getElementById('kpiDials').textContent=dialsToday();const nm=m.querySelector('.callbar .num');if(nm)nm.textContent=(d.calls||[]).length;});
   if(m.querySelector('#m-del'))m.querySelector('#m-del').addEventListener('click',()=>{if(confirm('Diesen Datensatz löschen?')){state.deals=state.deals.filter(x=>x.id!==d.id);dbRemove(d.id);render();closeModal();toast('Gelöscht');}});
   m.querySelectorAll('.ob').forEach(b=>b.addEventListener('click',()=>{
@@ -1225,6 +1240,158 @@ function openModal(id){
     else{d.stage=(d.stage==='Neuer Lead'?'In Bearbeitung':d.stage);naStamp(d);}
     if(isNew&&!state.deals.includes(d)){state.deals.unshift(d);}dbPersist(d);render();closeModal();toast('Anruf geloggt');
   }));
+}
+/* ---------- Übergabe-Formular (Analyse → Berater), gespeichert im Lead ---------- */
+const BIG5U=[
+ {t:'① Fixkosten reduzieren',items:['KFZ-Haftpflicht','KFZ-Kasko','KFZ-Rechtsschutz','Haushalt','Eigenheim','Privat-Rechtsschutz','Strom','Gas']},
+ {t:'② Eigenheim / Finanzierung',items:['Bestehender Kredit','Neubau / Kauf geplant','Vortilgung','Bausparer']},
+ {t:'③ Inflationsschutz / Veranlagung',items:['Sparbuch / Konto','Bausparer','Wertpapierdepot','Fonds','Krypto','Gold / Edelmetalle','Lebensversicherung']},
+ {t:'④ Pension',items:['Bestehende Pensionsvorsorge','Prämienbegünstigte ZV','Lebens-/Rentenversicherung','Staatl. Pension prüfen']},
+ {t:'⑤ Familie',items:['Private Unfallvers.','Private Krankenvers.','Ablebensvers.','Begräbniskosten','Berufsunfähigkeit','Kinder-Vorsorge','Tier-Haftpflicht','Tier-Krankenvers.']}
+];
+const USTAT={best:'Bestehend',int:'Interesse',no:'Kein Bedarf'};
+function openUebergabe(id){
+  const d=state.deals.find(x=>x.id===id);if(!d){toast('Lead nicht gefunden');return;}
+  const W=JSON.parse(JSON.stringify(d.uebergabe||{}));
+  W.big5=W.big5||[];W.bav=W.bav||{};
+  const m=document.getElementById('modal');m.classList.add('wide');
+  const stSel=(cls,key,v)=>`<select class="${cls}" data-k="${key}" style="width:auto;min-width:120px;padding:6px 26px 6px 9px;font-size:12px"><option value=""${!v?' selected':''}>— Status —</option><option value="best"${v==='best'?' selected':''}>Bestehend</option><option value="int"${v==='int'?' selected':''}>Interesse</option><option value="no"${v==='no'?' selected':''}>Kein Bedarf</option></select>`;
+  const bavRow=(key,label)=>{const b=W.bav[key]||{};return `<div class="ehrow" style="flex-wrap:wrap"><span class="nm">${label}</span>${stSel('ubav',key,b.s)}<input class="ubavn" data-k="${key}" placeholder="Notiz: Anstalt, Prämie, Polizzen-Nr. …" value="${esc(b.note||'')}" style="flex:1;min-width:170px;padding:6px 9px;font-size:12px"></div>`;};
+  const gmbh=d.kundentyp==='GmbH';
+  m.innerHTML=`<h2>📋 Übergabe: ${esc(d.name||d.org||'—')}</h2>
+    <div class="sub">Analyse-Übergabe an den Berater – wird im Kunden gespeichert und ist für alle Berechtigten sichtbar. Stammdaten (Adresse, Telefon, E-Mail) pflegst du direkt im Lead.${W.ts?' · Zuletzt: '+esc((W.ausgefuelltVon||'')+' '+(W.ts||'').slice(0,10)):''}</div>
+    <div class="grid2">
+      <div class="fld"><label>Analyse-Datum</label><input type="date" id="u-datum" value="${esc(W.datum||todayStr())}"></div>
+      <div class="fld"><label>Geburtsdatum ${gmbh?'GF':'Kunde'}</label><input type="date" id="u-geb" value="${esc(W.geb||'')}"></div>
+      ${gmbh?`<div class="fld"><label>GISA-Zahl</label><input id="u-gisa" value="${esc(W.gisa||'')}" placeholder="12345678"></div>
+      <div class="fld"><label>Firmenbuch-Nr. (FN)</label><input id="u-fn" value="${esc(W.fn||'')}" placeholder="FN 123456 a"></div>
+      <div class="fld"><label>Branche / Tätigkeit</label><input id="u-branche" value="${esc(W.branche||'')}"></div>
+      <div class="fld"><label>Anzahl Mitarbeiter</label><input id="u-ma" type="number" value="${esc(W.ma||'')}"></div>`:''}
+    </div>
+    ${gmbh?`<div class="ehsec"><div class="ehhead">🏢 Firmen-Ebene · BAV <span class="ehtag">Status je Baustein</span></div>
+      ${bavRow('pension','Pensionsvorsorge / Zukunftssicherung §3(1)15')}
+      ${bavRow('pz','Pensionszusage / GF-Vorsorge')}
+      ${bavRow('abf','Abfertigung NEU / BV-Kasse')}
+      ${bavRow('gku','Gruppen-Kranken-/Unfallversicherung')}
+      ${bavRow('entn','Gewinnoptimierte Entnahme')}
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px">
+        <input id="u-macalc" type="number" placeholder="MA für Berechnung" value="${esc(W.maCalc||'')}">
+        <input id="u-gfm" type="number" placeholder="GF-Bezug mtl. €" value="${esc(W.gfBezugM||'')}">
+        <input id="u-gfj" type="number" placeholder="GF-Bezug jährl. €" value="${esc(W.gfBezugJ||'')}">
+      </div>
+      <div class="fld" style="margin-top:10px"><label>Bestehende BAV / Anlagen im Unternehmen</label><textarea id="u-bestbav" rows="2" placeholder="Anstalt, Produkt, Prämie €/M, Polizzen-Nr., Beginn/Ablauf …">${esc(W.bestBav||'')}</textarea></div>
+    </div>`:''}
+    <div class="ehsec"><div class="ehhead">👤 Privat-Ebene · Die Big 5 <span class="ehtag">zutreffende Produkte anklicken → Detailzeile</span></div><div id="u-big5"></div></div>
+    <div class="ehsec"><div class="ehhead">Ergebnis &amp; Potenzial <span class="ehtag">ersetzt die Sprachnachricht</span></div>
+      <div class="fld"><label>Kurz-Zusammenfassung für den Berater</label><textarea id="u-zsm" rows="3" placeholder="3–4 Sätze: Ausgangslage, was wurde besprochen, wo liegt der Abschluss.">${esc(W.zsm||'')}</textarea></div>
+      <div class="fld"><label>Pain Points / was ist dem Kunden wichtig</label><textarea id="u-pain" rows="2">${esc(W.pain||'')}</textarea></div>
+      <div class="fld"><label>Abschluss-Potenzial – Spanne (Min–Max)</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
+          <input id="u-pmm" type="number" placeholder="mtl. Min €" value="${esc(W.potMinM||'')}">
+          <input id="u-pmx" type="number" placeholder="mtl. Max €" value="${esc(W.potMaxM||'')}">
+          <input id="u-pem" type="number" placeholder="einmalig Min €" value="${esc(W.potMinE||'')}">
+          <input id="u-pex" type="number" placeholder="einmalig Max €" value="${esc(W.potMaxE||'')}">
+        </div></div>
+      <div class="grid2">
+        <div class="fld"><label>Priorität</label><select id="u-prio"><option value="warm"${(W.prio||'warm')==='warm'?' selected':''}>🟡 Warm</option><option value="hot"${W.prio==='hot'?' selected':''}>🔴 Heiß</option><option value="cold"${W.prio==='cold'?' selected':''}>⚪ Kalt</option></select></div>
+        <div class="fld"><label>Empfohlener nächster Schritt</label><input id="u-next" value="${esc(W.next||'')}" placeholder="z. B. Beratungstermin diese Woche"></div>
+      </div>
+      <label class="chk2"><input type="checkbox" id="u-sprach" ${W.sprachOk?'checked':''}> Sprachnachricht an Berater geschickt (optional, für Konzepterstellung)</label>
+      <label class="chk2"><input type="checkbox" id="u-pdf" ${W.pdfOk?'checked':''}> Analyse-PDF an Berater übergeben <b>(Pflicht)</b></label>
+      <div class="fld"><label>Link zu Dokumenten (Drive/OneDrive, optional)</label><input id="u-doku" value="${esc(W.doku||'')}" placeholder="https://…"></div>
+    </div>
+    <div class="ehsec"><div class="ehhead">Unterlagen-Checkliste <span class="ehtag">Vollständigkeit</span></div>
+      <label class="chk2"><input type="checkbox" id="u-c1" ${W.chkAusweis?'checked':''}> Ausweis</label>
+      <label class="chk2"><input type="checkbox" id="u-c2" ${W.chkVollmacht?'checked':''}> Auskunftsvollmacht(en) mit Stempel</label>
+      <label class="chk2"><input type="checkbox" id="u-c3" ${W.chkKunden?'checked':''}> Kundendaten</label>
+      <label class="chk2"><input type="checkbox" id="u-c4" ${W.chkJahr?'checked':''}> Jahresabrechnung(en) Strom/Gas</label>
+      <div style="display:grid;grid-template-columns:1fr 2fr;gap:8px;margin-top:6px">
+        <input id="u-anzvm" type="number" placeholder="Anzahl Vollmachten" value="${esc(W.anzVollmachten||'')}">
+        <input id="u-fehlt" placeholder="Was fehlt / wer holt es nach" value="${esc(W.fehlt||'')}">
+      </div>
+    </div>
+    <div class="fld"><label>Kunde erreichbar / Terminwunsch</label><input id="u-err" value="${esc(W.erreichbar||'')}" placeholder="z. B. Mo–Do vormittags"></div>
+    <div class="modal-foot">
+      <button class="btn pri" id="u-save">📋 Übergabe speichern</button>
+      <button class="btn" id="u-copy">Als Text kopieren</button>
+      <button class="btn" id="u-back">← Zurück zum Lead</button>
+    </div>`;
+  document.getElementById('ov').classList.add('show');
+  const b5host=m.querySelector('#u-big5');
+  BIG5U.forEach(cat=>{
+    const kat=document.createElement('div');kat.className='ubkat';kat.textContent=cat.t;b5host.appendChild(kat);
+    const pick=document.createElement('div');pick.className='upicker';b5host.appendChild(pick);
+    const det=document.createElement('div');b5host.appendChild(det);
+    cat.items.forEach(name=>{
+      const entry=()=>W.big5.find(x=>x.kat===cat.t&&x.name===name);
+      const chip=document.createElement('button');chip.type='button';chip.className='pchip';chip.textContent=name;
+      chip.setAttribute('aria-pressed',entry()?'true':'false');
+      const mkDetail=e=>{
+        const dv=document.createElement('div');dv.className='udetail';
+        dv.innerHTML=`<div class="dhead"><span class="dname">${esc(name)}</span>${stSel('ub5s','',e.s)}<button type="button" class="rm" style="border:0;background:transparent;color:var(--ink-3);font-size:16px;cursor:pointer">×</button></div>
+          <div class="drow"><input class="ub5" data-f="anstalt" placeholder="Anstalt" value="${esc(e.anstalt||'')}"><input class="ub5" data-f="praemie" type="number" placeholder="Prämie €/M" value="${esc(e.praemie||'')}"><input class="ub5" data-f="polnr" placeholder="Polizzen-Nr." value="${esc(e.polnr||'')}"><input class="ub5" data-f="notiz" placeholder="Notiz" value="${esc(e.notiz||'')}"></div>`;
+        dv.querySelector('.ub5s').addEventListener('change',ev=>{e.s=ev.target.value;});
+        dv.querySelectorAll('.ub5').forEach(inp=>inp.addEventListener('input',()=>{e[inp.dataset.f]=inp.value;}));
+        dv.querySelector('.rm').addEventListener('click',()=>{W.big5=W.big5.filter(x=>!(x.kat===cat.t&&x.name===name));chip.setAttribute('aria-pressed','false');dv.remove();});
+        return dv;
+      };
+      chip.addEventListener('click',()=>{
+        if(entry()){W.big5=W.big5.filter(x=>!(x.kat===cat.t&&x.name===name));chip.setAttribute('aria-pressed','false');[...det.children].forEach(c=>{if(c.querySelector('.dname')&&c.querySelector('.dname').textContent===name)c.remove();});}
+        else{const e={kat:cat.t,name,s:'',anstalt:'',praemie:'',polnr:'',notiz:''};W.big5.push(e);chip.setAttribute('aria-pressed','true');det.appendChild(mkDetail(e));}
+      });
+      pick.appendChild(chip);
+      const ex=entry();if(ex)det.appendChild(mkDetail(ex));
+    });
+  });
+  const collectU=()=>{
+    const g=id2=>{const el=m.querySelector('#'+id2);return el?(el.type==='checkbox'?el.checked:el.value.trim()):(W[id2]||'');};
+    W.datum=g('u-datum');W.geb=g('u-geb');
+    if(gmbh){W.gisa=g('u-gisa');W.fn=g('u-fn');W.branche=g('u-branche');W.ma=g('u-ma');W.maCalc=g('u-macalc');W.gfBezugM=g('u-gfm');W.gfBezugJ=g('u-gfj');W.bestBav=g('u-bestbav');
+      m.querySelectorAll('.ubav').forEach(s=>{const k=s.dataset.k;W.bav[k]=W.bav[k]||{};W.bav[k].s=s.value;});
+      m.querySelectorAll('.ubavn').forEach(i=>{const k=i.dataset.k;W.bav[k]=W.bav[k]||{};W.bav[k].note=i.value.trim();});}
+    W.zsm=g('u-zsm');W.pain=g('u-pain');
+    W.potMinM=g('u-pmm');W.potMaxM=g('u-pmx');W.potMinE=g('u-pem');W.potMaxE=g('u-pex');
+    W.prio=g('u-prio');W.next=g('u-next');
+    W.sprachOk=g('u-sprach');W.pdfOk=g('u-pdf');W.doku=g('u-doku');
+    W.chkAusweis=g('u-c1');W.chkVollmacht=g('u-c2');W.chkKunden=g('u-c3');W.chkJahr=g('u-c4');
+    W.anzVollmachten=g('u-anzvm');W.fehlt=g('u-fehlt');W.erreichbar=g('u-err');
+  };
+  const uText=()=>{
+    const c=x=>x?'✓':'✗';
+    const bavL={pension:'Pension/Zukunftssich.',pz:'Pensionszusage',abf:'Abfertigung NEU',gku:'Gruppen-KV/UV',entn:'Gew.opt. Entnahme'};
+    const lines=[];
+    lines.push('ÜBERGABE – '+(d.name||d.org||'—')+' ('+d.kundentyp+')');
+    lines.push('Analyse: '+(W.datum||'—')+' · Analyst: '+(d.analyst||'—')+' · Telefonist: '+(d.telefonist||'—')+' · Prio: '+(W.prio==='hot'?'HEISS':W.prio==='cold'?'kalt':'warm'));
+    lines.push('Kontakt: '+(d.telefon||'—')+' · '+(d.email||'—')+' · '+[d.strasse,d.plz,d.ort].filter(Boolean).join(', '));
+    if(gmbh){
+      lines.push('Firma: GISA '+(W.gisa||'—')+' · FN '+(W.fn||'—')+' · '+(W.branche||'—')+' · MA: '+(W.ma||'—')+' · GF-Bezug: '+(W.gfBezugM||'—')+' €/M');
+      const bs=Object.entries(W.bav||{}).filter(([k,v])=>v.s||v.note).map(([k,v])=>bavL[k]+': '+(USTAT[v.s]||'—')+(v.note?' ('+v.note+')':''));
+      if(bs.length)lines.push('BAV: '+bs.join(' | '));
+      if(W.bestBav)lines.push('Bestehende BAV: '+W.bestBav);
+    }
+    if(W.big5.length){lines.push('BIG 5:');W.big5.forEach(e=>lines.push(' - '+e.name+': '+(USTAT[e.s]||'—')+(e.anstalt?' · '+e.anstalt:'')+(e.praemie?' · '+e.praemie+' €/M':'')+(e.polnr?' · Pol '+e.polnr:'')+(e.notiz?' · '+e.notiz:'')));}
+    if(W.zsm)lines.push('ZUSAMMENFASSUNG: '+W.zsm);
+    if(W.pain)lines.push('PAIN POINTS: '+W.pain);
+    lines.push('POTENZIAL: mtl. '+(W.potMinM||'?')+'–'+(W.potMaxM||'?')+' € · einmalig '+(W.potMinE||'?')+'–'+(W.potMaxE||'?')+' €');
+    if(W.next)lines.push('NÄCHSTER SCHRITT: '+W.next);
+    lines.push('UNTERLAGEN: Ausweis '+c(W.chkAusweis)+' · Vollmachten '+c(W.chkVollmacht)+' ('+(W.anzVollmachten||'?')+') · Kundendaten '+c(W.chkKunden)+' · Jahresabr. '+c(W.chkJahr)+(W.fehlt?' · FEHLT: '+W.fehlt:''));
+    lines.push('Analyse-PDF: '+c(W.pdfOk)+' · Sprachnachricht: '+c(W.sprachOk)+(W.doku?' · Doku: '+W.doku:''));
+    if(W.erreichbar)lines.push('Erreichbar: '+W.erreichbar);
+    return lines.join('\n');
+  };
+  m.querySelector('#u-back').addEventListener('click',()=>{openModal(d.id);});
+  m.querySelector('#u-copy').addEventListener('click',()=>{collectU();const t=uText();if(navigator.clipboard)navigator.clipboard.writeText(t);toast('Übergabe als Text kopiert – z. B. für WhatsApp an den Berater');});
+  m.querySelector('#u-save').addEventListener('click',()=>{
+    collectU();
+    if(!W.pdfOk&&!confirm('Analyse-PDF ist als NICHT übergeben markiert (Pflicht). Trotzdem speichern?'))return;
+    const war=!!d.uebergabe;
+    W.ausgefuelltVon=chatName();W.ts=new Date().toISOString();
+    d.uebergabe=W;
+    if(['Neuer Lead','In Bearbeitung','Analysetermin vereinbart'].includes(d.stage))d.stage='Analyse & Doku';
+    dbPersist(d);
+    chatSys('📋 Übergabe '+(war?'aktualisiert':'ausgefüllt')+': '+(d.name||d.org||'—')+(d.berater?' – Berater '+d.berater:' – bereit für Berater-Zuordnung (Dispo)'),d,d.berater||null);
+    render();openModal(d.id);toast('Übergabe gespeichert');
+  });
 }
 function closeModal(){document.getElementById('ov').classList.remove('show');document.getElementById('modal').classList.remove('wide');editId=null;}
 document.getElementById('ov').addEventListener('click',e=>{if(e.target.id==='ov')closeModal();});
