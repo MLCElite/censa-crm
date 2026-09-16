@@ -491,27 +491,72 @@ function renderListe(){
   host.querySelectorAll('tbody tr').forEach(tr=>tr.addEventListener('click',()=>openModal(tr.dataset.id)));
 }
 
-/* ---------- Aufteilen: gefilterte Leads gleichmäßig auf Telefonisten ---------- */
+/* ---------- Aufteilen: bezirksweise gebündelt, Stückzahl fair ---------- */
+function splitPlan(rows,names){
+  const grp={};
+  rows.forEach(r=>{const b=(r.bezirk||'').trim()||'— ohne Bezirk —';(grp[b]=grp[b]||[]).push(r);});
+  const packs=Object.entries(grp).sort((a,b)=>b[1].length-a[1].length);
+  const plan=names.map(n=>({name:n,bez:{},leads:[],n:0}));
+  packs.forEach(([b,list])=>{
+    plan.sort((x,y)=>x.n-y.n);
+    const p=plan[0];
+    p.bez[b]=(p.bez[b]||0)+list.length;p.leads.push(...list);p.n+=list.length;
+  });
+  const target=rows.length/Math.max(1,names.length);
+  const tol=Math.max(6,Math.round(target*0.15));
+  let guard=0;
+  while(guard++<60){
+    plan.sort((x,y)=>x.n-y.n);
+    const lo=plan[0],hi=plan[plan.length-1];
+    if(hi.n-lo.n<=tol)break;
+    const bigB=Object.entries(hi.bez).sort((a,b)=>b[1]-a[1])[0];
+    if(!bigB)break;
+    const move=Math.min(Math.floor((hi.n-lo.n)/2),bigB[1]-1);
+    if(move<1)break;
+    let moved=0;
+    for(let i=hi.leads.length-1;i>=0&&moved<move;i--){
+      const r=hi.leads[i];
+      const rb=(r.bezirk||'').trim()||'— ohne Bezirk —';
+      if(rb===bigB[0]){hi.leads.splice(i,1);lo.leads.push(r);moved++;}
+    }
+    if(!moved)break;
+    hi.bez[bigB[0]]-=moved;if(hi.bez[bigB[0]]<=0)delete hi.bez[bigB[0]];
+    lo.bez[bigB[0]]=(lo.bez[bigB[0]]||0)+moved;
+    hi.n-=moved;lo.n+=moved;
+  }
+  plan.sort((x,y)=>x.name.localeCompare(y.name));
+  return plan;
+}
 function openSplitModal(rows){
-  const m=document.getElementById('modal');
+  const m=document.getElementById('modal');m.classList.add('wide');
   const tele=[...new Set([...TEAM.filter(x=>x.rolle==='telefonist').map(x=>x.name),...state.deals.map(d=>d.telefonist).filter(Boolean)])].sort();
-  m.innerHTML=`<h2>⚖ Leads aufteilen</h2><div class="sub">${rows.length} gefilterte Leads werden reihum gleichmäßig auf die angehakten Telefonisten verteilt und damit freigegeben.</div>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">${tele.length?tele.map(t=>`<label class="gptoggle"><input type="checkbox" class="splitT" value="${esc(t)}"> ${esc(t)}</label>`).join(''):'<div class="empty-col">Keine Telefonisten gefunden – zuerst unter CEO → Team &amp; Zugänge anlegen.</div>'}</div>
+  m.innerHTML=`<h2>⚖ Leads aufteilen – bezirksweise</h2><div class="sub">${rows.length} gefilterte Leads. Jeder Telefonist bekommt ganze Bezirke – so telefoniert jeder die Woche über im selben Gebiet und die Termine liegen gebündelt. Die Stückzahl wird dabei so fair wie möglich gehalten (sehr große Bezirke werden bei Bedarf geteilt).</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">${tele.length?tele.map(t=>`<label class="gptoggle"><input type="checkbox" class="splitT" value="${esc(t)}"> ${esc(t)}</label>`).join(''):'<div class="empty-col">Keine Telefonisten gefunden – zuerst unter CEO → Team &amp; Zugänge anlegen.</div>'}</div>
+    <div id="splitPrev" style="margin-bottom:12px"></div>
     <div class="modal-foot"><button class="btn pri" id="splitGo">Verteilen</button><button class="btn" id="m-close">Abbrechen</button></div>`;
   document.getElementById('ov').classList.add('show');
   m.querySelector('#m-close').addEventListener('click',closeModal);
+  const getNames=()=>[...m.querySelectorAll('.splitT:checked')].map(x=>x.value);
+  const upd=()=>{
+    const names=getNames();
+    const pv=m.querySelector('#splitPrev');
+    if(!names.length){pv.innerHTML='<div class="empty-col">Telefonisten anhaken – die Vorschau erscheint sofort.</div>';return;}
+    const plan=splitPlan(rows,names);
+    pv.innerHTML='<div class="ehgt" style="margin-bottom:6px">Vorschau der Aufteilung</div><div class="st-list">'+plan.map(p=>`<div class="gl" style="cursor:default"><span class="gn">${esc(p.name)}</span><span class="ph" style="white-space:normal;flex:2">${esc(Object.entries(p.bez).sort((a,b)=>b[1]-a[1]).map(([b,n])=>b+' ('+n+')').join(', '))}</span><span class="ph tnum" style="font-weight:800">${p.n} Leads</span></div>`).join('')+'</div>';
+  };
+  m.querySelectorAll('.splitT').forEach(c=>c.addEventListener('change',upd));
+  upd();
   m.querySelector('#splitGo').addEventListener('click',()=>{
-    const names=[...m.querySelectorAll('.splitT:checked')].map(x=>x.value);
+    const names=getNames();
     if(!names.length){toast('Mindestens einen Telefonisten anhaken');return;}
-    if(!confirm(rows.length+' Leads gleichmäßig auf '+names.join(', ')+' verteilen?'))return;
-    const count={};names.forEach(n=>count[n]=0);
-    rows.forEach((r,i)=>{
-      const name=names[i%names.length];
-      if((r.telefonist||'').trim()&&r.telefonist!==name){r.telHist=r.telHist||[];if(!r.telHist.includes(r.telefonist))r.telHist.push(r.telefonist);}
-      r.telefonist=name;r.geprueft=true;count[name]++;dbPersist(r);
-    });
-    chatSys('📞 Neue Anruf-Liste verteilt: '+rows.length+' Leads → '+names.map(n=>n+' ('+count[n]+')').join(', '));
-    closeModal();render();toast(rows.length+' Leads verteilt: '+names.map(n=>n+' '+count[n]).join(' · '));
+    const plan=splitPlan(rows,names);
+    if(!confirm(rows.length+' Leads bezirksweise auf '+names.join(', ')+' verteilen?'))return;
+    plan.forEach(p=>p.leads.forEach(r=>{
+      if((r.telefonist||'').trim()&&r.telefonist!==p.name){r.telHist=r.telHist||[];if(!r.telHist.includes(r.telefonist))r.telHist.push(r.telefonist);}
+      r.telefonist=p.name;r.geprueft=true;dbPersist(r);
+    }));
+    chatSys('📞 Neue Anruf-Liste verteilt (bezirksweise): '+plan.map(p=>p.name+': '+Object.keys(p.bez).slice(0,5).join(', ')+' – '+p.n+' Leads').join(' · '));
+    closeModal();render();toast(rows.length+' Leads bezirksweise verteilt');
   });
 }
 
