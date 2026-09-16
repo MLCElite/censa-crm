@@ -694,7 +694,7 @@ function renderSteuerung(){
   if(!state.deals.length){host.innerHTML=emptyState()+teamPanel();wireEmpty(host);wireTeamPanel(host);return;}
   const open=state.deals.filter(d=>d.status==='open');
   const analyse=open.filter(d=>A_STAGES.includes(d.stage));
-  const handover=open.filter(d=>d.stage==='Analyse & Doku'&&!(d.berater||'').trim());
+  const handover=open.filter(d=>['Analyse & Doku','Beratungstermin vereinbart'].includes(d.stage)&&!(d.berater||'').trim());
   const beratung=open.filter(d=>B_STAGES.includes(d.stage));
   const overdue=open.filter(isOverdue).length;
   const reakt=state.deals.filter(d=>d.status==='lost'&&d.lostReason==='Kein Interesse'&&(daysUntil(d.wiedervorlage)==null||daysUntil(d.wiedervorlage)<=0));
@@ -735,6 +735,11 @@ function renderSteuerung(){
       <button class="btn pri" id="btnCeo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M3 3v18h18M7 14l4-4 3 3 5-6"/></svg>CEO-Wochenupdate</button>
       <button class="btn" id="btnReports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Wochenbericht je Berater</button>
     </div>
+    <div class="panel" style="border-color:var(--brand)"><h3>📋 Tages-Dispo – Termine zuordnen <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— am Tagesende neue Termine dem passenden Mitarbeiter zuweisen; die Person sieht es sofort in ihrer Liste und im Chat</span></h3>
+      ${dispoA.length?`<div class="ehgt" style="margin:2px 0 6px">Analysen ohne Analyst (${dispoA.length})</div><div class="st-list">${dispoA.map(d=>dRow(d,'analyst',anNames)).join('')}</div>`:''}
+      ${handover.length?`<div class="ehgt" style="margin:12px 0 6px">Beratungen – übergabereif, ohne Berater (${handover.length})</div><div class="st-list">${handover.map(d=>dRow(d,'berater',beNames)).join('')}</div>`:''}
+      ${(!dispoA.length&&!handover.length)?'<div class="empty-col">Nichts zuzuordnen – alles verteilt 👍</div>':''}
+    </div>
     ${inbox.length?`<div class="panel" style="border-color:var(--warn)"><h3>📥 Posteingang – neue Listen prüfen <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— nur du siehst das; erst prüfen, dann in der Liste einem Telefonisten zuteilen (Zuteilen gibt automatisch frei)</span></h3><div class="st-list">${inbox.slice(0,60).map(d=>`<div class="gl" data-id="${d.id}"><span class="gn">${esc(d.name||d.org||'—')}</span><span class="ph">${esc(d.quelle||'')}${d.bezirk?' · '+esc(d.bezirk):''}</span><span class="ph tnum">${esc(d.telefon||'')}</span></div>`).join('')}${inbox.length>60?`<div class="empty-col">… und ${inbox.length-60} weitere (Liste-Tab → Filter nutzen)</div>`:''}</div></div>`:''}
     <div class="panel"><h3>Telefon-Protokoll heute <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— wer hat wann telefoniert, wie lange, mit welchem Ergebnis</span></h3>${protoHtml||'<div class="empty-col">Heute noch keine Anrufe protokolliert.</div>'}</div>
     ${(()=>{
@@ -761,11 +766,6 @@ function renderSteuerung(){
     <div class="panel"><h3>Reaktivierung fällig <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— „Kein Interesse", alle 2 Monate; Lead öffnen → „Wieder freigeben"</span></h3>${reakt.length?`<div class="st-list">${reakt.slice(0,40).map(glItem).join('')}</div>`:'<div class="empty-col">Aktuell nichts fällig.</div>'}</div>
     ${(()=>{const svc=state.deals.filter(d=>d.status==='won'&&daysUntil(d.wiedervorlage)!=null&&daysUntil(d.wiedervorlage)<=3);return `<div class="panel"><h3>Servicetermine fällig <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— Pflicht binnen 2 Wochen nach Abschluss</span></h3>${svc.length?`<div class="st-list">${svc.slice(0,40).map(d=>`<div class="gl" data-id="${d.id}"><span class="gn">${esc(d.name||d.org||'—')}</span><span class="ph">Berater: ${esc(d.berater||'—')}</span>${isOverdue(d)?`<span class="od">überfällig ${-daysUntil(d.wiedervorlage)}T</span>`:`<span class="ph tnum">bis ${esc(d.wiedervorlage)}</span>`}</div>`).join('')}</div>`:'<div class="empty-col">Keine fälligen Servicetermine.</div>'}</div>`;})()}
     <div class="panel"><h3>Analysten · offene Analysen</h3><div class="st-list">${anGroups.length?anGroups.map(([a,list])=>`<details class="grp"><summary>${esc(a)}<span class="cnt">${list.length} offen · ${list.filter(d=>d.stage==='Analyse & Doku'&&!(d.berater||'').trim()).length} übergabereif</span></summary><div class="inner">${list.map(glItem).join('')}</div></details>`).join(''):'<div class="empty-col">Keine offenen Analysen.</div>'}</div></div>
-    <div class="panel"><h3>📋 Tages-Dispo – Termine zuordnen <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— am Tagesende neue Termine dem passenden Mitarbeiter zuweisen; die Person sieht es sofort in ihrer Liste und im Chat</span></h3>
-      ${dispoA.length?`<div class="ehgt" style="margin:2px 0 6px">Analysen ohne Analyst (${dispoA.length})</div><div class="st-list">${dispoA.map(d=>dRow(d,'analyst',anNames)).join('')}</div>`:''}
-      ${handover.length?`<div class="ehgt" style="margin:12px 0 6px">Beratungen – Analyse fertig, ohne Berater (${handover.length})</div><div class="st-list">${handover.map(d=>dRow(d,'berater',beNames)).join('')}</div>`:''}
-      ${(!dispoA.length&&!handover.length)?'<div class="empty-col">Nichts zuzuordnen – alles verteilt 👍</div>':''}
-    </div>
     <div class="panel"><h3>Berater · offene Beratungen</h3><div class="st-list">${beGroups.length?beGroups.map(([b,list])=>{const od=list.filter(isOverdue).length;return `<details class="grp"><summary>${esc(b)}<span class="cnt">${list.length} offen${od?` · <span style="color:var(--bad)">${od} überfällig</span>`:''}</span></summary><div class="inner">${list.map(glItem).join('')}</div></details>`;}).join(''):'<div class="empty-col">Keine offenen Beratungen.</div>'}</div></div>`;
   host.querySelectorAll('.gl[data-id]').forEach(el=>el.addEventListener('click',()=>openModal(el.dataset.id)));
   host.querySelectorAll('[data-open]').forEach(el=>el.addEventListener('click',()=>openModal(el.dataset.open)));
@@ -776,10 +776,11 @@ function renderSteuerung(){
     if(!name){toast('Bitte zuerst einen Namen wählen');return;}
     const d=state.deals.find(x=>x.id===id);if(!d)return;
     d[role]=name;d.geprueft=true;
+    if(role==='berater'&&d.stage==='Analyse & Doku')d.stage='Beratungstermin vereinbart';
     dbPersist(d);
     const nm=d.name||d.org||'—';
     const term=role==='analyst'?d.datumAG:d.datumBG;
-    chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet: '+nm+' → '+name+(term?' ('+term+')':''),d,name);
+    chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet: '+nm+' → '+name+(term?' ('+term+')':'')+(role==='berater'?' – bitte annehmen!':''),d,name,role==='berater'?'beratung-zuord':null);
     toast(nm+' → '+name);render();
   }));
   const br=host.querySelector('#btnReports');if(br)br.addEventListener('click',openReports);
@@ -817,13 +818,22 @@ async function chatPost(text,opts){
   if(opts&&opts.sys)m.sys=true;
   if(opts&&opts.dealId){m.dealId=opts.dealId;m.dealName=(opts.dealName||'').slice(0,60);}
   if(opts&&opts.ackWer){m.needAck=true;m.ackWer=String(opts.ackWer).slice(0,40);m.ackBy=[];}
+  if(opts&&opts.art)m.art=opts.art;
   try{await chatCol.doc('c'+Date.now().toString(36)+Math.random().toString(36).slice(2,7)).set(m);}catch(e){}
 }
-function chatSys(text,d,ackWer){chatPost(text,{sys:true,dealId:d?d.id:null,dealName:d?(d.name||d.org||''):'',ackWer:ackWer||null});}
+function chatSys(text,d,ackWer,art){chatPost(text,{sys:true,dealId:d?d.id:null,dealName:d?(d.name||d.org||''):'',ackWer:ackWer||null,art:art||null});}
 async function chatAck(id){
   if(!chatCol)return;
   const n=chatName();if(!n)return;
-  try{await chatCol.doc(id).update({ackBy:firebase.firestore.FieldValue.arrayUnion(n)});}catch(e){toast('Bestätigen fehlgeschlagen');}
+  try{await chatCol.doc(id).update({ackBy:firebase.firestore.FieldValue.arrayUnion(n)});}catch(e){toast('Bestätigen fehlgeschlagen');return;}
+  const msg=CHAT.find(x=>x._id===id);
+  if(msg&&msg.art==='beratung-zuord'&&msg.dealId&&msg.ackWer===n){
+    const dd=state.deals.find(x=>x.id===msg.dealId);
+    if(dd&&dd.status==='open'&&(dd.berater||'')===n&&dd.stage==='Beratungstermin vereinbart'){
+      dd.stage='Beratung / Angebot';dbPersist(dd);render();
+      toast('Angenommen – Phase: Beratung / Angebot');
+    }
+  }
 }
 function ensureChatUI(){
   const host=document.getElementById('view-chat');
@@ -1387,9 +1397,9 @@ function openUebergabe(id){
     const war=!!d.uebergabe;
     W.ausgefuelltVon=chatName();W.ts=new Date().toISOString();
     d.uebergabe=W;
-    if(['Neuer Lead','In Bearbeitung','Analysetermin vereinbart'].includes(d.stage))d.stage='Analyse & Doku';
+    if(d.status==='open'&&d.stage!=='Beratung / Angebot')d.stage='Beratungstermin vereinbart';
     dbPersist(d);
-    chatSys('📋 Übergabe '+(war?'aktualisiert':'ausgefüllt')+': '+(d.name||d.org||'—')+(d.berater?' – Berater '+d.berater:' – bereit für Berater-Zuordnung (Dispo)'),d,d.berater||null);
+    chatSys('📋 Übergabe '+(war?'aktualisiert':'ausgefüllt')+': '+(d.name||d.org||'—')+(d.berater?' – Berater '+d.berater+', bitte annehmen!':' – bereit für Berater-Zuordnung (Dispo)'),d,d.berater||null,d.berater?'beratung-zuord':null);
     render();openModal(d.id);toast('Übergabe gespeichert');
   });
 }
