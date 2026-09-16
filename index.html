@@ -450,6 +450,7 @@ function renderListe(){
       <input id="asgName" list="asgList" placeholder="Name" style="min-width:0;width:120px">
       <datalist id="asgList">${[...new Set([...telefonisten,...analysten,...berater,...TEAM.map(m=>m.name)])].map(x=>`<option value="${esc(x)}">`).join('')}</datalist>
       <button class="btn" id="asgBtn">Zuteilen (${rows.length})</button>
+      <button class="btn" id="splitBtn" title="Gefilterte Leads gleichmäßig auf mehrere Telefonisten verteilen">⚖ Aufteilen</button>
     </span>`:''}
     <span class="kpi">${rows.length} Datensätze</span>
   </div>
@@ -479,10 +480,39 @@ function renderListe(){
     });
     render();toast(rows.length+' Leads an '+name+' verteilt');
   });
+  const sb=host.querySelector('#splitBtn');
+  if(sb)sb.addEventListener('click',()=>{
+    if(!rows.length){toast('Keine Leads im Filter');return;}
+    openSplitModal(rows);
+  });
   host.querySelector('#fTyp').addEventListener('change',e=>{host.__typ=e.target.value;renderListe();});
   host.querySelector('#fQuelle').addEventListener('change',e=>{host.__quelle=e.target.value;renderListe();});
   host.querySelectorAll('th').forEach(th=>th.addEventListener('click',()=>{const c=th.dataset.c;if(sortCol===c)sortDir*=-1;else{sortCol=c;sortDir=1;}renderListe();}));
   host.querySelectorAll('tbody tr').forEach(tr=>tr.addEventListener('click',()=>openModal(tr.dataset.id)));
+}
+
+/* ---------- Aufteilen: gefilterte Leads gleichmäßig auf Telefonisten ---------- */
+function openSplitModal(rows){
+  const m=document.getElementById('modal');
+  const tele=[...new Set([...TEAM.filter(x=>x.rolle==='telefonist').map(x=>x.name),...state.deals.map(d=>d.telefonist).filter(Boolean)])].sort();
+  m.innerHTML=`<h2>⚖ Leads aufteilen</h2><div class="sub">${rows.length} gefilterte Leads werden reihum gleichmäßig auf die angehakten Telefonisten verteilt und damit freigegeben.</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">${tele.length?tele.map(t=>`<label class="gptoggle"><input type="checkbox" class="splitT" value="${esc(t)}"> ${esc(t)}</label>`).join(''):'<div class="empty-col">Keine Telefonisten gefunden – zuerst unter CEO → Team &amp; Zugänge anlegen.</div>'}</div>
+    <div class="modal-foot"><button class="btn pri" id="splitGo">Verteilen</button><button class="btn" id="m-close">Abbrechen</button></div>`;
+  document.getElementById('ov').classList.add('show');
+  m.querySelector('#m-close').addEventListener('click',closeModal);
+  m.querySelector('#splitGo').addEventListener('click',()=>{
+    const names=[...m.querySelectorAll('.splitT:checked')].map(x=>x.value);
+    if(!names.length){toast('Mindestens einen Telefonisten anhaken');return;}
+    if(!confirm(rows.length+' Leads gleichmäßig auf '+names.join(', ')+' verteilen?'))return;
+    const count={};names.forEach(n=>count[n]=0);
+    rows.forEach((r,i)=>{
+      const name=names[i%names.length];
+      if((r.telefonist||'').trim()&&r.telefonist!==name){r.telHist=r.telHist||[];if(!r.telHist.includes(r.telefonist))r.telHist.push(r.telefonist);}
+      r.telefonist=name;r.geprueft=true;count[name]++;dbPersist(r);
+    });
+    chatSys('📞 Neue Anruf-Liste verteilt: '+rows.length+' Leads → '+names.map(n=>n+' ('+count[n]+')').join(', '));
+    closeModal();render();toast(rows.length+' Leads verteilt: '+names.map(n=>n+' '+count[n]).join(' · '));
+  });
 }
 
 function renderDashboard(){
