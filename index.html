@@ -939,7 +939,7 @@ function wireEmpty(host){host.querySelectorAll('[data-act]').forEach(b=>b.addEve
 
 /* ---------- modal ---------- */
 let editId=null;
-function blank(){return {id:uid(),name:'',org:'',kundentyp:'Privat',quelle:'',telefon:'',strasse:'',plz:'',ort:'',bezirk:'',analyst:'',berater:'',telefonist:'',telHist:[],telBeteiligt:false,gp:false,geprueft:true,briefing:'',potenzial:'',ehS:[],ehA:[],umsatz:'',gewinn:'',anlage:'',finanzJahr:'',stage:'Neuer Lead',status:'open',lostReason:'',lostDate:'',lostBy:'',datumAG:'',datumBG:'',eh:'',notizen:'',wiedervorlage:'',calls:[]};}
+function blank(){return {id:uid(),name:'',org:'',kundentyp:'Privat',quelle:'',telefon:'',email:'',strasse:'',plz:'',ort:'',bezirk:'',analyst:'',berater:'',telefonist:'',telHist:[],telBeteiligt:false,gp:false,geprueft:true,briefing:'',potenzial:'',ehS:[],ehA:[],umsatz:'',gewinn:'',anlage:'',finanzJahr:'',stage:'Neuer Lead',status:'open',lostReason:'',lostDate:'',lostBy:'',datumAG:'',datumBG:'',eh:'',notizen:'',wiedervorlage:'',calls:[]};}
 function bezFromPLZ(v){const m=/\b(1\d{2}0)\b/.exec((v||'')+'');if(!m)return '';const n=parseInt(m[1].slice(1,3),10);return n>=1&&n<=23?('Wien '+n):'';}
 function normTel(t){t=(t||'').trim();if(!t)return t;if(/[A-Za-z:]/.test(t))return t;const d=t.replace(/[^\d+]/g,'');if(d.startsWith('+43'))return '+43 '+d.slice(3);if(d.startsWith('0043'))return '+43 '+d.slice(4);if(d.startsWith('0')&&d.length>=9)return '+43 '+d.slice(1);return t;}
 function lostByFromStage(s){if(A_STAGES.includes(s))return 'Analyst';if(B_STAGES.includes(s))return 'Berater';return 'Telefonist';}
@@ -960,10 +960,11 @@ function parseTermin(s){
 }
 function calPad(n){return String(n).padStart(2,'0');}
 function calFmt(dt){return dt.getFullYear()+calPad(dt.getMonth()+1)+calPad(dt.getDate())+'T'+calPad(dt.getHours())+calPad(dt.getMinutes())+'00';}
-function calGoogle(title,dt,details,loc){
+function calGoogle(title,dt,details,loc,guest){
   const end=new Date(dt.getTime()+3600000);
-  return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(title)+'&dates='+calFmt(dt)+'/'+calFmt(end)+'&ctz=Europe/Vienna&details='+encodeURIComponent(details||'')+'&location='+encodeURIComponent(loc||'');
+  return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(title)+'&dates='+calFmt(dt)+'/'+calFmt(end)+'&ctz=Europe/Vienna&details='+encodeURIComponent(details||'')+'&location='+encodeURIComponent(loc||'')+(guest?'&add='+encodeURIComponent(guest):'');
 }
+function terminText(dt){return calPad(dt.getDate())+'.'+calPad(dt.getMonth()+1)+'.'+dt.getFullYear()+' um '+calPad(dt.getHours())+':'+calPad(dt.getMinutes())+' Uhr';}
 function calICS(title,dt,details,loc){
   const end=new Date(dt.getTime()+3600000);
   const ics='BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//CENSA CRM//DE\r\nBEGIN:VEVENT\r\nUID:'+Date.now()+'@censa-crm\r\nDTSTART:'+calFmt(dt)+'\r\nDTEND:'+calFmt(end)+'\r\nSUMMARY:'+(title||'').replace(/[\r\n;]/g,' ')+'\r\nDESCRIPTION:'+(details||'').replace(/[\r\n]/g,' ')+'\r\nLOCATION:'+(loc||'').replace(/[\r\n]/g,' ')+'\r\nEND:VEVENT\r\nEND:VCALENDAR';
@@ -1008,6 +1009,7 @@ function openModal(id){
         </div>
       </div>
       <div class="fld"><label>Telefon</label><input id="m-tel" value="${esc(d.telefon)}" placeholder="+43 …"></div>
+      <div class="fld"><label>E-Mail (Kunde) <span style="font-weight:500;color:var(--ink-3);text-transform:none">— für Termineinladung</span></label><input id="m-email" type="email" value="${esc(d.email||'')}" placeholder="kunde@firma.at"></div>
       <div class="fld"><label>Straße + Nr.</label><input id="m-str" value="${esc(d.strasse||'')}" placeholder="Mustergasse 12/4"></div>
       <div class="fld"><label>PLZ <span id="m-bezview" style="font-weight:600;color:var(--brand-ink)">${d.bezirk?'· '+esc(d.bezirk):''}</span></label><input id="m-plz" value="${esc(d.plz||'')}" placeholder="1100"></div>
       <div class="fld"><label>Ort</label><input id="m-ort" value="${esc(d.ort)}" placeholder="Wien"></div>
@@ -1017,12 +1019,14 @@ function openModal(id){
       <div class="fld"><label>Wiedervorlage</label><input type="date" id="m-wv" value="${esc(d.wiedervorlage)}"></div>
       <div class="fld"><label>Analysetermin (AG)</label><input id="m-dag" value="${esc(d.datumAG||'')}" placeholder="z. B. 22.09. 14:00"></div>
       <div class="fld"><label>Beratungstermin (BG)</label><input id="m-dbg" value="${esc(d.datumBG||'')}" placeholder="z. B. 25.09. 10:00"></div>
-      <div class="fld full"><label>In den Kalender eintragen <span style="font-weight:500;color:var(--ink-3);text-transform:none">— fertig ausgefüllt mit Kunde, Adresse &amp; Telefon; ICS für Apple/Outlook</span></label>
+      <div class="fld full"><label>Termin eintragen &amp; Kunde einladen <span style="font-weight:500;color:var(--ink-3);text-transform:none">— Google trägt die Kunden-E-Mail als Gast ein: beim Speichern „Einladung senden" klicken, dann hat der Kunde den Termin automatisch im Kalender</span></label>
         <div style="display:flex;gap:7px;flex-wrap:wrap">
-          <button type="button" class="mini-btn" id="cal-ag-g">📅 AG → Google Kalender</button>
-          <button type="button" class="mini-btn" id="cal-ag-i">AG → ICS-Datei</button>
-          <button type="button" class="mini-btn" id="cal-bg-g">📅 BG → Google Kalender</button>
-          <button type="button" class="mini-btn" id="cal-bg-i">BG → ICS-Datei</button>
+          <button type="button" class="mini-btn" id="cal-ag-g">📅 AG → Google Kalender + Kunde</button>
+          <button type="button" class="mini-btn" id="cal-ag-w">📲 AG per WhatsApp bestätigen</button>
+          <button type="button" class="mini-btn" id="cal-ag-i">AG → ICS</button>
+          <button type="button" class="mini-btn" id="cal-bg-g">📅 BG → Google Kalender + Kunde</button>
+          <button type="button" class="mini-btn" id="cal-bg-w">📲 BG per WhatsApp bestätigen</button>
+          <button type="button" class="mini-btn" id="cal-bg-i">BG → ICS</button>
         </div>
       </div>
       <div class="fld full"><label>Phase</label>
@@ -1059,6 +1063,7 @@ function openModal(id){
   plzIn.addEventListener('input',()=>{const b=bezFromPLZ(plzIn.value);bezView.textContent=b?('· '+b):'';});
   const collect=()=>{d.kundentyp=typ.value;d.quelle=m.querySelector('#m-quelle').value;d.name=m.querySelector('#m-name').value;d.org=m.querySelector('#m-org')?m.querySelector('#m-org').value:d.org;
     d.telefon=normTel(m.querySelector('#m-tel').value);
+    const emEl=m.querySelector('#m-email');if(emEl)d.email=emEl.value.trim();
     d.strasse=m.querySelector('#m-str').value;d.plz=plzIn.value;d.ort=m.querySelector('#m-ort').value;
     const bz=bezFromPLZ(d.plz);if(bz)d.bezirk=bz;else if(d.plz)d.bezirk='';
     d.analyst=m.querySelector('#m-an').value;d.berater=m.querySelector('#m-be').value;
@@ -1080,7 +1085,7 @@ function openModal(id){
   const callMeta=()=>{const dur=m.querySelector('#m-dur'),no=m.querySelector('#m-cnote');const o={};if(dur&&dur.value)o.dur=parseFloat(dur.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
   const fb=m.querySelector('#m-frei');
   if(fb)fb.addEventListener('click',()=>{collect();d.geprueft=true;persist();closeModal();toast('Freigegeben – jetzt in der Liste dem Telefonisten zuteilen');});
-  const calWire=(gSel,iSel,which)=>{
+  const calWire=(gSel,iSel,wSel,which)=>{
     const get=()=>{
       const inp=m.querySelector(which==='ag'?'#m-dag':'#m-dbg');
       const dt=parseTermin(inp?inp.value:'');
@@ -1089,13 +1094,22 @@ function openModal(id){
       const title=(which==='ag'?'Analyse: ':'Beratung: ')+kunde;
       const loc=[m.querySelector('#m-str').value,m.querySelector('#m-plz').value,m.querySelector('#m-ort').value].filter(Boolean).join(', ');
       const det='Tel: '+(m.querySelector('#m-tel').value||'-')+(m.querySelector('#m-brief').value?' | Briefing: '+m.querySelector('#m-brief').value:'');
-      return {title,dt,det,loc};
+      const guest=(m.querySelector('#m-email')?m.querySelector('#m-email').value.trim():'');
+      return {title,dt,det,loc,guest,kunde};
     };
-    const g=m.querySelector(gSel);if(g)g.addEventListener('click',()=>{const x=get();if(x)window.open(calGoogle(x.title,x.dt,x.det,x.loc),'_blank');});
+    const g=m.querySelector(gSel);if(g)g.addEventListener('click',()=>{const x=get();if(!x)return;
+      if(!x.guest)toast('Tipp: E-Mail des Kunden eintragen, dann wird er automatisch eingeladen');
+      window.open(calGoogle(x.title,x.dt,x.det,x.loc,x.guest),'_blank');});
     const i=m.querySelector(iSel);if(i)i.addEventListener('click',()=>{const x=get();if(x)calICS(x.title,x.dt,x.det,x.loc);});
+    const w=m.querySelector(wSel);if(w)w.addEventListener('click',()=>{const x=get();if(!x)return;
+      const tel=(m.querySelector('#m-tel').value||'').replace(/\D/g,'');
+      if(tel.length<8){toast('Keine gültige Telefonnummer für WhatsApp');return;}
+      const art=which==='ag'?'Analysetermin':'Beratungstermin';
+      const txt='Guten Tag! Wie telefonisch besprochen bestätigen wir Ihren '+art+' am '+terminText(x.dt)+(x.loc?' ('+x.loc+')':'')+'. Sie erhalten zusätzlich eine Kalender-Einladung per E-Mail. Bei Fragen erreichen Sie uns jederzeit unter dieser Nummer. Beste Grüße!';
+      window.open('https://wa.me/'+tel+'?text='+encodeURIComponent(txt),'_blank');});
   };
-  calWire('#cal-ag-g','#cal-ag-i','ag');
-  calWire('#cal-bg-g','#cal-bg-i','bg');
+  calWire('#cal-ag-g','#cal-ag-i','#cal-ag-w','ag');
+  calWire('#cal-bg-g','#cal-bg-i','#cal-bg-w','bg');
   m.querySelector('#m-save').addEventListener('click',()=>{collect();d.status='open';terminEvents();persist();closeModal();toast('Gespeichert');});
   m.querySelector('#m-won').addEventListener('click',()=>{collect();d.status='won';chatSys('🏆 Gewonnen: '+(d.name||d.org||'—'),d);
     const sd=new Date(Date.now()+14*86400000).toISOString().slice(0,10);
@@ -1187,6 +1201,7 @@ async function importCSV(text){
     if(isRech)d.geprueft=false;
     if(isBestand){
       d.kundentyp=g('Kundentyp')||'Privat';d.org=g('Organisation');d.name=g('Name');d.telefon=g('Telefon');d.ort=g('Ort');
+      d.email=g('Email')||g('E-Mail');
       d.bezirk=g('Bezirk')||bezFromPLZ(g('PLZ'))||bezFromPLZ(g('Ort'));d.telefonist=g('Telefonist')||d.telefonist;
       if(g('Wiedervorlage'))d.wiedervorlage=g('Wiedervorlage');
       d.quelle=g('Quelle')||'Bestand';d.analyst=g('Analyst');d.berater=g('Berater');
@@ -1194,6 +1209,7 @@ async function importCSV(text){
       d.datumAG=g('Datum_AG');d.datumBG=g('Datum_BG');d.eh=g('EH');d.notizen=g('Notizen');
     }else if(isRech){
       d.kundentyp='GmbH';d.org=g('Firma');d.name=g('Ansprechpartner_GF')||g('Firma');d.telefon=g('Telefon');
+      d.email=g('Email')||g('E-Mail');
       d.ort=g('Ort');d.bezirk=g('Bezirk')||bezFromPLZ(g('PLZ'));d.strasse=g('Strasse');d.plz=g('PLZ');
       d.quelle=g('Quelle')||'Recherche';if(d.quelle==='Recruiting'){d.gp=true;d.kundentyp='Privat';}
       d.stage='Neuer Lead';d.status='open';d.notizen=g('Branche');
