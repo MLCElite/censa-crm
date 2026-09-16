@@ -1096,6 +1096,16 @@ function openModal(id){
     <div class="ehsec">
       <div class="ehhead">EH-Rechner <span class="ehtag">IVP-Einheitentabelle</span></div>
       <label class="chk2"><input type="checkbox" id="eh-telb" ${d.telBeteiligt?'checked':''}> Telefonist beteiligt (Analyst 25 % statt 50 %)</label>
+      <div class="ehgrp"><div class="ehgt">⚡ Schnell-Schätzung Veranlagung <span class="ehtag">Standard-Annahmen: mtl. Prämie, 30 J, IVP-Tabelle</span></div>
+        <div class="ehadd">
+          <input class="num" id="q-betrag" type="number" placeholder="Sparen €/Monat">
+          <button type="button" class="mini-btn" data-q="lv">+ Veranlagung/LV</button>
+          <button type="button" class="mini-btn" data-q="bav">+ BAV §3</button>
+          <input class="num" id="q-summe" type="number" placeholder="Zielsumme €">
+          <button type="button" class="mini-btn" data-q="gg">+ Golden Gates</button>
+        </div>
+        <div id="eh-vorschlag"></div>
+      </div>
       <div class="ehgrp"><div class="ehgt">Potenzial-Schätzung (Analyst)</div><div id="eh-list-s"></div><div class="ehadd" id="eh-add-s"></div></div>
       <div class="ehgrp"><div class="ehgt">Abschluss (Berater)</div><div id="eh-list-a"></div><div class="ehadd" id="eh-add-a"></div></div>
       <div class="ehtot" id="eh-tot"></div>
@@ -1225,6 +1235,33 @@ function wireEH(m,d){
   const tel=m.querySelector('#eh-telb');
   if(tel)tel.addEventListener('change',()=>{d.telBeteiligt=tel.checked;paintEH(m,d);});
   buildAdd(m,d,'s');buildAdd(m,d,'a');paintEH(m,d);
+  const addS=it=>{d.ehS.push(it);if(state.deals.includes(d))dbPersist(d);paintEH(m,d);toast('Schätzung hinzugefügt: '+fmtEH(calcEH(it))+' EH');};
+  m.querySelectorAll('[data-q]').forEach(b=>b.addEventListener('click',()=>{
+    const q=b.dataset.q;
+    if(q==='gg'){
+      const s=parseFloat(m.querySelector('#q-summe').value);
+      if(!s){toast('Bitte Zielsumme eingeben');return;}
+      addS({k:'gg',betrag:s});
+    }else{
+      const v=parseFloat(m.querySelector('#q-betrag').value);
+      if(!v){toast('Bitte Sparbetrag €/Monat eingeben');return;}
+      addS(q==='bav'?{k:'bav_zukunft',betrag:v,zw:'m',lz:30}:{k:'lv_oebv',betrag:v,zw:'m',lz:30});
+    }
+  }));
+  const vor=m.querySelector('#eh-vorschlag');
+  if(vor&&!d.ehS.length){
+    const txt=((d.potenzial||'')+' '+(d.briefing||'')+' '+(d.notizen||'')).toLowerCase();
+    let mm=/(\d{2,5})\s*(?:€|eur[o]?)?\s*(?:im|pro|\/)?\s*monat/i.exec(txt)||/spar\w*\D{0,25}?(\d{2,5})/i.exec(txt)||/(\d{2,5})\D{0,20}spar/i.exec(txt);
+    if(mm){
+      const bet=parseFloat(mm[1]);
+      if(bet>=30&&bet<=5000){
+        const eh=calcEH({k:'lv_oebv',betrag:bet,zw:'m',lz:30});
+        vor.innerHTML=`<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;background:var(--brand-bg);border-radius:8px;padding:7px 10px;margin-top:7px;font-size:12.5px"><span>💡 Im Protokoll erkannt: <b>${bet} €/Monat sparen</b> → Veranlagung ≈ <b>${fmtEH(eh)} EH</b> (lt. IVP-Tabelle)</span><button type="button" class="mini-btn" id="eh-uebern">Übernehmen</button></div>`;
+        const ub=vor.querySelector('#eh-uebern');
+        if(ub)ub.addEventListener('click',()=>{addS({k:'lv_oebv',betrag:bet,zw:'m',lz:30});vor.innerHTML='';});
+      }
+    }
+  }
 }
 function buildAdd(m,d,which){
   const host=m.querySelector('#eh-add-'+which);if(!host)return;
