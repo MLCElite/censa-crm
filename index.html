@@ -273,6 +273,20 @@ async function dbRemove(id){
   if(MODE==='db'&&dealsCol){try{await dealsCol.doc(id).delete();}catch(e){toast('Löschen fehlgeschlagen');}}
   else lsSave();
 }
+async function dbPersistMany(list){
+  if(!list.length)return true;
+  if(MODE!=='db'||!dealsCol){lsSave();return true;}
+  try{
+    const fdb=firebase.firestore();
+    for(let i=0;i<list.length;i+=450){
+      const chunk=list.slice(i,i+450);
+      const batch=fdb.batch();
+      chunk.forEach(dd=>batch.set(dealsCol.doc(dd.id),JSON.parse(JSON.stringify(dd))));
+      await batch.commit();
+    }
+    return true;
+  }catch(e){toast('Speichern fehlgeschlagen'+(e&&e.code?' ('+e.code+')':''));return false;}
+}
 function setDbState(txt,color){const el=document.getElementById('dbState');if(el){el.innerHTML=txt;el.style.color=color||'';}}
 
 let TEAM=[], teamCol=null, ME=null, AUTH_USER=null;
@@ -286,13 +300,11 @@ function visibleDeals(){
   if(isAdmin())return state.deals;
   if(!ME)return [];
   const n=ME.name;
+  const eq=(a,b)=>(a||'').trim().toLowerCase()===(b||'').trim().toLowerCase();
   return state.deals.filter(d=>{
     if(d.geprueft===false)return false;
     if(d.gp)return false;
-    if(ME.rolle==='telefonist')return (d.telefonist||'')===n;
-    if(ME.rolle==='analyst')return (d.analyst||'')===n;
-    if(ME.rolle==='berater')return (d.berater||'')===n;
-    return false;
+    return eq(d.telefonist,n)||eq(d.analyst,n)||eq(d.berater,n);
   });
 }
 function applyRoleUI(){
@@ -480,7 +492,7 @@ function renderListe(){
   host.querySelector('#fAn').addEventListener('change',e=>{host.__an=e.target.value;renderListe();});
   host.querySelector('#fBe').addEventListener('change',e=>{host.__be=e.target.value;renderListe();});
   const ab=host.querySelector('#asgBtn');
-  if(ab)ab.addEventListener('click',()=>{
+  if(ab)ab.addEventListener('click',async()=>{
     const role=host.querySelector('#asgRole').value;
     const name=host.querySelector('#asgName').value.trim();
     if(!name){toast('Bitte Namen eingeben');return;}
@@ -491,9 +503,10 @@ function renderListe(){
       if(role==='telefonist'&&(r.telefonist||'').trim()&&r.telefonist!==name){r.telHist=r.telHist||[];if(!r.telHist.includes(r.telefonist))r.telHist.push(r.telefonist);}
       r[role]=name;
       r.geprueft=true;
-      dbPersist(r);
     });
-    render();toast(rows.length+' Leads an '+name+' verteilt');
+    toast('Speichere '+rows.length+' Leads…');
+    const ok=await dbPersistMany(rows);
+    render();toast(ok?(rows.length+' Leads an '+name+' verteilt ✓'):'Zuteilen fehlgeschlagen – bitte erneut versuchen');
   });
   const sb=host.querySelector('#splitBtn');
   if(sb)sb.addEventListener('click',()=>{
@@ -544,9 +557,10 @@ function splitPlan(rows,names){
 }
 function openSplitModal(rows){
   const m=document.getElementById('modal');m.classList.add('wide');
-  const tele=[...new Set([...TEAM.filter(x=>x.rolle==='telefonist').map(x=>x.name),...state.deals.map(d=>d.telefonist).filter(Boolean)])].sort();
+  const tele=[...new Set([...TEAM.map(x=>x.name),...state.deals.map(d=>d.telefonist).filter(Boolean)])].filter(Boolean).sort();
+  const roleOf=n=>{const mm=TEAM.find(x=>(x.name||'')===n);return mm?mm.rolle:'';};
   m.innerHTML=`<h2>⚖ Leads aufteilen – bezirksweise</h2><div class="sub">${rows.length} gefilterte Leads. Jeder Telefonist bekommt ganze Bezirke – so telefoniert jeder die Woche über im selben Gebiet und die Termine liegen gebündelt. Die Stückzahl wird dabei so fair wie möglich gehalten (sehr große Bezirke werden bei Bedarf geteilt).</div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">${tele.length?tele.map(t=>`<label class="gptoggle"><input type="checkbox" class="splitT" value="${esc(t)}"> ${esc(t)}</label>`).join(''):'<div class="empty-col">Keine Telefonisten gefunden – zuerst unter CEO → Team &amp; Zugänge anlegen.</div>'}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">${tele.length?tele.map(t=>{const r=roleOf(t);return `<label class="gptoggle"><input type="checkbox" class="splitT" value="${esc(t)}"> ${esc(t)}${r&&r!=='telefonist'?` <span style="color:var(--ink-3);font-weight:500">(${esc(r)})</span>`:''}</label>`;}).join(''):'<div class="empty-col">Keine Team-Mitglieder gefunden – zuerst unter CEO → Team &amp; Zugänge anlegen.</div>'}</div>
     <div id="splitPrev" style="margin-bottom:12px"></div>
     <div class="modal-foot"><button class="btn pri" id="splitGo">Verteilen</button><button class="btn" id="m-close">Abbrechen</button></div>`;
   document.getElementById('ov').classList.add('show');
@@ -561,17 +575,23 @@ function openSplitModal(rows){
   };
   m.querySelectorAll('.splitT').forEach(c=>c.addEventListener('change',upd));
   upd();
-  m.querySelector('#splitGo').addEventListener('click',()=>{
+  m.querySelector('#splitGo').addEventListener('click',async()=>{
     const names=getNames();
-    if(!names.length){toast('Mindestens einen Telefonisten anhaken');return;}
+    if(!names.length){toast('Mindestens ein Team-Mitglied anhaken');return;}
     const plan=splitPlan(rows,names);
     if(!confirm(rows.length+' Leads bezirksweise auf '+names.join(', ')+' verteilen?'))return;
+    const btn=m.querySelector('#splitGo');btn.disabled=true;btn.textContent='Verteile…';
+    const all=[];
     plan.forEach(p=>p.leads.forEach(r=>{
       if((r.telefonist||'').trim()&&r.telefonist!==p.name){r.telHist=r.telHist||[];if(!r.telHist.includes(r.telefonist))r.telHist.push(r.telefonist);}
-      r.telefonist=p.name;r.geprueft=true;dbPersist(r);
+      r.telefonist=p.name;r.geprueft=true;all.push(r);
     }));
+    toast('Speichere '+all.length+' Leads…');
+    const ok=await dbPersistMany(all);
+    btn.disabled=false;btn.textContent='Verteilen';
+    if(!ok){toast('Verteilen fehlgeschlagen – bitte neu laden und erneut versuchen');return;}
     chatSys('📞 Neue Anruf-Liste verteilt (bezirksweise): '+plan.map(p=>p.name+': '+Object.keys(p.bez).slice(0,5).join(', ')+' – '+p.n+' Leads').join(' · '));
-    closeModal();render();toast(rows.length+' Leads bezirksweise verteilt');
+    closeModal();render();toast(all.length+' Leads bezirksweise verteilt ✓');
   });
 }
 
@@ -1524,9 +1544,8 @@ async function importCSV(text){
   render();
   if(MODE==='db'&&touched.length){
     toast('Speichere '+touched.length+' Datensätze in der Datenbank…');
-    let ok=0;
-    for(const dd of touched){try{await dealsCol.doc(dd.id).set(JSON.parse(JSON.stringify(dd)));ok++;}catch(e){}}
-    toast(added+' importiert'+(merged?', '+merged+' zusammengeführt':'')+' – '+ok+'/'+touched.length+' gespeichert'+(isRech?' → 📥 Posteingang (erst prüfen & zuteilen)':''));
+    const ok=await dbPersistMany(touched);
+    toast(ok?(added+' importiert'+(merged?', '+merged+' zusammengeführt':'')+' ✓'+(isRech?' → 📥 Posteingang (erst prüfen & zuteilen)':'')):'Import-Speicherung fehlgeschlagen – bitte erneut importieren');
   }else{
     lsSave();
     toast(added+' importiert'+(merged?', '+merged+' mit bestehenden Kunden zusammengeführt':'')+(isRech?' → 📥 Posteingang':''));
