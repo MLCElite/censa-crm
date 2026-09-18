@@ -934,7 +934,7 @@ function markChatSeen(){
 /* ---------- Wochenplan: persönlich (auto + manuell) und Team (IVP-Format) ---------- */
 let wocheCol=null, WOCHE=[], WOCHE_WK='', __wOff=0, __wPerson='', __wTeam=false;
 const WDAYS=['Mo','Di','Mi','Do','Fr','Sa','So'];
-const WARTC={AG:'var(--firma)',BG:'var(--good)',MGT:'var(--warn)',EG:'var(--brand)'};
+const WARTC={AG:'var(--firma)',BG:'var(--good)',MGT:'var(--warn)',EG:'var(--brand)',KG:'#0C806D',TG:'#8E5BC0',PRIVAT:'#6b7280'};
 function wkStart(off){const t=new Date();t.setHours(0,0,0,0);const day=(t.getDay()+6)%7;t.setDate(t.getDate()-day+off*7);return t;}
 function wkKeyOf(dt){return dt.getFullYear()+'-KW'+String(isoWeek(dt)).padStart(2,'0');}
 function fmtDM(dt){return String(dt.getDate()).padStart(2,'0')+'.'+String(dt.getMonth()+1).padStart(2,'0')+'.';}
@@ -1034,11 +1034,11 @@ async function renderWoche(){
       const ents=wEntriesFor(me,start,wk).filter(e=>e.tag===t);
       return `<div class="wday${dd.getTime()===today.getTime()?' today':''}"><div class="wdh">${d2} ${fmtDM(dd)}</div>${ents.map((e,i2)=>`<div class="wentry" data-wi="${e.auto?('a:'+e.dealId+':'+e.art):('m:'+e._id)}"><button class="wdel" data-wdel="${e.auto?'':e._id}" title="${e.auto?'Automatisch aus dem CRM-Termin':'Eintrag löschen'}">${e.auto?'🔗':'×'}</button><span class="wart" style="background:${WARTC[e.art]||'var(--ink-3)'}">${esc(e.art)}</span><b>${esc(e.zeit)}</b> ${esc(e.kunde)}${e.ort?`<div class="wsub">${esc(e.ort)}</div>`:''}<div class="wsts">${[['done','✔','durchgeführt'],['moved','↗','verschoben'],['cancelled','✖','abgesagt']].map(([s,ic,tt])=>`<button class="wst${e.status===s?' on '+s:''}" data-ws="${s}" title="${tt}">${ic}</button>`).join('')}</div></div>`).join('')||'<div style="font-size:11px;color:var(--ink-3);text-align:center">—</div>'}</div>`;
     }).join('')}</div>
-    <div class="ehsec wnew" style="margin-top:14px"><div class="ehhead">＋ Eintrag hinzufügen <span class="ehtag">MGT, EG, Büro … – AG/BG kommen automatisch aus den Terminen</span></div>
+    <div class="ehsec wnew" style="margin-top:14px"><div class="ehhead">＋ Eintrag hinzufügen <span class="ehtag">MGT, EG, KG, TG, Privat – AG/BG kommen automatisch aus den Terminen</span></div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
         <select id="wn-tag" style="width:auto">${WDAYS.map((d2,t)=>{const dd=new Date(start.getTime()+t*86400000);return `<option value="${t}">${d2} ${fmtDM(dd)}</option>`;}).join('')}</select>
         <select id="wn-zeit" style="width:auto"><option value="">Uhrzeit…</option>${(()=>{let o='';for(let h=7;h<=21;h++)for(let q=0;q<60;q+=15)o+=`<option>${calPad(h)}:${calPad(q)}</option>`;return o;})()}</select>
-        <select id="wn-art" style="width:auto"><option>MGT</option><option>EG</option><option>AG</option><option>BG</option></select>
+        <select id="wn-art" style="width:auto"><option>MGT</option><option>EG</option><option value="KG">KG (Kooperationsgespräch)</option><option value="TG">TG (Tippgeber)</option><option>PRIVAT</option><option>AG</option><option>BG</option></select>
         <input id="wn-kunde" placeholder="Name / Betreff" style="width:180px">
         <input id="wn-ort" placeholder="Ort" style="width:120px">
         <button class="btn pri" id="wn-add">Hinzufügen</button>
