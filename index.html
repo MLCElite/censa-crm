@@ -173,6 +173,14 @@
   .histline{font-size:11px;color:var(--ink-3);margin-top:4px}
   .gptoggle{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;cursor:pointer;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:9px 12px}
   .gptoggle input{width:16px;height:16px;accent-color:var(--warn)}
+  .stgs{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 14px}
+  .stg{border:1px solid var(--line);background:var(--surface-2);color:var(--ink-3);font-size:11px;font-weight:700;padding:5px 10px 5px 6px;border-radius:20px;cursor:pointer;display:flex;align-items:center;gap:6px;transition:.13s}
+  .stg i{font-style:normal;width:16px;height:16px;border-radius:50%;background:var(--surface-3);display:grid;place-items:center;font-size:9.5px;font-weight:800}
+  .stg:hover{border-color:var(--brand)}
+  .stg.done{color:var(--ink-2)}
+  .stg.done i{background:var(--good-bg);color:var(--good)}
+  .stg.on{background:var(--brand);border-color:transparent;color:#fff}
+  .stg.on i{background:rgba(255,255,255,.28);color:#fff}
   .pchip{appearance:none;border:1px dashed var(--line);background:var(--surface-2);color:var(--ink-2);font-family:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:20px;cursor:pointer;transition:.13s}
   .pchip::before{content:"+ "}
   .pchip[aria-pressed="true"]{background:var(--privat-bg);color:var(--privat-ink);border-style:solid;border-color:transparent}
@@ -615,7 +623,7 @@ function openSplitModal(rows){
     const all=[];
     plan.forEach(p=>p.leads.forEach(r=>{
       if((r.telefonist||'').trim()&&r.telefonist!==p.name){r.telHist=r.telHist||[];if(!r.telHist.includes(r.telefonist))r.telHist.push(r.telefonist);}
-      r.telefonist=p.name;r.geprueft=true;all.push(r);
+      r.telefonist=p.name;r.geprueft=true;histAdd(r,'Aufteilen: Telefonist → '+p.name);all.push(r);
     }));
     toast('Speichere '+all.length+' Leads…');
     const ok=await dbPersistMany(all);
@@ -828,6 +836,7 @@ function renderSteuerung(){
     const d=state.deals.find(x=>x.id===id);if(!d)return;
     d[role]=name;d.geprueft=true;
     if(role==='berater'&&d.stage==='Analyse & Doku')d.stage='Beratungstermin vereinbart';
+    histAdd(d,'Dispo: '+(role==='analyst'?'Analyst':'Berater')+' → '+name);
     dbPersist(d);
     const nm=d.name||d.org||'—';
     const term=role==='analyst'?d.datumAG:d.datumBG;
@@ -965,7 +974,7 @@ async function chatDecline(id){
   const d=state.deals.find(x=>x.id===msg.dealId);
   let nm=msg.dealName||'—';
   if(d){nm=d.name||d.org||'—';
-    if((d[role]||'').trim().toLowerCase()===n.trim().toLowerCase()){d[role]='';dbPersist(d);}
+    if((d[role]||'').trim().toLowerCase()===n.trim().toLowerCase()){d[role]='';histAdd(d,'Zuordnung ABGELEHNT ('+role+')'+(grund?': '+grund.slice(0,120):''));dbPersist(d);}
   }
   chatSys('🚫 NICHT angenommen: '+(role==='berater'?'Beratung':'Analyse')+' '+nm+' – '+n+' hat abgelehnt'+(grund?' ('+grund.slice(0,120)+')':'')+' – bitte in der Tages-Dispo neu zuordnen!',d||null,'__admin__');
   updateTodoBadge();updateChatLog();render();
@@ -1320,6 +1329,11 @@ function calICS(title,dt,details,loc){
 }
 function fmtD(ts){const x=ts?new Date(ts):new Date();return String(x.getDate()).padStart(2,'0')+'.'+String(x.getMonth()+1).padStart(2,'0')+'.';}
 function naStamp(d){const dt=fmtD();d.notizen=('n.a. '+dt+(d.notizen?' | '+d.notizen:''));}
+function histAdd(d,txt){
+  d.hist=d.hist||[];
+  d.hist.push({ts:new Date().toISOString(),von:chatName()||'?',txt:String(txt).slice(0,300)});
+  if(d.hist.length>80)d.hist=d.hist.slice(-80);
+}
 function naInfo(d){const na=(d.calls||[]).filter(c=>c.outcome==='nichterreicht');return na.length?`<span class="tg od">n.a. ${na.length}× · zuletzt ${fmtD(na[na.length-1].ts)}</span>`:'';}
 function openModal(id){
   const d=id?state.deals.find(x=>x.id===id):blank();
@@ -1327,6 +1341,13 @@ function openModal(id){
   editId=id;
   const isNew=!id;
   const before={wv:d.wiedervorlage||'',ag:d.datumAG||'',bg:d.datumBG||''};
+  const HFIELDS={stage:'Phase',status:'Status',analyst:'Analyst',berater:'Berater',telefonist:'Telefonist',telefon:'Telefon',email:'E-Mail',wiedervorlage:'Wiedervorlage',datumAG:'AG-Termin',datumBG:'BG-Termin',name:'Name',org:'Firma'};
+  const before2={};Object.keys(HFIELDS).forEach(k=>before2[k]=d[k]==null?'':''+d[k]);
+  const histDiff=()=>{
+    const ch=[];
+    Object.keys(HFIELDS).forEach(k=>{const b2=d[k]==null?'':''+d[k];if(before2[k]!==b2){ch.push(HFIELDS[k]+': '+(before2[k]||'—')+' → '+(b2||'—'));before2[k]=b2;}});
+    if(ch.length&&!isNew)histAdd(d,ch.join(' · '));
+  };
   const m=document.getElementById('modal');m.classList.remove('wide');
   m.innerHTML=`
     <h2>${isNew?'Neuer Lead':esc(d.name||d.org||'Lead')}</h2>
@@ -1339,6 +1360,7 @@ function openModal(id){
       <button class="ob nichts" data-o="nichterreicht"><span class="d"></span>n.a. – nicht abgehoben</button>
       <button class="ob weg" data-o="keininteresse"><span class="d"></span>Kein Interesse</button></div></div>`:''}
     ${(!isNew&&isAdmin()&&d.geprueft===false)?`<div style="background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 13px;margin-bottom:13px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b>📥 Posteingang</b> – für das Team noch unsichtbar.<button class="btn" id="m-frei" style="padding:6px 12px;font-size:12.5px">✓ Prüfen &amp; freigeben</button></div>`:''}
+    <div class="stgs" id="m-stagepick">${(()=>{const SHORT=['Neu','Bearbeitung','AG terminiert','Analyse & Doku','BG terminiert','Beratung'];const cur=STAGES.indexOf(d.stage);return STAGES.map((s,i)=>`<button type="button" class="stg${i===cur?' on':(cur>=0&&i<cur?' done':'')}" data-s="${esc(s)}" title="${esc(s)}"><i>${(cur>=0&&i<cur)?'✓':(i+1)}</i>${SHORT[i]}</button>`).join('');})()}</div>
     <div class="grid2">
       <div class="fld"><label>Kundentyp</label><select id="m-typ"><option${d.kundentyp==='Privat'?' selected':''}>Privat</option><option${d.kundentyp==='GmbH'?' selected':''}>GmbH</option></select></div>
       <div class="fld"><label>Quelle</label><input id="m-quelle" value="${esc(d.quelle)}" placeholder="Recherche, Empfehlung…"></div>
@@ -1379,11 +1401,7 @@ function openModal(id){
           <button type="button" class="mini-btn" id="cal-bg-x" style="color:var(--bad)">❗ BG abgesagt</button>
         </div>
       </div>
-      <div class="fld full"><label>Phase</label>
-        <div class="spick" id="m-stagepick">${STAGES.map(s=>`<button type="button" class="chip" data-s="${esc(s)}" aria-pressed="${d.stage===s?'true':'false'}">${esc(s)}</button>`).join('')}</div>
-      </div>
       ${isAdmin()?`<div class="fld"><label>Potenzieller Geschäftspartner? <span style="color:var(--ink-3);font-weight:500;text-transform:none">(nur für Admins sichtbar)</span></label><label class="gptoggle"><input type="checkbox" id="m-gp" ${d.gp?'checked':''}> Ja – fürs Recruiting vormerken</label></div>`:''}
-      <div class="fld"><label>Potenzial-Einschätzung (Setter)</label><input id="m-pot" value="${esc(d.potenzial||'')}" placeholder="z. B. BAV ~5 MA, grob 40 EH"></div>
       <div class="fld full"><label>Briefing für den Analysten <span style="font-weight:500;color:var(--ink-3)">— Branche, jung/alt, Alleinentscheider, was wurde besprochen</span></label><textarea id="m-brief" rows="2">${esc(d.briefing||'')}</textarea></div>
       <div class="fld full"><label>Notizen</label><textarea id="m-notiz" rows="3">${esc(d.notizen)}</textarea></div>
     </div>
@@ -1399,11 +1417,15 @@ function openModal(id){
           <button type="button" class="mini-btn" data-q="gg">+ Golden Gates</button>
         </div>
         <div id="eh-vorschlag"></div>
+        <div id="eh-list-s" style="margin-top:8px"></div>
       </div>
-      <div class="ehgrp"><div class="ehgt">Potenzial-Schätzung (Analyst)</div><div id="eh-list-s"></div><div class="ehadd" id="eh-add-s"></div></div>
       <div class="ehgrp"><div class="ehgt">Abschluss (Berater)</div><div id="eh-list-a"></div><div class="ehadd" id="eh-add-a"></div></div>
       <div class="ehtot" id="eh-tot"></div>
     </div>
+    ${!isNew?`<details style="margin:2px 0 12px"><summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--ink-2)">🕘 Verlauf – wer hat was geändert (${(d.hist||[]).length+(d.calls||[]).length})</summary><div style="max-height:230px;overflow-y:auto;font-size:11.5px;line-height:1.65;color:var(--ink-2);padding:8px 2px">${(()=>{
+      const ev=[...(d.hist||[]).map(h=>({ts:h.ts,von:h.von,txt:h.txt})),...(d.calls||[]).map(c=>({ts:c.ts,von:c.von||d.telefonist||'',txt:'☎ Anruf: '+(c.outcome||'')+(c.dur?' ('+c.dur+' Min.)':'')+(c.note?' – '+c.note:'')}))].sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));
+      return ev.length?ev.map(e2=>{const t=e2.ts?new Date(e2.ts):null;const z=t?(String(t.getDate()).padStart(2,'0')+'.'+String(t.getMonth()+1).padStart(2,'0')+'. '+t.toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'})):'';return '<div>'+z+' · <b>'+esc(e2.von||'?')+'</b> · '+esc(e2.txt)+'</div>';}).join(''):'Noch keine Änderungen erfasst.';
+    })()}</div></details>`:''}
     <div class="modal-foot">
       <button class="btn pri" id="m-save">Speichern</button>
       ${!isNew?`<button class="btn" id="m-ueb" ${d.uebergabe?'style="color:var(--good)"':''}>📋 Übergabe${d.uebergabe?' ✓':''}</button>`:''}
@@ -1419,7 +1441,15 @@ function openModal(id){
   setFin();['m-fin-nd','m-fin-g'].forEach(id=>{const el=m.querySelector('#'+id);if(el)el.addEventListener('pointerdown',setFin);});
   wireEH(m,d);
   const sp=m.querySelector('#m-stagepick');
-  sp.addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b)return;sp.querySelectorAll('.chip').forEach(x=>x.setAttribute('aria-pressed','false'));b.setAttribute('aria-pressed','true');});
+  sp.addEventListener('click',e=>{
+    const b=e.target.closest('.stg');if(!b)return;
+    const idx=STAGES.indexOf(b.dataset.s);
+    sp.querySelectorAll('.stg').forEach((x,i)=>{
+      x.classList.toggle('on',i===idx);
+      x.classList.toggle('done',i<idx);
+      x.querySelector('i').textContent=i<idx?'✓':(i+1);
+    });
+  });
   const plzIn=m.querySelector('#m-plz'),bezView=m.querySelector('#m-bezview');
   plzIn.addEventListener('input',()=>{const b=bezFromPLZ(plzIn.value);bezView.textContent=b?('· '+b):'';});
   const collect=()=>{d.kundentyp=typ.value;d.quelle=m.querySelector('#m-quelle').value;d.name=m.querySelector('#m-name').value;d.org=m.querySelector('#m-org')?m.querySelector('#m-org').value:d.org;
@@ -1432,9 +1462,10 @@ function openModal(id){
     if(newTelf!==(d.telefonist||'')&&(d.telefonist||'').trim()){d.telHist=d.telHist||[];if(!d.telHist.includes(d.telefonist))d.telHist.push(d.telefonist);}
     d.telefonist=newTelf;
     d.telBeteiligt=m.querySelector('#eh-telb').checked;const gpEl=m.querySelector('#m-gp');if(gpEl)d.gp=gpEl.checked;
-    d.potenzial=m.querySelector('#m-pot').value;d.briefing=m.querySelector('#m-brief').value;
+    const potEl=m.querySelector('#m-pot');if(potEl)d.potenzial=potEl.value;
+    d.briefing=m.querySelector('#m-brief').value;
     d.umsatz=m.querySelector('#m-umsatz').value;d.gewinn=m.querySelector('#m-gewinn').value;d.anlage=m.querySelector('#m-anlage').value;
-    const sc=sp.querySelector('.chip[aria-pressed="true"]');d.stage=sc?sc.dataset.s:d.stage;
+    const sc=sp.querySelector('.stg.on');d.stage=sc?sc.dataset.s:d.stage;
     d.wiedervorlage=m.querySelector('#m-wv').value;d.notizen=m.querySelector('#m-notiz').value;
     const dag=m.querySelector('#m-dag'),dbg=m.querySelector('#m-dbg');
     if(dag)d.datumAG=dag.value.trim();if(dbg)d.datumBG=dbg.value.trim();};
@@ -1442,7 +1473,7 @@ function openModal(id){
     if((d.datumAG||'')!==before.ag&&d.datumAG)chatSys('📅 Analysetermin '+(before.ag?'GEÄNDERT (war '+before.ag+')':'gesetzt')+': '+nm+' – '+d.datumAG,d,before.ag?(d.analyst||d.telefonist||null):null);
     if((d.datumBG||'')!==before.bg&&d.datumBG)chatSys('📅 Beratungstermin '+(before.bg?'GEÄNDERT (war '+before.bg+')':'gesetzt')+': '+nm+' – '+d.datumBG,d,before.bg?(d.berater||d.analyst||null):null);
     if((d.wiedervorlage||'')!==before.wv&&d.wiedervorlage)chatSys('🔁 Wiedervorlage: '+nm+' – '+d.wiedervorlage.split('-').reverse().join('.'),d);};
-  const persist=()=>{if(isNew&&!state.deals.includes(d))state.deals.unshift(d);dbPersist(d);render();};
+  const persist=()=>{histDiff();if(isNew&&!state.deals.includes(d))state.deals.unshift(d);dbPersist(d);render();};
   const callMeta=()=>{const dur=m.querySelector('#m-dur'),no=m.querySelector('#m-cnote');const o={};if(dur&&dur.value)o.dur=parseFloat(dur.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
   const fb=m.querySelector('#m-frei');
   if(fb)fb.addEventListener('click',()=>{collect();d.geprueft=true;persist();closeModal();toast('Freigegeben – jetzt in der Liste dem Telefonisten zuteilen');});
@@ -1498,7 +1529,9 @@ function openModal(id){
     d.notizen=('BG ABGESAGT (war '+alt+') am '+todayStr().split('-').reverse().join('.')+' – neu terminisieren | '+(d.notizen||''));
     chatSys('❗ Beratungstermin ABGESAGT: '+(d.name||d.org||'—')+' (war '+alt+') – '+(d.berater?('Berater '+d.berater):'Berater')+'/'+(d.analyst||'Analyst')+' bitte neu terminisieren!',d,d.berater||d.analyst||null);
     persist();closeModal();toast('Abgesagt – Termin muss neu gesetzt werden');});
-  m.querySelector('#m-save').addEventListener('click',()=>{collect();d.status='open';terminEvents();persist();closeModal();toast('Gespeichert');});
+  m.querySelector('#m-save').addEventListener('click',()=>{collect();d.status='open';
+    if(['Neuer Lead','In Bearbeitung'].includes(d.stage)&&(d.datumAG||'').trim()&&(d.analyst||'').trim())d.stage='Analysetermin vereinbart';
+    terminEvents();persist();closeModal();toast('Gespeichert');});
   m.querySelector('#m-won').addEventListener('click',()=>{collect();d.status='won';chatSys('🏆 Gewonnen: '+(d.name||d.org||'—'),d);
     const sd=new Date(Date.now()+14*86400000).toISOString().slice(0,10);
     d.wiedervorlage=sd;d.notizen=('SERVICETERMIN (Pflicht) bis '+sd.split('-').reverse().join('.')+' | '+(d.notizen||'')).trim(' |');
@@ -1525,7 +1558,9 @@ function openModal(id){
     else if(b.dataset.o==='keininteresse'){d.status='lost';d.lostReason='Kein Interesse';}
     else if(b.dataset.o==='rueckruf'){d.stage='In Bearbeitung';}
     else{d.stage=(d.stage==='Neuer Lead'?'In Bearbeitung':d.stage);naStamp(d);}
-    if(isNew&&!state.deals.includes(d)){state.deals.unshift(d);}dbPersist(d);render();closeModal();toast('Anruf geloggt');
+    if(isNew&&!state.deals.includes(d)){state.deals.unshift(d);}dbPersist(d);render();
+    if(b.dataset.o==='termin'||b.dataset.o==='rueckruf'){openModal(d.id);toast(b.dataset.o==='termin'?'Termin! Jetzt AG-Datum + Details ausfüllen':'Rückruf – Wiedervorlage eintragen');return;}
+    closeModal();toast('Anruf geloggt');
   }));
 }
 /* ---------- Übergabe-Formular (Analyse → Berater), gespeichert im Lead ---------- */
@@ -1537,6 +1572,69 @@ const BIG5U=[
  {t:'⑤ Familie',items:['Private Unfallvers.','Private Krankenvers.','Ablebensvers.','Begräbniskosten','Berufsunfähigkeit','Kinder-Vorsorge','Tier-Haftpflicht','Tier-Krankenvers.']}
 ];
 const USTAT={best:'Bestehend',int:'Interesse',no:'Kein Bedarf'};
+function uebergabeDoc(d,W){
+  const st=s=>s==='best'?'<span class="st vorhanden">● Vorhanden</span>':s==='int'?'<span class="st feld">● Handlungsfeld</span>':s==='no'?'<span class="st kein">○ Kein Bedarf</span>':'<span class="st kein">–</span>';
+  const bavL={pension:'Pensionsvorsorge / Zukunftssicherung §3',pz:'Pensionszusage / GF-Vorsorge',abf:'Abfertigung NEU / BV-Kasse',gku:'Gruppen-Kranken- & Unfallversicherung',entn:'Gewinnoptimierte Entnahme'};
+  const B5ICON={
+    '① Fixkosten reduzieren':'<svg viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+    '② Eigenheim / Finanzierung':'<svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M9 22V12h6v10"/></svg>',
+    '③ Inflationsschutz / Veranlagung':'<svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>',
+    '④ Pension':'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    '⑤ Familie':'<svg viewBox="0 0 24 24"><path d="M12 20s-7-4.5-9-9c-1.3-3 1-7 4.5-7 2 0 3.5 1.2 4.5 3 1-1.8 2.5-3 4.5-3 3.5 0 5.8 4 4.5 7-2 4.5-9 9-9 9Z"/></svg>'};
+  const gmbh=d.kundentyp==='GmbH';
+  const datum=(W.datum||todayStr()).split('-').reverse().join('.');
+  const b5groups=BIG5U.map(cat=>{
+    const items=(W.big5||[]).filter(e=>e.kat===cat.t);
+    if(!items.length)return '';
+    return `<div class="grp"><div class="gh">${B5ICON[cat.t]||''}<span>${esc(cat.t.slice(2))}</span></div>
+      ${items.map(e=>`<div class="row"><span class="rn">${esc(e.name)}</span>${st(e.s)}${e.anstalt?`<span class="rd">${esc(e.anstalt)}</span>`:''}${e.praemie?`<span class="rd">${esc(e.praemie)} €/Monat</span>`:''}${e.notiz?`<span class="rd">${esc(e.notiz)}</span>`:''}</div>`).join('')}
+    </div>`;
+  }).join('');
+  const bavRows=gmbh?Object.entries(bavL).map(([k,l])=>{const b=(W.bav&&W.bav[k])||{};if(!b.s&&!b.note)return '';return `<div class="row"><span class="rn">${l}</span>${st(b.s)}${b.note?`<span class="rd">${esc(b.note)}</span>`:''}</div>`;}).join(''):'';
+  const html=`<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Vorsorge-Analyse ${esc(d.name||d.org||'')}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{font-family:"Segoe UI",-apple-system,Arial,sans-serif;color:#1A1D2A;background:#fff;line-height:1.5}
+    .page{max-width:800px;margin:0 auto;padding:44px 48px}
+    .kopf{display:flex;align-items:center;gap:14px;border-bottom:3px solid #1E2450;padding-bottom:18px}
+    .logo{width:44px;height:44px;border-radius:10px;background:#1E2450;color:#fff;display:grid;place-items:center;font-weight:800;font-size:21px}
+    .kopf h1{font-size:21px;letter-spacing:-.3px;color:#1E2450}
+    .kopf p{font-size:11px;color:#858BA0;text-transform:uppercase;letter-spacing:1.5px;font-weight:600}
+    .meta{margin-left:auto;text-align:right;font-size:12px;color:#4C5265}
+    .kunde{margin:26px 0 6px;font-size:26px;font-weight:800;letter-spacing:-.4px}
+    .sub{font-size:13px;color:#4C5265;margin-bottom:26px}
+    h2{font-size:14px;color:#1E2450;text-transform:uppercase;letter-spacing:.8px;margin:26px 0 4px;display:flex;align-items:center;gap:9px}
+    h2::after{content:"";flex:1;height:1px;background:#E3E6F0}
+    .hint{font-size:11.5px;color:#858BA0;margin-bottom:10px}
+    .grp{margin:14px 0 6px}
+    .gh{display:flex;align-items:center;gap:9px;font-weight:800;font-size:14px;color:#1E2450;margin-bottom:7px}
+    .gh svg{width:19px;height:19px;stroke:#0C806D;fill:none;stroke-width:2}
+    .row{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:6px 0 6px 28px;border-bottom:1px solid #F0F2F7;font-size:13px}
+    .rn{font-weight:600;min-width:220px}
+    .rd{color:#4C5265;font-size:12px}
+    .st{font-size:11px;font-weight:800;letter-spacing:.3px}
+    .st.vorhanden{color:#1F63A8}.st.feld{color:#0C806D}.st.kein{color:#A8ADC0}
+    .next{background:#F4F6FA;border-left:3px solid #0C806D;border-radius:0 10px 10px 0;padding:14px 18px;margin-top:10px;font-size:13.5px}
+    .fuss{margin-top:40px;border-top:1px solid #E3E6F0;padding-top:14px;display:flex;justify-content:space-between;font-size:11px;color:#858BA0}
+    .pbtn{position:fixed;top:14px;right:14px;background:#1E2450;color:#fff;border:0;border-radius:9px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer}
+    @media print{.pbtn{display:none}.page{padding:10mm 6mm}}
+  </style></head><body>
+  <button class="pbtn" onclick="window.print()">🖨 Drucken / als PDF speichern</button>
+  <div class="page">
+    <div class="kopf"><div class="logo">C</div><div><h1>Ihre Vorsorge-Analyse</h1><p>Persönlich · Vertraulich</p></div>
+      <div class="meta">Analyse vom ${esc(datum)}<br>Ihr Ansprechpartner: ${esc(d.analyst||W.ausgefuelltVon||'')}</div></div>
+    <div class="kunde">${esc(d.name||'')}</div>
+    <div class="sub">${gmbh?esc(d.org||'')+' · ':''}${esc([d.strasse,d.plz,d.ort].filter(Boolean).join(', '))}</div>
+    ${gmbh&&bavRows?`<h2>Betriebliche Vorsorge Ihrer GmbH</h2><div class="hint">Status Ihrer betrieblichen Bausteine – blau = bereits vorhanden, grün = gemeinsames Handlungsfeld</div>${bavRows}`:''}
+    ${b5groups?`<h2>Ihre privaten Bausteine</h2><div class="hint">Die fünf Bereiche Ihrer privaten Absicherung und Vorsorge</div>${b5groups}`:''}
+    ${W.zsm?`<h2>Zusammenfassung Ihres Gesprächs</h2><div style="font-size:13.5px;padding:4px 0">${esc(W.zsm)}</div>`:''}
+    ${W.next?`<h2>Ihre nächsten Schritte</h2><div class="next">${esc(W.next)}</div>`:''}
+    <div class="fuss"><span>CENSA · Wir übernehmen die Vorsorge. Sie führen die GmbH.</span><span>Erstellt am ${esc(datum)}</span></div>
+  </div></body></html>`;
+  const w=window.open('','_blank');
+  if(!w){toast('Popup blockiert – bitte Popups für diese Seite erlauben');return;}
+  w.document.write(html);w.document.close();
+}
 function openUebergabe(id){
   const d=state.deals.find(x=>x.id===id);if(!d){toast('Lead nicht gefunden');return;}
   const W=JSON.parse(JSON.stringify(d.uebergabe||{}));
@@ -1600,6 +1698,7 @@ function openUebergabe(id){
     <div class="fld"><label>Kunde erreichbar / Terminwunsch</label><input id="u-err" value="${esc(W.erreichbar||'')}" placeholder="z. B. Mo–Do vormittags"></div>
     <div class="modal-foot">
       <button class="btn pri" id="u-save">📋 Übergabe speichern</button>
+      <button class="btn" id="u-doc">🖨 Kunden-Dokument</button>
       <button class="btn" id="u-copy">Als Text kopieren</button>
       <button class="btn" id="u-back">← Zurück zum Lead</button>
     </div>`;
@@ -1667,6 +1766,7 @@ function openUebergabe(id){
     return lines.join('\n');
   };
   m.querySelector('#u-back').addEventListener('click',()=>{openModal(d.id);});
+  m.querySelector('#u-doc').addEventListener('click',()=>{collectU();uebergabeDoc(d,W);});
   m.querySelector('#u-copy').addEventListener('click',()=>{collectU();const t=uText();if(navigator.clipboard)navigator.clipboard.writeText(t);toast('Übergabe als Text kopiert – z. B. für WhatsApp an den Berater');});
   m.querySelector('#u-save').addEventListener('click',()=>{
     collectU();
@@ -1675,6 +1775,7 @@ function openUebergabe(id){
     W.ausgefuelltVon=chatName();W.ts=new Date().toISOString();
     d.uebergabe=W;
     if(d.status==='open'&&d.stage!=='Beratung / Angebot')d.stage='Beratungstermin vereinbart';
+    histAdd(d,'Übergabe-Formular '+(war?'aktualisiert':'ausgefüllt'));
     dbPersist(d);
     chatSys('📋 Übergabe '+(war?'aktualisiert':'ausgefüllt')+': '+(d.name||d.org||'—')+(d.berater?' – Berater '+d.berater+', bitte annehmen!':' – bereit für Berater-Zuordnung (Dispo)'),d,d.berater||null,d.berater?'beratung-zuord':null);
     render();openModal(d.id);toast('Übergabe gespeichert');
@@ -1688,7 +1789,7 @@ function wireEH(m,d){
   d.ehS=d.ehS||[];d.ehA=d.ehA||[];
   const tel=m.querySelector('#eh-telb');
   if(tel)tel.addEventListener('change',()=>{d.telBeteiligt=tel.checked;paintEH(m,d);});
-  buildAdd(m,d,'s');buildAdd(m,d,'a');paintEH(m,d);
+  buildAdd(m,d,'a');paintEH(m,d);
   const addS=it=>{d.ehS.push(it);if(state.deals.includes(d))dbPersist(d);paintEH(m,d);toast('Schätzung hinzugefügt: '+fmtEH(calcEH(it))+' EH');};
   m.querySelectorAll('[data-q]').forEach(b=>b.addEventListener('click',()=>{
     const q=b.dataset.q;
