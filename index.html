@@ -1037,8 +1037,7 @@ async function renderWoche(){
     <div class="ehsec wnew" style="margin-top:14px"><div class="ehhead">＋ Eintrag hinzufügen <span class="ehtag">MGT, EG, Büro … – AG/BG kommen automatisch aus den Terminen</span></div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
         <select id="wn-tag" style="width:auto">${WDAYS.map((d2,t)=>{const dd=new Date(start.getTime()+t*86400000);return `<option value="${t}">${d2} ${fmtDM(dd)}</option>`;}).join('')}</select>
-        <input id="wn-zeit" type="time" step="900" list="wn-zeiten" style="width:110px">
-        <datalist id="wn-zeiten">${(()=>{let o='';for(let h=7;h<=21;h++)for(let q=0;q<60;q+=15)o+=`<option value="${calPad(h)}:${calPad(q)}">`;return o;})()}</datalist>
+        <select id="wn-zeit" style="width:auto"><option value="">Uhrzeit…</option>${(()=>{let o='';for(let h=7;h<=21;h++)for(let q=0;q<60;q+=15)o+=`<option>${calPad(h)}:${calPad(q)}</option>`;return o;})()}</select>
         <select id="wn-art" style="width:auto"><option>MGT</option><option>EG</option><option>AG</option><option>BG</option></select>
         <input id="wn-kunde" placeholder="Name / Betreff" style="width:180px">
         <input id="wn-ort" placeholder="Ort" style="width:120px">
