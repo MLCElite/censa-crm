@@ -1035,7 +1035,8 @@ async function renderWoche(){
     <div class="ehsec wnew" style="margin-top:14px"><div class="ehhead">＋ Eintrag hinzufügen <span class="ehtag">MGT, EG, Büro … – AG/BG kommen automatisch aus den Terminen</span></div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
         <select id="wn-tag" style="width:auto">${WDAYS.map((d2,t)=>{const dd=new Date(start.getTime()+t*86400000);return `<option value="${t}">${d2} ${fmtDM(dd)}</option>`;}).join('')}</select>
-        <input id="wn-zeit" type="time" style="width:110px">
+        <input id="wn-zeit" type="time" step="900" list="wn-zeiten" style="width:110px">
+        <datalist id="wn-zeiten">${(()=>{let o='';for(let h=7;h<=21;h++)for(let q=0;q<60;q+=15)o+=`<option value="${calPad(h)}:${calPad(q)}">`;return o;})()}</datalist>
         <select id="wn-art" style="width:auto"><option>MGT</option><option>EG</option><option>AG</option><option>BG</option></select>
         <input id="wn-kunde" placeholder="Name / Betreff" style="width:180px">
         <input id="wn-ort" placeholder="Ort" style="width:120px">
@@ -1054,7 +1055,9 @@ async function renderWoche(){
     const kunde=host.querySelector('#wn-kunde').value.trim();
     if(!kunde){toast('Bitte Name/Betreff eingeben');return;}
     if(MODE!=='db'||!wocheCol){toast('Nur online möglich');return;}
-    const doc={wk,name:me,tag:+host.querySelector('#wn-tag').value,zeit:host.querySelector('#wn-zeit').value,art:host.querySelector('#wn-art').value,kunde,ort:host.querySelector('#wn-ort').value.trim(),status:'',ts:new Date().toISOString()};
+    let zeit=host.querySelector('#wn-zeit').value;
+    if(zeit){const [h,mi]=zeit.split(':').map(Number);const r=Math.round(mi/15)*15;zeit=calPad(r===60?h+1:h)+':'+calPad(r===60?0:r);}
+    const doc={wk,name:me,tag:+host.querySelector('#wn-tag').value,zeit,art:host.querySelector('#wn-art').value,kunde,ort:host.querySelector('#wn-ort').value.trim(),status:'',ts:new Date().toISOString()};
     const id2='w'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
     try{await wocheCol.doc(id2).set(doc);WOCHE.push(Object.assign({_id:id2},doc));renderWoche();toast('Eingetragen');}catch(e){toast('Speichern fehlgeschlagen');}
   });
