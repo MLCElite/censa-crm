@@ -193,7 +193,11 @@
   .wentry:hover{border-color:var(--brand)}
   .wentry .wart{display:inline-block;color:#fff;font-size:9.5px;font-weight:800;border-radius:5px;padding:1px 5px;margin-right:4px;vertical-align:middle}
   .wentry .wsub{font-size:10.5px;color:var(--ink-3)}
-  .wentry .wst{border:0;background:transparent;cursor:pointer;font-size:13px;padding:0 3px}
+  .wsts{display:flex;gap:4px;margin-top:4px}
+  .wst{border:1px solid var(--line);background:var(--surface-2);border-radius:5px;cursor:pointer;font-size:11px;padding:1px 7px;color:var(--ink-3);line-height:1.5}
+  .wst.on.done{background:var(--good-bg);color:var(--good);border-color:transparent;font-weight:800}
+  .wst.on.moved{background:var(--warn-bg);color:var(--warn);border-color:transparent;font-weight:800}
+  .wst.on.cancelled{background:var(--bad-bg);color:var(--bad);border-color:transparent;font-weight:800}
   .wentry .wdel{border:0;background:transparent;cursor:pointer;color:var(--ink-3);font-size:13px;padding:0 3px;float:right}
   .wentry .wdel:hover{color:var(--bad)}
   .tplan{border-collapse:collapse;width:100%;font-size:11.5px;min-width:820px}
@@ -966,9 +970,7 @@ function wEntriesFor(person,start,wk){
   return [...auto,...man].sort((a,b)=>(a.tag-b.tag)||((a.zeit||'').localeCompare(b.zeit||'')));
 }
 const wStIc=s=>s==='done'?'✔':s==='moved'?'↗':s==='cancelled'?'✖':'○';
-async function wSetStatus(ent,wk){
-  const order=['','done','moved','cancelled'];
-  const next=order[(order.indexOf(ent.status||'')+1)%4];
+async function wSetStatus(ent,wk,next){
   if(ent.auto){
     const doc={type:'ov',wk,dealId:ent.dealId,art:ent.art,name:ent.name,status:next};
     try{await wocheCol.doc(ent._ovId).set(doc);}catch(e){toast('Speichern fehlgeschlagen');return;}
@@ -1030,7 +1032,7 @@ async function renderWoche(){
       const dd=new Date(start.getTime()+t*86400000);
       const today=new Date();today.setHours(0,0,0,0);
       const ents=wEntriesFor(me,start,wk).filter(e=>e.tag===t);
-      return `<div class="wday${dd.getTime()===today.getTime()?' today':''}"><div class="wdh">${d2} ${fmtDM(dd)}</div>${ents.map((e,i2)=>`<div class="wentry" data-wi="${e.auto?('a:'+e.dealId+':'+e.art):('m:'+e._id)}"><button class="wdel" data-wdel="${e.auto?'':e._id}" title="${e.auto?'Automatisch aus dem CRM-Termin':'Eintrag löschen'}">${e.auto?'🔗':'×'}</button><span class="wart" style="background:${WARTC[e.art]||'var(--ink-3)'}">${esc(e.art)}</span><b>${esc(e.zeit)}</b> ${esc(e.kunde)}${e.ort?`<div class="wsub">${esc(e.ort)}</div>`:''}<button class="wst" data-wst="1" title="Status: offen → ✔ durchgeführt → ↗ verschoben → ✖ abgesagt">${wStIc(e.status)}</button></div>`).join('')||'<div style="font-size:11px;color:var(--ink-3);text-align:center">—</div>'}</div>`;
+      return `<div class="wday${dd.getTime()===today.getTime()?' today':''}"><div class="wdh">${d2} ${fmtDM(dd)}</div>${ents.map((e,i2)=>`<div class="wentry" data-wi="${e.auto?('a:'+e.dealId+':'+e.art):('m:'+e._id)}"><button class="wdel" data-wdel="${e.auto?'':e._id}" title="${e.auto?'Automatisch aus dem CRM-Termin':'Eintrag löschen'}">${e.auto?'🔗':'×'}</button><span class="wart" style="background:${WARTC[e.art]||'var(--ink-3)'}">${esc(e.art)}</span><b>${esc(e.zeit)}</b> ${esc(e.kunde)}${e.ort?`<div class="wsub">${esc(e.ort)}</div>`:''}<div class="wsts">${[['done','✔','durchgeführt'],['moved','↗','verschoben'],['cancelled','✖','abgesagt']].map(([s,ic,tt])=>`<button class="wst${e.status===s?' on '+s:''}" data-ws="${s}" title="${tt}">${ic}</button>`).join('')}</div></div>`).join('')||'<div style="font-size:11px;color:var(--ink-3);text-align:center">—</div>'}</div>`;
     }).join('')}</div>
     <div class="ehsec wnew" style="margin-top:14px"><div class="ehhead">＋ Eintrag hinzufügen <span class="ehtag">MGT, EG, Büro … – AG/BG kommen automatisch aus den Terminen</span></div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
@@ -1066,7 +1068,10 @@ async function renderWoche(){
     const ents=wEntriesFor(me,start,wk);
     const ent=typ==='a'?ents.find(e=>e.auto&&e.dealId===ref&&e.art===art):ents.find(e=>!e.auto&&e._id===ref);
     if(!ent)return;
-    el.querySelector('.wst').addEventListener('click',ev=>{ev.stopPropagation();wSetStatus(ent,wk);});
+    el.querySelectorAll('[data-ws]').forEach(b=>b.addEventListener('click',ev=>{
+      ev.stopPropagation();
+      wSetStatus(ent,wk,ent.status===b.dataset.ws?'':b.dataset.ws);
+    }));
     const del=el.querySelector('.wdel');
     del.addEventListener('click',async ev=>{
       ev.stopPropagation();
