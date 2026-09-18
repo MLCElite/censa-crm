@@ -831,7 +831,7 @@ function renderSteuerung(){
     dbPersist(d);
     const nm=d.name||d.org||'—';
     const term=role==='analyst'?d.datumAG:d.datumBG;
-    chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet: '+nm+' → '+name+(term?' ('+term+')':'')+(role==='berater'?' – bitte annehmen!':''),d,name,role==='berater'?'beratung-zuord':null);
+    chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet: '+nm+' → '+name+(term?' ('+term+')':'')+' – bitte annehmen!',d,name,role==='berater'?'beratung-zuord':'analyse-zuord');
     toast(nm+' → '+name);render();
   }));
   const br=host.querySelector('#btnReports');if(br)br.addEventListener('click',openReports);
@@ -907,9 +907,15 @@ function updateChatLog(){
     let ack='';
     if(m.needAck){
       const by=m.ackBy||[];
-      if(by.length)ack+=`<div style="margin-top:4px;font-size:11px;color:var(--good);font-weight:700">✔ Gesehen: ${esc(by.join(', '))}</div>`;
-      if(m.ackWer&&!by.includes(m.ackWer))ack+=`<div style="margin-top:3px;font-size:11px;color:var(--bad);font-weight:700">⏳ Warten auf Bestätigung von ${esc(m.ackWer)}</div>`;
-      if(m._id&&!by.includes(meN))ack+=`<div style="margin-top:5px"><button class="mini-btn" data-ack="${esc(m._id)}" style="border-color:var(--good);color:var(--good)">✔ Gesehen &amp; bestätigt</button></div>`;
+      const werLabel=m.ackWer==='__admin__'?'Admin':esc(m.ackWer||'');
+      if(by.length)ack+=`<div style="margin-top:4px;font-size:11px;color:${m.declined?'var(--bad)':'var(--good)'};font-weight:700">${m.declined?'🚫 Abgelehnt von':'✔ Gesehen:'} ${esc(by.join(', '))}</div>`;
+      const pend=m.ackWer&&(m.ackWer==='__admin__'?!by.length:!by.includes(m.ackWer));
+      if(pend)ack+=`<div style="margin-top:3px;font-size:11px;color:var(--bad);font-weight:700">⏳ Warten auf Bestätigung von ${werLabel}</div>`;
+      if(m._id&&!by.includes(meN)&&!m.declined){
+        ack+=`<div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap"><button class="mini-btn" data-ack="${esc(m._id)}" style="border-color:var(--good);color:var(--good)">✔ Gesehen &amp; bestätigt</button>`;
+        if((m.art==='beratung-zuord'||m.art==='analyse-zuord')&&(m.ackWer||'').trim().toLowerCase()===meN.trim().toLowerCase())ack+=`<button class="mini-btn" data-dec="${esc(m._id)}" style="border-color:var(--bad);color:var(--bad)">✖ Ablehnen</button>`;
+        ack+='</div>';
+      }
     }
     if(m.sys)return `<div class="msg sys">${zeit} · ${esc(m.text)}${link}${ack}</div>`;
     const mine=m.von===meN;
@@ -917,6 +923,7 @@ function updateChatLog(){
   }).join(''):'<div class="msg sys">Noch keine Nachrichten – schreib die erste! Termin-Änderungen erscheinen hier automatisch.</div>';
   log.querySelectorAll('[data-open]').forEach(el=>el.addEventListener('click',()=>openModal(el.dataset.open)));
   log.querySelectorAll('[data-ack]').forEach(el=>el.addEventListener('click',()=>chatAck(el.dataset.ack)));
+  log.querySelectorAll('[data-dec]').forEach(el=>el.addEventListener('click',()=>chatDecline(el.dataset.dec)));
   log.scrollTop=log.scrollHeight;
   const chatVisible=!document.getElementById('view-chat').classList.contains('hide');
   if(chatVisible)markChatSeen();else updateChatBadge();
@@ -943,7 +950,26 @@ function waNotify(person,text){
 }
 function myAcksOpen(){
   const me=chatName();if(!me)return [];
-  return CHAT.filter(m=>m.needAck&&(m.ackWer||'').trim().toLowerCase()===me.trim().toLowerCase()&&!(m.ackBy||[]).some(x=>(x||'').trim().toLowerCase()===me.trim().toLowerCase()));
+  const eq2=(a,b)=>(a||'').trim().toLowerCase()===(b||'').trim().toLowerCase();
+  return CHAT.filter(m=>m.needAck&&!(m.ackBy||[]).some(x=>eq2(x,me))&&(eq2(m.ackWer,me)||(m.ackWer==='__admin__'&&isAdmin())));
+}
+async function chatDecline(id){
+  const msg=CHAT.find(x=>x._id===id);if(!msg||!chatCol)return;
+  const n=chatName();if(!n)return;
+  const grund=prompt('Kurzer Grund für die Ablehnung (optional):');
+  if(grund===null)return;
+  try{await chatCol.doc(id).update({ackBy:firebase.firestore.FieldValue.arrayUnion(n),declined:true});}catch(e){toast('Ablehnen fehlgeschlagen');return;}
+  if(!(msg.ackBy||[]).includes(n))msg.ackBy=[...(msg.ackBy||[]),n];
+  msg.declined=true;
+  const role=msg.art==='beratung-zuord'?'berater':'analyst';
+  const d=state.deals.find(x=>x.id===msg.dealId);
+  let nm=msg.dealName||'—';
+  if(d){nm=d.name||d.org||'—';
+    if((d[role]||'').trim().toLowerCase()===n.trim().toLowerCase()){d[role]='';dbPersist(d);}
+  }
+  chatSys('🚫 NICHT angenommen: '+(role==='berater'?'Beratung':'Analyse')+' '+nm+' – '+n+' hat abgelehnt'+(grund?' ('+grund.slice(0,120)+')':'')+' – bitte in der Tages-Dispo neu zuordnen!',d||null,'__admin__');
+  updateTodoBadge();updateChatLog();render();
+  toast('Abgelehnt – der Admin wurde informiert und ordnet neu zu');
 }
 function updateTodoBadge(){
   const el=document.getElementById('todoBadge');if(!el)return;
@@ -963,7 +989,8 @@ function openTodo(force){
   m.innerHTML=`<h2>📌 Deine offenen Aufgaben</h2>
     <div class="sub">${acks.length?(acks.length+' Bestätigung'+(acks.length>1?'en':'')+' offen – bitte kurz abarbeiten'):'Alles bestätigt 👍'}</div>
     ${acks.map(a=>{const t=a.ts?new Date(a.ts):null;const zeit=t?(String(t.getDate()).padStart(2,'0')+'.'+String(t.getMonth()+1).padStart(2,'0')+'.'):'';
-      return `<div class="ehrow" style="flex-wrap:wrap"><span class="nm" style="min-width:220px;white-space:normal">${zeit?zeit+' · ':''}${esc(a.text)}</span>${a.dealId?`<button class="mini-btn" data-tdl="${esc(a.dealId)}">Lead öffnen</button>`:''}<button class="mini-btn" style="border-color:var(--good);color:var(--good);font-weight:700" data-tda="${esc(a._id||'')}">✔ Gesehen &amp; bestätigt</button></div>`;}).join('')}
+      const canDec=(a.art==='beratung-zuord'||a.art==='analyse-zuord')&&(a.ackWer||'').trim().toLowerCase()===(me||'').trim().toLowerCase();
+      return `<div class="ehrow" style="flex-wrap:wrap"><span class="nm" style="min-width:220px;white-space:normal">${zeit?zeit+' · ':''}${esc(a.text)}</span>${a.dealId?`<button class="mini-btn" data-tdl="${esc(a.dealId)}">Lead öffnen</button>`:''}<button class="mini-btn" style="border-color:var(--good);color:var(--good);font-weight:700" data-tda="${esc(a._id||'')}">✔ Annehmen</button>${canDec?`<button class="mini-btn" style="border-color:var(--bad);color:var(--bad)" data-tdd="${esc(a._id||'')}">✖ Ablehnen</button>`:''}</div>`;}).join('')}
     ${heute.length?`<div class="ehgt" style="margin-top:14px">📅 Deine Termine heute</div>${heute.map(e=>`<div class="ehrow"><span class="wart" style="background:${WARTC[e.art]||'var(--ink-3)'}">${esc(e.art)}</span><b>${esc(e.zeit)}</b><span class="nm">${esc(e.kunde)}</span><button class="mini-btn" data-tdl="${esc(e.dealId)}">Lead</button></div>`).join('')}`:''}
     ${od.length?`<div class="ehgt" style="margin-top:14px">⏰ Überfällige Wiedervorlagen: <span style="color:var(--bad)">${od.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— siehe Telefon/Pipeline</span></div>`:''}
     <div class="modal-foot"><button class="btn${acks.length?'':' pri'}" id="m-close">${acks.length?'Später':'Los geht’s'}</button></div>`;
@@ -971,6 +998,7 @@ function openTodo(force){
   m.querySelector('#m-close').addEventListener('click',closeModal);
   m.querySelectorAll('[data-tdl]').forEach(b=>b.addEventListener('click',()=>openModal(b.dataset.tdl)));
   m.querySelectorAll('[data-tda]').forEach(b=>b.addEventListener('click',async()=>{await chatAck(b.dataset.tda);openTodo(true);}));
+  m.querySelectorAll('[data-tdd]').forEach(b=>b.addEventListener('click',async()=>{await chatDecline(b.dataset.tdd);openTodo(true);}));
 }
 
 /* ---------- Wochenplan: persönlich (auto + manuell) und Team (IVP-Format) ---------- */
