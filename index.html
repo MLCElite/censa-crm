@@ -986,7 +986,7 @@ async function wSetStatus(ent,wk,next){
 function teamplanHtml(start,wk){
   const names=TEAM.map(x=>x.name).filter(Boolean).sort();
   if(!names.length)return '<div class="empty-col">Noch keine Team-Mitglieder unter CEO → Team &amp; Zugänge angelegt.</div>';
-  const arts=['AG','BG','MGT','EG'];
+  const arts=['AG','BG','MGT','EG','KG','TG'];
   const per={};
   names.forEach(n=>{per[n]=wEntriesFor(n,start,wk);});
   const cnt=(list,art,tag)=>list.filter(e=>e.art===art&&(tag==null||e.tag===tag)).length;
@@ -995,19 +995,19 @@ function teamplanHtml(start,wk){
   let rows='';
   names.forEach(n=>{
     arts.forEach((a,i)=>{
-      rows+='<tr>'+(i===0?`<td class="tpn" rowspan="4">${esc(n)}</td>`:'')+`<td class="tpa">${a}</td>`+
+      rows+='<tr>'+(i===0?`<td class="tpn" rowspan="${arts.length}">${esc(n)}</td>`:'')+`<td class="tpa">${a}</td>`+
         WDAYS.map((_,t)=>`<td>${tick(cnt(per[n],a,t))}</td>`).join('')+
         `<td class="tnum">${cnt(per[n],a)||''}</td><td class="tnum" style="color:var(--good);font-weight:700">${ist(per[n],a)||''}</td></tr>`;
     });
   });
   let ges='';
   arts.forEach((a,i)=>{
-    ges+='<tr>'+(i===0?'<td class="tpg" rowspan="4">GESAMT</td>':'')+`<td class="tpa">${a}</td>`+
+    ges+='<tr>'+(i===0?`<td class="tpg" rowspan="${arts.length}">GESAMT</td>`:'')+`<td class="tpa">${a}</td>`+
       WDAYS.map((_,t)=>{const s=names.reduce((x,n)=>x+cnt(per[n],a,t),0);return `<td class="tpg tnum">${s||''}</td>`;}).join('')+
       `<td class="tpg tnum">${names.reduce((x,n)=>x+cnt(per[n],a),0)||''}</td><td class="tpg tnum">${names.reduce((x,n)=>x+ist(per[n],a),0)||''}</td></tr>`;
   });
   return `<div class="tablewrap"><table class="tplan"><thead><tr><th style="text-align:left">Name</th><th></th>${WDAYS.map((d2,t)=>{const dd=new Date(start.getTime()+t*86400000);return `<th>${d2} ${fmtDM(dd)}</th>`;}).join('')}<th>Plan</th><th>Ist</th></tr></thead><tbody>${rows}${ges}</tbody></table></div>
-  <div style="font-size:11px;color:var(--ink-3);margin-top:8px">Plan = eingetragene Termine der Woche · Ist = davon als durchgeführt ✔ bestätigt · Ein Strich je Termin am jeweiligen Tag · AG/BG automatisch aus dem CRM, MGT/EG aus den persönlichen Wochenplänen</div>`;
+  <div style="font-size:11px;color:var(--ink-3);margin-top:8px">Plan = eingetragene Termine der Woche · Ist = davon als durchgeführt ✔ bestätigt · Ein Strich je Termin am jeweiligen Tag · AG/BG automatisch aus dem CRM, MGT/EG/KG/TG aus den persönlichen Wochenplänen</div>`;
 }
 async function renderWoche(){
   const host=document.getElementById('view-woche');if(!host)return;
