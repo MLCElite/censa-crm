@@ -185,6 +185,30 @@
   .udetail input,.udetail select{padding:6px 9px;font-size:12px}
   .ubkat{font-size:11.5px;font-weight:700;margin:12px 0 2px;color:var(--ink-2);text-transform:uppercase;letter-spacing:.4px}
   .ubkat:first-child{margin-top:2px}
+  .wgrid{display:grid;grid-template-columns:repeat(7,minmax(120px,1fr));gap:8px;overflow-x:auto}
+  .wday{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;min-height:120px;padding:7px}
+  .wday .wdh{font-size:11.5px;font-weight:700;color:var(--ink-2);margin-bottom:6px;text-align:center}
+  .wday.today{border-color:var(--brand)}
+  .wentry{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-bottom:6px;font-size:12px;cursor:pointer;line-height:1.35}
+  .wentry:hover{border-color:var(--brand)}
+  .wentry .wart{display:inline-block;color:#fff;font-size:9.5px;font-weight:800;border-radius:5px;padding:1px 5px;margin-right:4px;vertical-align:middle}
+  .wentry .wsub{font-size:10.5px;color:var(--ink-3)}
+  .wentry .wst{border:0;background:transparent;cursor:pointer;font-size:13px;padding:0 3px}
+  .wentry .wdel{border:0;background:transparent;cursor:pointer;color:var(--ink-3);font-size:13px;padding:0 3px;float:right}
+  .wentry .wdel:hover{color:var(--bad)}
+  .tplan{border-collapse:collapse;width:100%;font-size:11.5px;min-width:820px}
+  .tplan th,.tplan td{border:1px solid var(--line);padding:3px 6px;text-align:center;white-space:nowrap}
+  .tplan th{background:var(--surface-3);font-size:10px;text-transform:uppercase;letter-spacing:.4px}
+  .tplan .tpn{text-align:left;font-weight:800;background:var(--surface-2)}
+  .tplan .tpa{font-size:9.5px;font-weight:700;color:var(--ink-3);text-align:left}
+  .tplan .tick{letter-spacing:1.5px;color:var(--brand-ink);font-weight:700}
+  .tplan .tpg{background:var(--surface-3);font-weight:800}
+  @media print{
+    header,#migBanner,.wnav,.wnew,.toast,.tabs{display:none!important}
+    body{background:#fff}
+    main{padding:0}
+    .wgrid{overflow:visible}
+  }
   .chatwrap{max-width:780px;display:flex;flex-direction:column;height:calc(100vh - 150px);min-height:340px}
   .chatlog{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 2px}
   .msg{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:9px 12px;max-width:85%;font-size:13px;line-height:1.4;align-self:flex-start}
@@ -206,6 +230,7 @@
     <button data-tab="pipeline">Pipeline</button>
     <button data-tab="liste">Liste</button>
     <button data-tab="dashboard">Dashboard</button>
+    <button data-tab="woche">Woche</button>
     <button data-tab="chat">Chat</button>
   </div>
   <div class="spacer"></div>
@@ -227,6 +252,7 @@
   <div id="view-pipeline" class="hide"></div>
   <div id="view-liste" class="hide"></div>
   <div id="view-dashboard" class="hide"></div>
+  <div id="view-woche" class="hide"></div>
   <div id="view-chat" class="hide"></div>
 </main>
 
@@ -899,6 +925,154 @@ function updateChatBadge(){
 function markChatSeen(){
   if(CHAT.length){try{localStorage.setItem(CHATSEEN,CHAT[CHAT.length-1].ts||'');}catch(_){}}
   updateChatBadge();
+}
+
+/* ---------- Wochenplan: persönlich (auto + manuell) und Team (IVP-Format) ---------- */
+let wocheCol=null, WOCHE=[], WOCHE_WK='', __wOff=0, __wPerson='', __wTeam=false;
+const WDAYS=['Mo','Di','Mi','Do','Fr','Sa','So'];
+const WARTC={AG:'var(--firma)',BG:'var(--good)',MGT:'var(--warn)',EG:'var(--brand)'};
+function wkStart(off){const t=new Date();t.setHours(0,0,0,0);const day=(t.getDay()+6)%7;t.setDate(t.getDate()-day+off*7);return t;}
+function wkKeyOf(dt){return dt.getFullYear()+'-KW'+String(isoWeek(dt)).padStart(2,'0');}
+function fmtDM(dt){return String(dt.getDate()).padStart(2,'0')+'.'+String(dt.getMonth()+1).padStart(2,'0')+'.';}
+function nameEq(a,b){return (a||'').trim().toLowerCase()===(b||'').trim().toLowerCase();}
+async function loadWoche(wk){
+  WOCHE_WK=wk;
+  if(MODE!=='db'||!wocheCol){WOCHE=[];return;}
+  try{
+    const s=await wocheCol.where('wk','==',wk).limit(600).get();
+    WOCHE=s.docs.map(x=>{const o=Object.assign({},x.data());o._id=x.id;return o;});
+  }catch(e){WOCHE=[];toast('Wochenplan konnte nicht geladen werden'+(e&&e.code?' ('+e.code+')':''));}
+}
+function autoEntries(person,start){
+  const end=new Date(start.getTime()+7*86400000);
+  const out=[];
+  state.deals.forEach(d=>{
+    if(d.status==='lost')return;
+    const push=(art,ds)=>{const dt=parseTermin(ds);if(dt&&dt>=start&&dt<end){out.push({auto:true,dealId:d.id,art,tag:Math.floor((dt-start)/86400000),zeit:calPad(dt.getHours())+':'+calPad(dt.getMinutes()),kunde:d.name||d.org||'—',ort:d.bezirk||d.ort||'',status:'',name:person});}};
+    if(nameEq(d.analyst,person))push('AG',d.datumAG);
+    if(nameEq(d.berater,person))push('BG',d.datumBG);
+  });
+  return out;
+}
+function wEntriesFor(person,start,wk){
+  const ovs=WOCHE.filter(e=>e.type==='ov');
+  const auto=autoEntries(person,start).map(a=>{
+    a._ovId='ov'+(a.dealId+'_'+a.art+'_'+wk).replace(/[^0-9A-Za-z_-]/g,'');
+    const ov=ovs.find(o=>o._id===a._ovId);
+    if(ov)a.status=ov.status||'';
+    return a;
+  });
+  const man=WOCHE.filter(e=>e.type!=='ov'&&nameEq(e.name,person)).map(e=>({auto:false,_id:e._id,art:e.art||'EG',tag:+e.tag||0,zeit:e.zeit||'',kunde:e.kunde||'',ort:e.ort||'',status:e.status||'',name:person}));
+  return [...auto,...man].sort((a,b)=>(a.tag-b.tag)||((a.zeit||'').localeCompare(b.zeit||'')));
+}
+const wStIc=s=>s==='done'?'✔':s==='moved'?'↗':s==='cancelled'?'✖':'○';
+async function wSetStatus(ent,wk){
+  const order=['','done','moved','cancelled'];
+  const next=order[(order.indexOf(ent.status||'')+1)%4];
+  if(ent.auto){
+    const doc={type:'ov',wk,dealId:ent.dealId,art:ent.art,name:ent.name,status:next};
+    try{await wocheCol.doc(ent._ovId).set(doc);}catch(e){toast('Speichern fehlgeschlagen');return;}
+    const i=WOCHE.findIndex(x=>x._id===ent._ovId);
+    if(i>=0)WOCHE[i]=Object.assign({_id:ent._ovId},doc);else WOCHE.push(Object.assign({_id:ent._ovId},doc));
+  }else{
+    try{await wocheCol.doc(ent._id).update({status:next});}catch(e){toast('Speichern fehlgeschlagen');return;}
+    const i=WOCHE.findIndex(x=>x._id===ent._id);
+    if(i>=0)WOCHE[i].status=next;
+  }
+  renderWoche();
+}
+function teamplanHtml(start,wk){
+  const names=TEAM.map(x=>x.name).filter(Boolean).sort();
+  if(!names.length)return '<div class="empty-col">Noch keine Team-Mitglieder unter CEO → Team &amp; Zugänge angelegt.</div>';
+  const arts=['AG','BG','MGT','EG'];
+  const per={};
+  names.forEach(n=>{per[n]=wEntriesFor(n,start,wk);});
+  const cnt=(list,art,tag)=>list.filter(e=>e.art===art&&(tag==null||e.tag===tag)).length;
+  const ist=(list,art)=>list.filter(e=>e.art===art&&e.status==='done').length;
+  const tick=n=>n?('<span class="tick">'+'|'.repeat(Math.min(n,10))+(n>10?'+'+(n-10):'')+'</span>'):'';
+  let rows='';
+  names.forEach(n=>{
+    arts.forEach((a,i)=>{
+      rows+='<tr>'+(i===0?`<td class="tpn" rowspan="4">${esc(n)}</td>`:'')+`<td class="tpa">${a}</td>`+
+        WDAYS.map((_,t)=>`<td>${tick(cnt(per[n],a,t))}</td>`).join('')+
+        `<td class="tnum">${cnt(per[n],a)||''}</td><td class="tnum" style="color:var(--good);font-weight:700">${ist(per[n],a)||''}</td></tr>`;
+    });
+  });
+  let ges='';
+  arts.forEach((a,i)=>{
+    ges+='<tr>'+(i===0?'<td class="tpg" rowspan="4">GESAMT</td>':'')+`<td class="tpa">${a}</td>`+
+      WDAYS.map((_,t)=>{const s=names.reduce((x,n)=>x+cnt(per[n],a,t),0);return `<td class="tpg tnum">${s||''}</td>`;}).join('')+
+      `<td class="tpg tnum">${names.reduce((x,n)=>x+cnt(per[n],a),0)||''}</td><td class="tpg tnum">${names.reduce((x,n)=>x+ist(per[n],a),0)||''}</td></tr>`;
+  });
+  return `<div class="tablewrap"><table class="tplan"><thead><tr><th style="text-align:left">Name</th><th></th>${WDAYS.map((d2,t)=>{const dd=new Date(start.getTime()+t*86400000);return `<th>${d2} ${fmtDM(dd)}</th>`;}).join('')}<th>Plan</th><th>Ist</th></tr></thead><tbody>${rows}${ges}</tbody></table></div>
+  <div style="font-size:11px;color:var(--ink-3);margin-top:8px">Plan = eingetragene Termine der Woche · Ist = davon als durchgeführt ✔ bestätigt · Ein Strich je Termin am jeweiligen Tag · AG/BG automatisch aus dem CRM, MGT/EG aus den persönlichen Wochenplänen</div>`;
+}
+async function renderWoche(){
+  const host=document.getElementById('view-woche');if(!host)return;
+  const start=wkStart(__wOff);const wk=wkKeyOf(start);const end=new Date(start.getTime()+6*86400000);
+  if(WOCHE_WK!==wk)await loadWoche(wk);
+  const admin=isAdmin();
+  const persons=[...new Set([...TEAM.map(x=>x.name),chatName()])].filter(Boolean).sort();
+  if(!__wPerson||!admin)__wPerson=admin?(__wPerson||chatName()||persons[0]||''):(chatName()||'');
+  const me=__wPerson;
+  host.innerHTML=`
+    <div class="filters wnav">
+      <button class="btn" id="w-prev">‹</button>
+      <span class="kpi">KW ${isoWeek(start)} · ${fmtDM(start)} – ${fmtDM(end)}${__wOff===0?' (aktuell)':''}</span>
+      <button class="btn" id="w-next">›</button>
+      ${admin?`<select id="w-person" style="width:auto"${__wTeam?' disabled':''}>${persons.map(p=>`<option${p===me?' selected':''}>${esc(p)}</option>`).join('')}</select>
+      <button class="btn${__wTeam?' pri':''}" id="w-team">👥 Teamwochenplan</button>`:''}
+      <button class="btn" id="w-print" style="margin-left:auto">🖨 Drucken / PDF</button>
+    </div>
+    ${(__wTeam&&admin)?`<h2 style="font-size:16px;margin:4px 0 10px">Teamwochenplan · KW ${isoWeek(start)}/${String(start.getFullYear()).slice(2)} · ${fmtDM(start)}–${fmtDM(end)} · Team ${esc(chatName())}</h2>`+teamplanHtml(start,wk):
+    `<h2 style="font-size:16px;margin:4px 0 10px">Wochenplan ${esc(me)} · KW ${isoWeek(start)}/${String(start.getFullYear()).slice(2)}</h2>
+    <div class="wgrid">${WDAYS.map((d2,t)=>{
+      const dd=new Date(start.getTime()+t*86400000);
+      const today=new Date();today.setHours(0,0,0,0);
+      const ents=wEntriesFor(me,start,wk).filter(e=>e.tag===t);
+      return `<div class="wday${dd.getTime()===today.getTime()?' today':''}"><div class="wdh">${d2} ${fmtDM(dd)}</div>${ents.map((e,i2)=>`<div class="wentry" data-wi="${e.auto?('a:'+e.dealId+':'+e.art):('m:'+e._id)}"><button class="wdel" data-wdel="${e.auto?'':e._id}" title="${e.auto?'Automatisch aus dem CRM-Termin':'Eintrag löschen'}">${e.auto?'🔗':'×'}</button><span class="wart" style="background:${WARTC[e.art]||'var(--ink-3)'}">${esc(e.art)}</span><b>${esc(e.zeit)}</b> ${esc(e.kunde)}${e.ort?`<div class="wsub">${esc(e.ort)}</div>`:''}<button class="wst" data-wst="1" title="Status: offen → ✔ durchgeführt → ↗ verschoben → ✖ abgesagt">${wStIc(e.status)}</button></div>`).join('')||'<div style="font-size:11px;color:var(--ink-3);text-align:center">—</div>'}</div>`;
+    }).join('')}</div>
+    <div class="ehsec wnew" style="margin-top:14px"><div class="ehhead">＋ Eintrag hinzufügen <span class="ehtag">MGT, EG, Büro … – AG/BG kommen automatisch aus den Terminen</span></div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
+        <select id="wn-tag" style="width:auto">${WDAYS.map((d2,t)=>{const dd=new Date(start.getTime()+t*86400000);return `<option value="${t}">${d2} ${fmtDM(dd)}</option>`;}).join('')}</select>
+        <input id="wn-zeit" type="time" style="width:110px">
+        <select id="wn-art" style="width:auto"><option>MGT</option><option>EG</option><option>AG</option><option>BG</option></select>
+        <input id="wn-kunde" placeholder="Name / Betreff" style="width:180px">
+        <input id="wn-ort" placeholder="Ort" style="width:120px">
+        <button class="btn pri" id="wn-add">Hinzufügen</button>
+      </div>
+    </div>`}`;
+  host.querySelector('#w-prev').addEventListener('click',()=>{__wOff--;renderWoche();});
+  host.querySelector('#w-next').addEventListener('click',()=>{__wOff++;renderWoche();});
+  host.querySelector('#w-print').addEventListener('click',()=>window.print());
+  const wp=host.querySelector('#w-person');
+  if(wp)wp.addEventListener('change',e=>{__wPerson=e.target.value;renderWoche();});
+  const wt=host.querySelector('#w-team');
+  if(wt)wt.addEventListener('click',()=>{__wTeam=!__wTeam;renderWoche();});
+  const wa=host.querySelector('#wn-add');
+  if(wa)wa.addEventListener('click',async()=>{
+    const kunde=host.querySelector('#wn-kunde').value.trim();
+    if(!kunde){toast('Bitte Name/Betreff eingeben');return;}
+    if(MODE!=='db'||!wocheCol){toast('Nur online möglich');return;}
+    const doc={wk,name:me,tag:+host.querySelector('#wn-tag').value,zeit:host.querySelector('#wn-zeit').value,art:host.querySelector('#wn-art').value,kunde,ort:host.querySelector('#wn-ort').value.trim(),status:'',ts:new Date().toISOString()};
+    const id2='w'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    try{await wocheCol.doc(id2).set(doc);WOCHE.push(Object.assign({_id:id2},doc));renderWoche();toast('Eingetragen');}catch(e){toast('Speichern fehlgeschlagen');}
+  });
+  host.querySelectorAll('.wentry').forEach(el=>{
+    const [typ,ref,art]=el.dataset.wi.split(':');
+    const ents=wEntriesFor(me,start,wk);
+    const ent=typ==='a'?ents.find(e=>e.auto&&e.dealId===ref&&e.art===art):ents.find(e=>!e.auto&&e._id===ref);
+    if(!ent)return;
+    el.querySelector('.wst').addEventListener('click',ev=>{ev.stopPropagation();wSetStatus(ent,wk);});
+    const del=el.querySelector('.wdel');
+    del.addEventListener('click',async ev=>{
+      ev.stopPropagation();
+      if(ent.auto){openModal(ent.dealId);return;}
+      if(!confirm('Eintrag löschen?'))return;
+      try{await wocheCol.doc(ent._id).delete();WOCHE=WOCHE.filter(x=>x._id!==ent._id);renderWoche();}catch(e){toast('Löschen fehlgeschlagen');}
+    });
+    el.addEventListener('click',()=>{if(ent.auto)openModal(ent.dealId);});
+  });
 }
 
 /* ---------- Aktivitäts-Tracking (App-Öffnungen je Mitarbeiter) ---------- */
@@ -1609,8 +1783,9 @@ function loadDemo(){
 /* ---------- tabs ---------- */
 document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
-  ['steuerung','gp','telefon','pipeline','liste','dashboard','chat'].forEach(t=>document.getElementById('view-'+t).classList.toggle('hide',t!==b.dataset.tab));
+  ['steuerung','gp','telefon','pipeline','liste','dashboard','woche','chat'].forEach(t=>document.getElementById('view-'+t).classList.toggle('hide',t!==b.dataset.tab));
   if(b.dataset.tab==='chat'){ensureChatUI();updateChatLog();markChatSeen();}
+  if(b.dataset.tab==='woche')renderWoche();
 }));
 
 /* ---------- init: Firebase Anmeldung + Datenbank ---------- */
@@ -1649,7 +1824,7 @@ lsLoad();render();
     if(chatUnsub){chatUnsub();chatUnsub=null;}
     if(actUnsub){actUnsub();actUnsub=null;}
     if(!u){
-      MODE='local';ME=null;TEAM=[];state.deals=[];CHAT=[];ACT=[];__lastAct=0;updateChatLog();updateChatBadge();
+      MODE='local';ME=null;TEAM=[];state.deals=[];CHAT=[];ACT=[];__lastAct=0;WOCHE=[];WOCHE_WK='';__wPerson='';__wTeam=false;updateChatLog();updateChatBadge();
       setDbState('🔑 Bitte anmelden','var(--warn)');
       applyRoleUI();render();showLogin();
       return;
@@ -1682,6 +1857,7 @@ lsLoad();render();
         CHAT=snap.docs.map(s=>{const x=Object.assign({},s.data());x._id=s.id;return x;}).reverse();
         updateChatLog();
       },err=>{});
+      wocheCol=fs.collection('woche');WOCHE_WK='';
       actCol=fs.collection('activity');
       logActivity();
       actUnsub=actCol.orderBy('ts','desc').limit(1500).onSnapshot(snap=>{
