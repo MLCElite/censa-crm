@@ -238,6 +238,7 @@
     <button data-tab="chat">Chat</button>
   </div>
   <div class="spacer"></div>
+  <div class="kpi hide" id="todoBadge" title="Deine offenen Aufgaben" style="cursor:pointer;background:var(--warn-bg);color:var(--warn)"></div>
   <div class="kpi" id="meBadge"></div>
   <div class="kpi" id="dbState" title="Datenbank-Status">⏳ verbinde…</div>
   <div class="kpi">☎ Heute <b id="kpiDials">0</b></div>
@@ -848,7 +849,7 @@ function wireTeamPanel(host){
     if(!TEAM.length&&rolle!=='admin'){toast('Lege zuerst DEINEN Admin-Zugang an – sonst sperrst du dich aus');return;}
     if(TEAM.some(x=>(x.name||'').toLowerCase()===name.toLowerCase())){toast('Name existiert bereits');return;}
     if(TEAM.some(x=>(x.email||'').toLowerCase()===email)){toast('E-Mail ist schon einem Zugang zugeordnet');return;}
-    const mem={id:'m'+Math.random().toString(36).slice(2,10),name,rolle,email};
+    const mem={id:'m'+Math.random().toString(36).slice(2,10),name,rolle,email,tel:normTel(host.querySelector('#tmTel').value.trim())};
     try{await teamCol.doc(mem.id).set(mem);toast('Zugang angelegt: '+name+' – Passwort in Firebase (Authentication → Add user) anlegen!');}catch(e){toast('Anlegen fehlgeschlagen'+(e&&e.code?' ('+e.code+')':''));}
   });
   host.querySelectorAll('[data-rmid]').forEach(b=>b.addEventListener('click',async()=>{
@@ -877,6 +878,7 @@ async function chatAck(id){
   const n=chatName();if(!n)return;
   try{await chatCol.doc(id).update({ackBy:firebase.firestore.FieldValue.arrayUnion(n)});}catch(e){toast('Bestätigen fehlgeschlagen');return;}
   const msg=CHAT.find(x=>x._id===id);
+  if(msg&&!(msg.ackBy||[]).includes(n)){msg.ackBy=[...(msg.ackBy||[]),n];updateTodoBadge();updateChatLog();}
   if(msg&&msg.art==='beratung-zuord'&&msg.dealId&&msg.ackWer===n){
     const dd=state.deals.find(x=>x.id===msg.dealId);
     if(dd&&dd.status==='open'&&(dd.berater||'')===n&&dd.stage==='Beratungstermin vereinbart'){
@@ -929,6 +931,46 @@ function updateChatBadge(){
 function markChatSeen(){
   if(CHAT.length){try{localStorage.setItem(CHATSEEN,CHAT[CHAT.length-1].ts||'');}catch(_){}}
   updateChatBadge();
+}
+
+/* ---------- Aufgaben-Box (offene Bestätigungen) + WhatsApp-Info ---------- */
+let __todoShown=false;
+function waNotify(person,text){
+  const mm=TEAM.find(x=>(x.name||'').trim().toLowerCase()===(person||'').trim().toLowerCase());
+  const tel=((mm&&mm.tel)||'').replace(/\D/g,'');
+  if(tel.length<8){toast('Keine Handynummer bei '+person+' hinterlegt (Team & Zugänge) – WhatsApp übersprungen');return;}
+  window.open('https://wa.me/'+tel+'?text='+encodeURIComponent(text),'_blank');
+}
+function myAcksOpen(){
+  const me=chatName();if(!me)return [];
+  return CHAT.filter(m=>m.needAck&&(m.ackWer||'').trim().toLowerCase()===me.trim().toLowerCase()&&!(m.ackBy||[]).some(x=>(x||'').trim().toLowerCase()===me.trim().toLowerCase()));
+}
+function updateTodoBadge(){
+  const el=document.getElementById('todoBadge');if(!el)return;
+  const n=myAcksOpen().length;
+  el.classList.toggle('hide',!n);
+  el.innerHTML='📌 Aufgaben <b>'+n+'</b>';
+}
+function openTodo(force){
+  const acks=myAcksOpen();
+  if(!force&&!acks.length)return;
+  const me=chatName();
+  const start=wkStart(0);
+  const todayIdx=Math.floor((new Date().setHours(0,0,0,0)-start.getTime())/86400000);
+  const heute=autoEntries(me,start).filter(e=>e.tag===todayIdx).sort((a,b)=>(a.zeit||'').localeCompare(b.zeit||''));
+  const od=isAdmin()?[]:visibleDeals().filter(d=>d.status==='open'&&isOverdue(d));
+  const m=document.getElementById('modal');m.classList.remove('wide');
+  m.innerHTML=`<h2>📌 Deine offenen Aufgaben</h2>
+    <div class="sub">${acks.length?(acks.length+' Bestätigung'+(acks.length>1?'en':'')+' offen – bitte kurz abarbeiten'):'Alles bestätigt 👍'}</div>
+    ${acks.map(a=>{const t=a.ts?new Date(a.ts):null;const zeit=t?(String(t.getDate()).padStart(2,'0')+'.'+String(t.getMonth()+1).padStart(2,'0')+'.'):'';
+      return `<div class="ehrow" style="flex-wrap:wrap"><span class="nm" style="min-width:220px;white-space:normal">${zeit?zeit+' · ':''}${esc(a.text)}</span>${a.dealId?`<button class="mini-btn" data-tdl="${esc(a.dealId)}">Lead öffnen</button>`:''}<button class="mini-btn" style="border-color:var(--good);color:var(--good);font-weight:700" data-tda="${esc(a._id||'')}">✔ Gesehen &amp; bestätigt</button></div>`;}).join('')}
+    ${heute.length?`<div class="ehgt" style="margin-top:14px">📅 Deine Termine heute</div>${heute.map(e=>`<div class="ehrow"><span class="wart" style="background:${WARTC[e.art]||'var(--ink-3)'}">${esc(e.art)}</span><b>${esc(e.zeit)}</b><span class="nm">${esc(e.kunde)}</span><button class="mini-btn" data-tdl="${esc(e.dealId)}">Lead</button></div>`).join('')}`:''}
+    ${od.length?`<div class="ehgt" style="margin-top:14px">⏰ Überfällige Wiedervorlagen: <span style="color:var(--bad)">${od.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— siehe Telefon/Pipeline</span></div>`:''}
+    <div class="modal-foot"><button class="btn${acks.length?'':' pri'}" id="m-close">${acks.length?'Später':'Los geht’s'}</button></div>`;
+  document.getElementById('ov').classList.add('show');
+  m.querySelector('#m-close').addEventListener('click',closeModal);
+  m.querySelectorAll('[data-tdl]').forEach(b=>b.addEventListener('click',()=>openModal(b.dataset.tdl)));
+  m.querySelectorAll('[data-tda]').forEach(b=>b.addEventListener('click',async()=>{await chatAck(b.dataset.tda);openTodo(true);}));
 }
 
 /* ---------- Wochenplan: persönlich (auto + manuell) und Team (IVP-Format) ---------- */
@@ -1135,11 +1177,12 @@ function renderGP(){
 function teamPanel(){
   if(MODE!=='db')return `<div class="panel"><h3>Team &amp; Zugänge</h3><div class="empty-col">Zugänge sind aktiv, sobald das CRM online mit Datenbank läuft.</div></div>`;
   return `<div class="panel"><h3>Team &amp; Zugänge <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— jedes Mitglied meldet sich mit E-Mail + Passwort an und sieht nur die eigenen zugeteilten, freigegebenen Leads. Wichtig: Der Name muss exakt so heißen wie bei der Lead-Zuteilung. Das Passwort legst du in der Firebase-Konsole an (Authentication → Users → Add user, gleiche E-Mail).</span></h3>
-    <div class="st-list">${TEAM.length?TEAM.map(mm=>`<div class="gl" style="cursor:default"><span class="gn">${esc(mm.name)}</span><span class="ph">${esc(mm.rolle)}</span><span class="ph">${esc(mm.email||'— keine E-Mail —')}</span><button class="mini-btn" data-rmid="${esc(mm.id)}" style="color:var(--bad)">Entfernen</button></div>`).join(''):'<div class="empty-col">Noch keine Zugänge – lege zuerst deinen eigenen Admin-Zugang an (mit deiner Anmelde-E-Mail).</div>'}</div>
+    <div class="st-list">${TEAM.length?TEAM.map(mm=>`<div class="gl" style="cursor:default"><span class="gn">${esc(mm.name)}</span><span class="ph">${esc(mm.rolle)}</span><span class="ph">${esc(mm.email||'— keine E-Mail —')}</span><span class="ph tnum">${esc(mm.tel||'— kein Handy —')}</span><button class="mini-btn" data-rmid="${esc(mm.id)}" style="color:var(--bad)">Entfernen</button></div>`).join(''):'<div class="empty-col">Noch keine Zugänge – lege zuerst deinen eigenen Admin-Zugang an (mit deiner Anmelde-E-Mail).</div>'}</div>
     <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;align-items:center">
       <input id="tmName" placeholder="Name" style="width:150px">
       <select id="tmRolle" style="width:auto"><option value="telefonist">Telefonist</option><option value="analyst">Analyst</option><option value="berater">Berater</option><option value="admin">Admin</option></select>
       <input id="tmEmail" type="email" placeholder="E-Mail (für Anmeldung)" style="width:200px">
+      <input id="tmTel" placeholder="Handy (für WhatsApp-Info)" style="width:180px">
       <button class="btn" id="tmAdd">+ Zugang anlegen</button>
     </div></div>`;
 }
@@ -1408,6 +1451,8 @@ function openModal(id){
     if(!d.datumAG){toast('Kein Analysetermin eingetragen');return;}
     if(!confirm('Analysetermin ('+d.datumAG+') als abgesagt markieren?\n\nDer Lead geht zurück in die Anrufliste von '+(d.telefonist||'— kein Telefonist —')+'.'))return;
     const alt=d.datumAG;
+    if(d.telefonist&&confirm('WhatsApp-Info an '+d.telefonist+' vorbereiten? (falls er/sie gerade nicht in der App ist)'))
+      waNotify(d.telefonist,'❗ CENSA: Analysetermin '+(d.name||d.org||'—')+' (war '+alt+') wurde ABGESAGT – bitte im CRM bestätigen und neu terminisieren: https://mlcelite.github.io/censa-crm/');
     d.datumAG='';d.stage='In Bearbeitung';d.status='open';d.wiedervorlage=todayStr();
     d.notizen=('AG ABGESAGT (war '+alt+') am '+todayStr().split('-').reverse().join('.')+' – neu terminisieren | '+(d.notizen||''));
     chatSys('❗ Analysetermin ABGESAGT: '+(d.name||d.org||'—')+' (war '+alt+') – '+(d.telefonist?('Telefonist '+d.telefonist):'Telefonist')+' bitte neu terminisieren!',d,d.telefonist||null);
@@ -1418,6 +1463,9 @@ function openModal(id){
     if(!d.datumBG){toast('Kein Beratungstermin eingetragen');return;}
     if(!confirm('Beratungstermin ('+d.datumBG+') als abgesagt markieren?'))return;
     const alt=d.datumBG;
+    const bWer=d.berater||d.analyst;
+    if(bWer&&confirm('WhatsApp-Info an '+bWer+' vorbereiten? (falls er/sie gerade nicht in der App ist)'))
+      waNotify(bWer,'❗ CENSA: Beratungstermin '+(d.name||d.org||'—')+' (war '+alt+') wurde ABGESAGT – bitte im CRM bestätigen und neu terminisieren: https://mlcelite.github.io/censa-crm/');
     d.datumBG='';d.stage='Analyse & Doku';d.status='open';d.wiedervorlage=todayStr();
     d.notizen=('BG ABGESAGT (war '+alt+') am '+todayStr().split('-').reverse().join('.')+' – neu terminisieren | '+(d.notizen||''));
     chatSys('❗ Beratungstermin ABGESAGT: '+(d.name||d.org||'—')+' (war '+alt+') – '+(d.berater?('Berater '+d.berater):'Berater')+'/'+(d.analyst||'Analyst')+' bitte neu terminisieren!',d,d.berater||d.analyst||null);
@@ -1794,6 +1842,7 @@ document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',
   if(b.dataset.tab==='chat'){ensureChatUI();updateChatLog();markChatSeen();}
   if(b.dataset.tab==='woche')renderWoche();
 }));
+document.getElementById('todoBadge').addEventListener('click',()=>openTodo(true));
 
 /* ---------- init: Firebase Anmeldung + Datenbank ---------- */
 lsLoad();render();
@@ -1831,7 +1880,7 @@ lsLoad();render();
     if(chatUnsub){chatUnsub();chatUnsub=null;}
     if(actUnsub){actUnsub();actUnsub=null;}
     if(!u){
-      MODE='local';ME=null;TEAM=[];state.deals=[];CHAT=[];ACT=[];__lastAct=0;WOCHE=[];WOCHE_WK='';__wPerson='';__wTeam=false;updateChatLog();updateChatBadge();
+      MODE='local';ME=null;TEAM=[];state.deals=[];CHAT=[];ACT=[];__lastAct=0;WOCHE=[];WOCHE_WK='';__wPerson='';__wTeam=false;__todoShown=false;updateChatLog();updateChatBadge();updateTodoBadge();
       setDbState('🔑 Bitte anmelden','var(--warn)');
       applyRoleUI();render();showLogin();
       return;
@@ -1862,7 +1911,8 @@ lsLoad();render();
       ensureChatUI();
       chatUnsub=chatCol.orderBy('ts','desc').limit(200).onSnapshot(snap=>{
         CHAT=snap.docs.map(s=>{const x=Object.assign({},s.data());x._id=s.id;return x;}).reverse();
-        updateChatLog();
+        updateChatLog();updateTodoBadge();
+        if(!__todoShown){__todoShown=true;if(myAcksOpen().length)openTodo();}
       },err=>{});
       wocheCol=fs.collection('woche');WOCHE_WK='';
       actCol=fs.collection('activity');
