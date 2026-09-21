@@ -520,15 +520,15 @@ function listeDetailHtml(d){
     </div>
     <div class="dcol">
       <div class="dl">Zuteilung (sofort gespeichert)</div>
-      <select data-lrole="telefonist" title="Telefonist">${roleOpts('telefonist',d.telefonist||'')}</select>
-      <select data-lrole="analyst" title="Analyst">${roleOpts('analyst',d.analyst||'')}</select>
-      <select data-lrole="berater" title="Berater">${roleOpts('berater',d.berater||'')}</select>
+      <div style="display:flex;align-items:center;gap:8px"><span style="width:86px;font-size:10.5px;font-weight:800;letter-spacing:.4px;color:var(--ink-3)">TELEFONIST</span><select data-lrole="telefonist" style="flex:1;min-width:0">${roleOpts('telefonist',d.telefonist||'')}</select></div>
+      <div style="display:flex;align-items:center;gap:8px"><span style="width:86px;font-size:10.5px;font-weight:800;letter-spacing:.4px;color:var(--ink-3)">ANALYST</span><select data-lrole="analyst" style="flex:1;min-width:0">${roleOpts('analyst',d.analyst||'')}</select></div>
+      <div style="display:flex;align-items:center;gap:8px"><span style="width:86px;font-size:10.5px;font-weight:800;letter-spacing:.4px;color:var(--ink-3)">BERATER</span><select data-lrole="berater" style="flex:1;min-width:0">${roleOpts('berater',d.berater||'')}</select></div>
     </div>
     <div class="dcol">
       <div class="dl">Termine (sofort gespeichert)</div>
-      <input type="date" data-lf="wiedervorlage" value="${esc(d.wiedervorlage||'')}" title="Wiedervorlage">
-      <input data-lf="datumAG" value="${esc(d.datumAG||'')}" placeholder="AG-Termin · 22.09. 14:00">
-      <input data-lf="datumBG" value="${esc(d.datumBG||'')}" placeholder="BG-Termin">
+      <div style="display:flex;align-items:center;gap:8px"><span style="width:86px;font-size:10.5px;font-weight:800;letter-spacing:.4px;color:var(--ink-3)">WIEDERVORL.</span><input type="date" data-lf="wiedervorlage" value="${esc(d.wiedervorlage||'')}" style="flex:1;min-width:0"></div>
+      <div style="display:flex;align-items:center;gap:8px"><span style="width:86px;font-size:10.5px;font-weight:800;letter-spacing:.4px;color:var(--ink-3)">AG-TERMIN</span><input data-lf="datumAG" value="${esc(d.datumAG||'')}" placeholder="22.09. 14:00" style="flex:1;min-width:0"></div>
+      <div style="display:flex;align-items:center;gap:8px"><span style="width:86px;font-size:10.5px;font-weight:800;letter-spacing:.4px;color:var(--ink-3)">BG-TERMIN</span><input data-lf="datumBG" value="${esc(d.datumBG||'')}" placeholder="25.09. 10:00" style="flex:1;min-width:0"></div>
     </div>
     <div class="dfull"><div class="stgs" style="margin:0">${STAGES.map((s,i)=>`<button type="button" class="stg${i===cur?' on':(cur>=0&&i<cur?' done':'')}" data-lstage="${esc(s)}" title="${esc(s)}"><i>${(cur>=0&&i<cur)?'✓':(i+1)}</i>${SHORT[i]}</button>`).join('')}</div></div>
     ${(d.briefing||d.notizen)?`<div class="dfull" style="font-size:12px;color:var(--ink-2);line-height:1.5">${d.briefing?'<b>Briefing:</b> '+esc(d.briefing)+'<br>':''}${d.notizen?'<b>Notizen:</b> '+esc((d.notizen||'').slice(0,240)):''}</div>`:''}
