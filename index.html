@@ -335,15 +335,25 @@ function matchMe(){
   const em=((AUTH_USER&&AUTH_USER.email)||'').toLowerCase();
   ME=TEAM.find(m=>(m.email||'').toLowerCase()===em&&em)||null;
 }
+function splitAliases(mm){return [mm.name,...((mm.alias||'').split(','))].map(x=>(x||'').trim().toLowerCase()).filter(Boolean);}
+function personNames(name){
+  const low=(name||'').trim().toLowerCase();
+  const mm=TEAM.find(x=>(x.name||'').trim().toLowerCase()===low);
+  return mm?splitAliases(mm):[low];
+}
+function teamByAnyName(val){
+  const v=(val||'').trim().toLowerCase();if(!v)return null;
+  return TEAM.find(x=>splitAliases(x).includes(v))||null;
+}
 function visibleDeals(){
   if(isAdmin())return state.deals;
   if(!ME)return [];
-  const n=ME.name;
-  const eq=(a,b)=>(a||'').trim().toLowerCase()===(b||'').trim().toLowerCase();
+  const my=personNames(ME.name);
+  const hit=x=>my.includes((x||'').trim().toLowerCase());
   return state.deals.filter(d=>{
     if(d.geprueft===false)return false;
     if(d.gp)return false;
-    return eq(d.telefonist,n)||eq(d.analyst,n)||eq(d.berater,n);
+    return hit(d.telefonist)||hit(d.analyst)||hit(d.berater);
   });
 }
 function applyRoleUI(){
@@ -858,7 +868,7 @@ function wireTeamPanel(host){
     if(!TEAM.length&&rolle!=='admin'){toast('Lege zuerst DEINEN Admin-Zugang an – sonst sperrst du dich aus');return;}
     if(TEAM.some(x=>(x.name||'').toLowerCase()===name.toLowerCase())){toast('Name existiert bereits');return;}
     if(TEAM.some(x=>(x.email||'').toLowerCase()===email)){toast('E-Mail ist schon einem Zugang zugeordnet');return;}
-    const mem={id:'m'+Math.random().toString(36).slice(2,10),name,rolle,email,tel:normTel(host.querySelector('#tmTel').value.trim())};
+    const mem={id:'m'+Math.random().toString(36).slice(2,10),name,rolle,email,tel:normTel(host.querySelector('#tmTel').value.trim()),alias:host.querySelector('#tmAlias').value.trim()};
     try{await teamCol.doc(mem.id).set(mem);toast('Zugang angelegt: '+name+' – Passwort in Firebase (Authentication → Add user) anlegen!');}catch(e){toast('Anlegen fehlgeschlagen'+(e&&e.code?' ('+e.code+')':''));}
   });
   host.querySelectorAll('[data-rmid]').forEach(b=>b.addEventListener('click',async()=>{
@@ -888,9 +898,11 @@ async function chatAck(id){
   try{await chatCol.doc(id).update({ackBy:firebase.firestore.FieldValue.arrayUnion(n)});}catch(e){toast('Bestätigen fehlgeschlagen');return;}
   const msg=CHAT.find(x=>x._id===id);
   if(msg&&!(msg.ackBy||[]).includes(n)){msg.ackBy=[...(msg.ackBy||[]),n];updateTodoBadge();updateChatLog();}
-  if(msg&&msg.art==='beratung-zuord'&&msg.dealId&&msg.ackWer===n){
+  const my=personNames(n);
+  const isMe=x=>my.includes((x||'').trim().toLowerCase());
+  if(msg&&msg.art==='beratung-zuord'&&msg.dealId&&isMe(msg.ackWer)){
     const dd=state.deals.find(x=>x.id===msg.dealId);
-    if(dd&&dd.status==='open'&&(dd.berater||'')===n&&dd.stage==='Beratungstermin vereinbart'){
+    if(dd&&dd.status==='open'&&isMe(dd.berater)&&dd.stage==='Beratungstermin vereinbart'){
       dd.stage='Beratung / Angebot';dbPersist(dd);render();
       toast('Angenommen – Phase: Beratung / Angebot');
     }
@@ -922,7 +934,7 @@ function updateChatLog(){
       if(pend)ack+=`<div style="margin-top:3px;font-size:11px;color:var(--bad);font-weight:700">⏳ Warten auf Bestätigung von ${werLabel}</div>`;
       if(m._id&&!by.includes(meN)&&!m.declined){
         ack+=`<div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap"><button class="mini-btn" data-ack="${esc(m._id)}" style="border-color:var(--good);color:var(--good)">✔ Gesehen &amp; bestätigt</button>`;
-        if((m.art==='beratung-zuord'||m.art==='analyse-zuord')&&(m.ackWer||'').trim().toLowerCase()===meN.trim().toLowerCase())ack+=`<button class="mini-btn" data-dec="${esc(m._id)}" style="border-color:var(--bad);color:var(--bad)">✖ Ablehnen</button>`;
+        if((m.art==='beratung-zuord'||m.art==='analyse-zuord')&&personNames(meN).includes((m.ackWer||'').trim().toLowerCase()))ack+=`<button class="mini-btn" data-dec="${esc(m._id)}" style="border-color:var(--bad);color:var(--bad)">✖ Ablehnen</button>`;
         ack+='</div>';
       }
     }
@@ -952,15 +964,16 @@ function markChatSeen(){
 /* ---------- Aufgaben-Box (offene Bestätigungen) + WhatsApp-Info ---------- */
 let __todoShown=false;
 function waNotify(person,text){
-  const mm=TEAM.find(x=>(x.name||'').trim().toLowerCase()===(person||'').trim().toLowerCase());
+  const mm=teamByAnyName(person);
   const tel=((mm&&mm.tel)||'').replace(/\D/g,'');
   if(tel.length<8){toast('Keine Handynummer bei '+person+' hinterlegt (Team & Zugänge) – WhatsApp übersprungen');return;}
   window.open('https://wa.me/'+tel+'?text='+encodeURIComponent(text),'_blank');
 }
 function myAcksOpen(){
   const me=chatName();if(!me)return [];
-  const eq2=(a,b)=>(a||'').trim().toLowerCase()===(b||'').trim().toLowerCase();
-  return CHAT.filter(m=>m.needAck&&!(m.ackBy||[]).some(x=>eq2(x,me))&&(eq2(m.ackWer,me)||(m.ackWer==='__admin__'&&isAdmin())));
+  const my=personNames(me);
+  const isMe=x=>my.includes((x||'').trim().toLowerCase());
+  return CHAT.filter(m=>m.needAck&&!(m.ackBy||[]).some(isMe)&&(isMe(m.ackWer)||(m.ackWer==='__admin__'&&isAdmin())));
 }
 async function chatDecline(id){
   const msg=CHAT.find(x=>x._id===id);if(!msg||!chatCol)return;
@@ -973,8 +986,9 @@ async function chatDecline(id){
   const role=msg.art==='beratung-zuord'?'berater':'analyst';
   const d=state.deals.find(x=>x.id===msg.dealId);
   let nm=msg.dealName||'—';
+  const myD=personNames(n);
   if(d){nm=d.name||d.org||'—';
-    if((d[role]||'').trim().toLowerCase()===n.trim().toLowerCase()){d[role]='';histAdd(d,'Zuordnung ABGELEHNT ('+role+')'+(grund?': '+grund.slice(0,120):''));dbPersist(d);}
+    if(myD.includes((d[role]||'').trim().toLowerCase())){d[role]='';histAdd(d,'Zuordnung ABGELEHNT ('+role+')'+(grund?': '+grund.slice(0,120):''));dbPersist(d);}
   }
   chatSys('🚫 NICHT angenommen: '+(role==='berater'?'Beratung':'Analyse')+' '+nm+' – '+n+' hat abgelehnt'+(grund?' ('+grund.slice(0,120)+')':'')+' – bitte in der Tages-Dispo neu zuordnen!',d||null,'__admin__');
   updateTodoBadge();updateChatLog();render();
@@ -998,7 +1012,7 @@ function openTodo(force){
   m.innerHTML=`<h2>📌 Deine offenen Aufgaben</h2>
     <div class="sub">${acks.length?(acks.length+' Bestätigung'+(acks.length>1?'en':'')+' offen – bitte kurz abarbeiten'):'Alles bestätigt 👍'}</div>
     ${acks.map(a=>{const t=a.ts?new Date(a.ts):null;const zeit=t?(String(t.getDate()).padStart(2,'0')+'.'+String(t.getMonth()+1).padStart(2,'0')+'.'):'';
-      const canDec=(a.art==='beratung-zuord'||a.art==='analyse-zuord')&&(a.ackWer||'').trim().toLowerCase()===(me||'').trim().toLowerCase();
+      const canDec=(a.art==='beratung-zuord'||a.art==='analyse-zuord')&&personNames(me).includes((a.ackWer||'').trim().toLowerCase());
       return `<div class="ehrow" style="flex-wrap:wrap"><span class="nm" style="min-width:220px;white-space:normal">${zeit?zeit+' · ':''}${esc(a.text)}</span>${a.dealId?`<button class="mini-btn" data-tdl="${esc(a.dealId)}">Lead öffnen</button>`:''}<button class="mini-btn" style="border-color:var(--good);color:var(--good);font-weight:700" data-tda="${esc(a._id||'')}">✔ Annehmen</button>${canDec?`<button class="mini-btn" style="border-color:var(--bad);color:var(--bad)" data-tdd="${esc(a._id||'')}">✖ Ablehnen</button>`:''}</div>`;}).join('')}
     ${heute.length?`<div class="ehgt" style="margin-top:14px">📅 Deine Termine heute</div>${heute.map(e=>`<div class="ehrow"><span class="wart" style="background:${WARTC[e.art]||'var(--ink-3)'}">${esc(e.art)}</span><b>${esc(e.zeit)}</b><span class="nm">${esc(e.kunde)}</span><button class="mini-btn" data-tdl="${esc(e.dealId)}">Lead</button></div>`).join('')}`:''}
     ${od.length?`<div class="ehgt" style="margin-top:14px">⏰ Überfällige Wiedervorlagen: <span style="color:var(--bad)">${od.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— siehe Telefon/Pipeline</span></div>`:''}
@@ -1028,12 +1042,14 @@ async function loadWoche(wk){
 }
 function autoEntries(person,start){
   const end=new Date(start.getTime()+7*86400000);
+  const pn=personNames(person);
+  const hit=x=>pn.includes((x||'').trim().toLowerCase());
   const out=[];
   state.deals.forEach(d=>{
     if(d.status==='lost')return;
     const push=(art,ds)=>{const dt=parseTermin(ds);if(dt&&dt>=start&&dt<end){out.push({auto:true,dealId:d.id,art,tag:Math.floor((dt-start)/86400000),zeit:calPad(dt.getHours())+':'+calPad(dt.getMinutes()),kunde:d.name||d.org||'—',ort:d.bezirk||d.ort||'',status:'',name:person});}};
-    if(nameEq(d.analyst,person))push('AG',d.datumAG);
-    if(nameEq(d.berater,person))push('BG',d.datumBG);
+    if(hit(d.analyst))push('AG',d.datumAG);
+    if(hit(d.berater))push('BG',d.datumBG);
   });
   return out;
 }
@@ -1214,12 +1230,13 @@ function renderGP(){
 function teamPanel(){
   if(MODE!=='db')return `<div class="panel"><h3>Team &amp; Zugänge</h3><div class="empty-col">Zugänge sind aktiv, sobald das CRM online mit Datenbank läuft.</div></div>`;
   return `<div class="panel"><h3>Team &amp; Zugänge <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— jedes Mitglied meldet sich mit E-Mail + Passwort an und sieht nur die eigenen zugeteilten, freigegebenen Leads. Wichtig: Der Name muss exakt so heißen wie bei der Lead-Zuteilung. Das Passwort legst du in der Firebase-Konsole an (Authentication → Users → Add user, gleiche E-Mail).</span></h3>
-    <div class="st-list">${TEAM.length?TEAM.map(mm=>`<div class="gl" style="cursor:default"><span class="gn">${esc(mm.name)}</span><span class="ph">${esc(mm.rolle)}</span><span class="ph">${esc(mm.email||'— keine E-Mail —')}</span><span class="ph tnum">${esc(mm.tel||'— kein Handy —')}</span><button class="mini-btn" data-rmid="${esc(mm.id)}" style="color:var(--bad)">Entfernen</button></div>`).join(''):'<div class="empty-col">Noch keine Zugänge – lege zuerst deinen eigenen Admin-Zugang an (mit deiner Anmelde-E-Mail).</div>'}</div>
+    <div class="st-list">${TEAM.length?TEAM.map(mm=>`<div class="gl" style="cursor:default;flex-wrap:wrap"><span class="gn">${esc(mm.name)}</span><span class="ph">${esc(mm.rolle)}</span><span class="ph">${esc(mm.email||'— keine E-Mail —')}</span><span class="ph tnum">${esc(mm.tel||'—')}</span>${mm.alias?`<span class="ph">alias: ${esc(mm.alias)}</span>`:''}<button class="mini-btn" data-rmid="${esc(mm.id)}" style="color:var(--bad)">Entfernen</button></div>`).join(''):'<div class="empty-col">Noch keine Zugänge – lege zuerst deinen eigenen Admin-Zugang an (mit deiner Anmelde-E-Mail).</div>'}</div>
     <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;align-items:center">
       <input id="tmName" placeholder="Name" style="width:150px">
       <select id="tmRolle" style="width:auto"><option value="telefonist">Telefonist</option><option value="analyst">Analyst</option><option value="berater">Berater</option><option value="admin">Admin</option></select>
       <input id="tmEmail" type="email" placeholder="E-Mail (für Anmeldung)" style="width:200px">
-      <input id="tmTel" placeholder="Handy (für WhatsApp-Info)" style="width:180px">
+      <input id="tmTel" placeholder="Handy (für WhatsApp-Info)" style="width:170px">
+      <input id="tmAlias" placeholder="Auch bekannt als … (z. B. CEVIK M., kommagetrennt)" style="width:280px" title="Weitere Schreibweisen des Namens in den Lead-Daten – das CRM erkennt die Person dann unter allen Varianten">
       <button class="btn" id="tmAdd">+ Zugang anlegen</button>
     </div></div>`;
 }
@@ -1317,8 +1334,7 @@ function calGoogle(title,dt,details,loc,guests){
   return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(title)+'&dates='+calFmt(dt)+'/'+calFmt(end)+'&ctz=Europe/Vienna&details='+encodeURIComponent(details||'')+'&location='+encodeURIComponent(loc||'')+(gl?'&add='+encodeURIComponent(gl):'');
 }
 function teamMail(name){
-  if(!(name||'').trim())return '';
-  const mm=TEAM.find(x=>(x.name||'').toLowerCase()===name.trim().toLowerCase());
+  const mm=teamByAnyName(name);
   return mm?(mm.email||''):'';
 }
 function terminText(dt){return calPad(dt.getDate())+'.'+calPad(dt.getMonth()+1)+'.'+dt.getFullYear()+' um '+calPad(dt.getHours())+':'+calPad(dt.getMinutes())+' Uhr';}
