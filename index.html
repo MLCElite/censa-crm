@@ -173,6 +173,20 @@
   .histline{font-size:11px;color:var(--ink-3);margin-top:4px}
   .gptoggle{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;cursor:pointer;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:9px 12px}
   .gptoggle input{width:16px;height:16px;accent-color:var(--warn)}
+  .detrow>td{background:var(--surface-2)!important;cursor:default;white-space:normal;padding:12px 14px}
+  .dcard{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:12px 16px}
+  .dcol{display:flex;flex-direction:column;gap:6px;min-width:0}
+  .dl{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--ink-3)}
+  .dv{font-size:12.5px;white-space:normal;text-decoration:none}
+  .dfull{grid-column:1/-1}
+  @media (max-width:900px){.dcard{grid-template-columns:1fr}}
+  details.sec{border:1px solid var(--line);border-radius:11px;background:var(--surface-2);margin:0 0 4px;grid-column:1/-1}
+  details.sec>summary{list-style:none;cursor:pointer;padding:10px 13px;font-size:12px;font-weight:700;display:flex;gap:9px;align-items:center;color:var(--ink-2);text-transform:uppercase;letter-spacing:.3px}
+  details.sec>summary::-webkit-details-marker{display:none}
+  details.sec>summary::after{content:"▸";margin-left:auto;color:var(--ink-3)}
+  details.sec[open]>summary::after{content:"▾"}
+  details.sec>summary .sv{font-weight:600;color:var(--ink-3);text-transform:none;letter-spacing:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:55%}
+  details.sec>.inner2{padding:2px 13px 13px}
   .stgs{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 14px}
   .stg{border:1px solid var(--line);background:var(--surface-2);color:var(--ink-3);font-size:11px;font-weight:700;padding:5px 10px 5px 6px;border-radius:20px;cursor:pointer;display:flex;align-items:center;gap:6px;transition:.13s}
   .stg i{font-style:normal;width:16px;height:16px;border-radius:50%;background:var(--surface-3);display:grid;place-items:center;font-size:9.5px;font-weight:800}
@@ -491,6 +505,40 @@ function leadCard(d){
   return `<div class="lead${od?' od':''}" data-id="${d.id}"><div class="n">${esc(d.name||d.org||'—')}</div><div class="meta">${badge(d.kundentyp)}${d.geprueft===false?'<span class="tg gpb">📥 Posteingang</span>':''}${od?`<span class="tg od">überfällig</span>`:''}${(d.gp&&isAdmin())?`<span class="tg gpb">GP?</span>`:''}${d.bezirk?`<span class="tg">${esc(d.bezirk)}</span>`:''}${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''}${eh>0?`<span class="tg" style="background:var(--brand-bg);color:var(--brand-ink)">${eh.toFixed(0)} EH</span>`:''}</div>${d.telefon?`<div class="tel">${esc(d.telefon)}</div>`:''}</div>`;
 }
 
+function listeDetailHtml(d){
+  const roleOpts=(role,cur)=>{const opts=[...new Set([...TEAM.map(t=>t.name),...state.deals.map(x=>x[role]).filter(Boolean),cur].filter(Boolean))].sort();return `<option value=""${!cur?' selected':''}>— frei —</option>`+opts.map(o=>`<option${o===cur?' selected':''}>${esc(o)}</option>`).join('');};
+  const SHORT=['Neu','Bearb.','AG term.','Analyse','BG term.','Beratung'];
+  const cur=STAGES.indexOf(d.stage);
+  const eh=ehAbschluss(d);
+  return `<tr class="detrow"><td colspan="10"><div class="dcard">
+    <div class="dcol">
+      <div class="dl">Kontakt</div>
+      ${d.telefon?`<a href="tel:${esc((d.telefon||'').replace(/[^+\d]/g,''))}" class="dv" style="color:var(--brand-ink);font-weight:700">☎ ${esc(d.telefon)}</a>`:'<span class="dv">☎ —</span>'}
+      <span class="dv">✉ ${esc(d.email||'—')}</span>
+      <span class="dv">📍 ${esc([d.strasse,d.plz,d.ort].filter(Boolean).join(', ')||'—')}${d.bezirk?' · '+esc(d.bezirk):''}</span>
+      <span class="dv">${badge(d.kundentyp)} ${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''} ${eh>0?`<span class="tg" style="background:var(--brand-bg);color:var(--brand-ink)">${eh.toFixed(0)} EH</span>`:''} ${naInfo(d)}</span>
+    </div>
+    <div class="dcol">
+      <div class="dl">Zuteilung (sofort gespeichert)</div>
+      <select data-lrole="telefonist" title="Telefonist">${roleOpts('telefonist',d.telefonist||'')}</select>
+      <select data-lrole="analyst" title="Analyst">${roleOpts('analyst',d.analyst||'')}</select>
+      <select data-lrole="berater" title="Berater">${roleOpts('berater',d.berater||'')}</select>
+    </div>
+    <div class="dcol">
+      <div class="dl">Termine (sofort gespeichert)</div>
+      <input type="date" data-lf="wiedervorlage" value="${esc(d.wiedervorlage||'')}" title="Wiedervorlage">
+      <input data-lf="datumAG" value="${esc(d.datumAG||'')}" placeholder="AG-Termin · 22.09. 14:00">
+      <input data-lf="datumBG" value="${esc(d.datumBG||'')}" placeholder="BG-Termin">
+    </div>
+    <div class="dfull"><div class="stgs" style="margin:0">${STAGES.map((s,i)=>`<button type="button" class="stg${i===cur?' on':(cur>=0&&i<cur?' done':'')}" data-lstage="${esc(s)}" title="${esc(s)}"><i>${(cur>=0&&i<cur)?'✓':(i+1)}</i>${SHORT[i]}</button>`).join('')}</div></div>
+    ${(d.briefing||d.notizen)?`<div class="dfull" style="font-size:12px;color:var(--ink-2);line-height:1.5">${d.briefing?'<b>Briefing:</b> '+esc(d.briefing)+'<br>':''}${d.notizen?'<b>Notizen:</b> '+esc((d.notizen||'').slice(0,240)):''}</div>`:''}
+    <div class="dfull" style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
+      <button class="btn pri" data-lopen="1" style="padding:7px 13px;font-size:12.5px">Vollansicht öffnen</button>
+      <button class="btn" data-lueb="1" style="padding:7px 13px;font-size:12.5px">📋 Übergabe${d.uebergabe?' ✓':''}</button>
+      <span class="kpi" style="margin-left:auto">Status: ${d.status==='won'?'🏆 Gewonnen':d.status==='lost'?'❌ Verloren ('+esc(d.lostReason||'')+')':'offen'}</span>
+    </div>
+  </div></td></tr>`;
+}
 function renderListe(){
   const host=document.getElementById('view-liste');
   const DS=visibleDeals();
@@ -533,7 +581,7 @@ function renderListe(){
   <div class="tablewrap"><table><thead><tr>
     ${['name','kundentyp','telefon','bezirk','ort','quelle','stage','telefonist','analyst','berater'].map(c=>`<th data-c="${c}">${({name:'Name',kundentyp:'Typ',telefon:'Telefon',bezirk:'Bezirk',ort:'Ort',quelle:'Quelle',stage:'Phase',telefonist:'Telefonist',analyst:'Analyst',berater:'Berater'})[c]}</th>`).join('')}
   </tr></thead><tbody>
-    ${rows.map(d=>`<tr data-id="${d.id}"><td>${esc(d.name||d.org||'—')}</td><td>${badge(d.kundentyp)}</td><td class="tnum">${esc(d.telefon)}</td><td>${esc(d.bezirk||'')}</td><td>${esc(d.ort)}</td><td>${esc(d.quelle)}</td><td ${stCls(d)}>${d.status==='won'?'Gewonnen':d.status==='lost'?'Verloren':esc(d.stage)}</td><td>${esc(d.telefonist||'')}</td><td>${esc(d.analyst)}</td><td>${esc(d.berater)}</td></tr>`).join('')}
+    ${rows.map(d=>`<tr data-id="${d.id}"${host.__openId===d.id?' style="background:var(--brand-bg)"':''}><td><b>${esc(d.name||d.org||'—')}</b></td><td>${badge(d.kundentyp)}</td><td class="tnum">${esc(d.telefon)}</td><td>${esc(d.bezirk||'')}</td><td>${esc(d.ort)}</td><td>${esc(d.quelle)}</td><td ${stCls(d)}>${d.status==='won'?'Gewonnen':d.status==='lost'?'Verloren':esc(d.stage)}</td><td>${esc(d.telefonist||'')}</td><td>${esc(d.analyst)}</td><td>${esc(d.berater)}</td></tr>${host.__openId===d.id?listeDetailHtml(d):''}`).join('')}
   </tbody></table></div>`;
   host.querySelector('#fSearch').addEventListener('input',e=>{host.__q=e.target.value;renderListe();});
   host.querySelector('#fBez').addEventListener('change',e=>{host.__bez=e.target.value;renderListe();});
@@ -565,7 +613,43 @@ function renderListe(){
   host.querySelector('#fTyp').addEventListener('change',e=>{host.__typ=e.target.value;renderListe();});
   host.querySelector('#fQuelle').addEventListener('change',e=>{host.__quelle=e.target.value;renderListe();});
   host.querySelectorAll('th').forEach(th=>th.addEventListener('click',()=>{const c=th.dataset.c;if(sortCol===c)sortDir*=-1;else{sortCol=c;sortDir=1;}renderListe();}));
-  host.querySelectorAll('tbody tr').forEach(tr=>tr.addEventListener('click',()=>openModal(tr.dataset.id)));
+  host.querySelectorAll('tbody tr[data-id]').forEach(tr=>tr.addEventListener('click',()=>{
+    host.__openId=(host.__openId===tr.dataset.id?null:tr.dataset.id);
+    renderListe();
+  }));
+  const det=host.querySelector('.detrow');
+  if(det&&host.__openId){
+    const d=state.deals.find(x=>x.id===host.__openId);
+    if(d){
+      det.querySelectorAll('[data-lrole]').forEach(s=>s.addEventListener('change',()=>{
+        const role=s.dataset.lrole,val=s.value.trim(),old=d[role]||'';
+        if(role==='telefonist'&&old.trim()&&old!==val&&val){d.telHist=d.telHist||[];if(!d.telHist.includes(old))d.telHist.push(old);}
+        d[role]=val;if(val)d.geprueft=true;
+        histAdd(d,(role==='telefonist'?'Telefonist':role==='analyst'?'Analyst':'Berater')+': '+(old||'—')+' → '+(val||'—'));
+        if(val&&role!=='telefonist')chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet: '+(d.name||d.org||'—')+' → '+val+' – bitte annehmen!',d,val,role==='berater'?'beratung-zuord':'analyse-zuord');
+        if(role==='berater'&&val&&d.stage==='Analyse & Doku')d.stage='Beratungstermin vereinbart';
+        dbPersist(d);renderListe();toast('Gespeichert ✓');
+      }));
+      det.querySelectorAll('[data-lf]').forEach(inp=>inp.addEventListener('change',()=>{
+        const f=inp.dataset.lf,old=d[f]||'',val=inp.value.trim();
+        if(old===val)return;
+        d[f]=val;
+        const L={wiedervorlage:'Wiedervorlage',datumAG:'AG-Termin',datumBG:'BG-Termin'};
+        histAdd(d,L[f]+': '+(old||'—')+' → '+(val||'—'));
+        if(f==='datumAG'&&val)chatSys('📅 Analysetermin '+(old?'GEÄNDERT (war '+old+')':'gesetzt')+': '+(d.name||d.org||'—')+' – '+val,d,old?(d.analyst||d.telefonist||null):null);
+        if(f==='datumBG'&&val)chatSys('📅 Beratungstermin '+(old?'GEÄNDERT (war '+old+')':'gesetzt')+': '+(d.name||d.org||'—')+' – '+val,d,old?(d.berater||d.analyst||null):null);
+        if(f==='datumAG'&&val&&['Neuer Lead','In Bearbeitung'].includes(d.stage)&&(d.analyst||'').trim())d.stage='Analysetermin vereinbart';
+        dbPersist(d);renderListe();toast('Gespeichert ✓');
+      }));
+      det.querySelectorAll('[data-lstage]').forEach(b=>b.addEventListener('click',()=>{
+        const old=d.stage;d.stage=b.dataset.lstage;d.status='open';
+        histAdd(d,'Phase: '+old+' → '+d.stage);
+        dbPersist(d);renderListe();toast('Phase: '+d.stage);
+      }));
+      const lo=det.querySelector('[data-lopen]');if(lo)lo.addEventListener('click',()=>openModal(d.id));
+      const lu=det.querySelector('[data-lueb]');if(lu)lu.addEventListener('click',()=>openUebergabe(d.id));
+    }
+  }
 }
 
 /* ---------- Aufteilen: bezirksweise gebündelt, Stückzahl fair ---------- */
@@ -1364,7 +1448,7 @@ function openModal(id){
     Object.keys(HFIELDS).forEach(k=>{const b2=d[k]==null?'':''+d[k];if(before2[k]!==b2){ch.push(HFIELDS[k]+': '+(before2[k]||'—')+' → '+(b2||'—'));before2[k]=b2;}});
     if(ch.length&&!isNew)histAdd(d,ch.join(' · '));
   };
-  const m=document.getElementById('modal');m.classList.remove('wide');
+  const m=document.getElementById('modal');m.classList.add('wide');
   m.innerHTML=`
     <h2>${isNew?'Neuer Lead':esc(d.name||d.org||'Lead')}</h2>
     <div class="sub">${isNew?'Datensatz anlegen':'Status: '+(d.status==='won'?'Gewonnen':d.status==='lost'?'Verloren ('+esc(d.lostReason||'')+')':esc(d.stage))}</div>
@@ -1382,7 +1466,8 @@ function openModal(id){
       <div class="fld"><label>Quelle</label><input id="m-quelle" value="${esc(d.quelle)}" placeholder="Recherche, Empfehlung…"></div>
       <div class="fld full"><label>Name</label><input id="m-name" value="${esc(d.name)}"></div>
       <div class="fld full ${d.kundentyp==='GmbH'?'':'hide'}" id="m-orgwrap"><label>Firma</label><input id="m-org" value="${esc(d.org)}"></div>
-      <div class="fld full ${d.kundentyp==='GmbH'?'':'hide'}" id="m-finwrap"><label>Finanzdaten (öffentlich, soweit verfügbar)</label>
+      <details class="sec ${d.kundentyp==='GmbH'?'':'hide'}" id="m-finwrap"><summary>🏢 Finanzdaten <span class="sv">${d.umsatz?('Umsatz '+esc(d.umsatz)+' €'):(d.anlage?('Anlagevermögen '+esc(d.anlage)+' €'):'— öffentliche Zahlen eintragen —')}</span></summary>
+        <div class="inner2">
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
           <input id="m-umsatz" type="number" placeholder="Umsatz €" value="${esc(d.umsatz||'')}">
           <input id="m-gewinn" type="number" placeholder="Gewinn €" value="${esc(d.gewinn||'')}">
@@ -1391,17 +1476,25 @@ function openModal(id){
         <div style="display:flex;gap:7px;margin-top:7px;flex-wrap:wrap;align-items:center">
           <a class="mini-btn" id="m-fin-nd" href="#" target="_blank" rel="noopener">Firmen-Check: Northdata</a>
           <a class="mini-btn" id="m-fin-g" href="#" target="_blank" rel="noopener">Firmen-Check: Google</a>
-          <span style="font-size:11px;color:var(--ink-3)">öffnet die Suche zur Firma – gefundene Werte hier eintragen</span>
         </div>
-      </div>
+        </div>
+      </details>
       <div class="fld"><label>Telefon</label><input id="m-tel" value="${esc(d.telefon)}" placeholder="+43 …"></div>
       <div class="fld"><label>E-Mail (Kunde) <span style="font-weight:500;color:var(--ink-3);text-transform:none">— für Termineinladung</span></label><input id="m-email" type="email" value="${esc(d.email||'')}" placeholder="kunde@firma.at"></div>
-      <div class="fld"><label>Straße + Nr.</label><input id="m-str" value="${esc(d.strasse||'')}" placeholder="Mustergasse 12/4"></div>
-      <div class="fld"><label>PLZ <span id="m-bezview" style="font-weight:600;color:var(--brand-ink)">${d.bezirk?'· '+esc(d.bezirk):''}</span></label><input id="m-plz" value="${esc(d.plz||'')}" placeholder="1100"></div>
-      <div class="fld"><label>Ort</label><input id="m-ort" value="${esc(d.ort)}" placeholder="Wien"></div>
-      <div class="fld"><label>Analyst</label><input id="m-an" value="${esc(d.analyst)}"></div>
-      <div class="fld"><label>Berater</label><input id="m-be" value="${esc(d.berater)}"></div>
-      <div class="fld"><label>Telefonist</label><input id="m-telf" value="${esc(d.telefonist||'')}">${(d.telHist&&d.telHist.length)?`<div class="histline">Frühere Anrufer: ${esc(d.telHist.join(', '))}</div>`:''}</div>
+      <details class="sec"${(d.strasse||d.plz||d.ort)?'':' open'}><summary>📍 Adresse <span class="sv">${esc([d.strasse,d.plz,d.ort].filter(Boolean).join(', ')||'— noch leer —')}${d.bezirk?' · '+esc(d.bezirk):''}</span></summary>
+        <div class="inner2" style="display:grid;grid-template-columns:2fr .8fr 1.2fr;gap:9px">
+          <input id="m-str" value="${esc(d.strasse||'')}" placeholder="Straße + Nr.">
+          <input id="m-plz" value="${esc(d.plz||'')}" placeholder="PLZ">
+          <input id="m-ort" value="${esc(d.ort)}" placeholder="Ort">
+        </div>
+        <div style="padding:0 13px 11px;font-size:11.5px;font-weight:700;color:var(--brand-ink)" id="m-bezview">${d.bezirk?'· '+esc(d.bezirk):''}</div>
+      </details>
+      ${(()=>{const roleSel=(id2,label,cur,role)=>{
+        const opts=[...new Set([...TEAM.map(t=>t.name),...state.deals.map(x=>x[role]).filter(Boolean),cur].filter(Boolean))].sort();
+        return `<div class="fld"><label>${label}</label><select id="${id2}"><option value=""${!cur?' selected':''}>— frei —</option>${opts.map(o=>`<option${o===cur?' selected':''}>${esc(o)}</option>`).join('')}</select></div>`;
+      };
+      return roleSel('m-telf','Telefonist',d.telefonist||'','telefonist')+roleSel('m-an','Analyst',d.analyst||'','analyst')+roleSel('m-be','Berater',d.berater||'','berater');})()}
+      ${(d.telHist&&d.telHist.length)?`<div class="fld full"><div class="histline">Frühere Anrufer: ${esc(d.telHist.join(', '))}</div></div>`:''}
       <div class="fld"><label>Wiedervorlage</label><input type="date" id="m-wv" value="${esc(d.wiedervorlage)}"></div>
       <div class="fld"><label>Analysetermin (AG)</label><input id="m-dag" value="${esc(d.datumAG||'')}" placeholder="z. B. 22.09. 14:00"></div>
       <div class="fld"><label>Beratungstermin (BG)</label><input id="m-dbg" value="${esc(d.datumBG||'')}" placeholder="z. B. 25.09. 10:00"></div>
