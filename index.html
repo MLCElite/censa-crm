@@ -949,12 +949,22 @@ function wireTeamPanel(host){
     const email=host.querySelector('#tmEmail').value.trim().toLowerCase();
     if(!name){toast('Bitte Namen eingeben');return;}
     if(!email||!/^\S+@\S+\.\S+$/.test(email)){toast('Bitte gültige E-Mail eingeben – damit meldet sich die Person an');return;}
+    const other=x=>!TM_EDIT||x.id!==TM_EDIT;
     if(!TEAM.length&&rolle!=='admin'){toast('Lege zuerst DEINEN Admin-Zugang an – sonst sperrst du dich aus');return;}
-    if(TEAM.some(x=>(x.name||'').toLowerCase()===name.toLowerCase())){toast('Name existiert bereits');return;}
-    if(TEAM.some(x=>(x.email||'').toLowerCase()===email)){toast('E-Mail ist schon einem Zugang zugeordnet');return;}
-    const mem={id:'m'+Math.random().toString(36).slice(2,10),name,rolle,email,tel:normTel(host.querySelector('#tmTel').value.trim()),alias:host.querySelector('#tmAlias').value.trim()};
-    try{await teamCol.doc(mem.id).set(mem);toast('Zugang angelegt: '+name+' – Passwort in Firebase (Authentication → Add user) anlegen!');}catch(e){toast('Anlegen fehlgeschlagen'+(e&&e.code?' ('+e.code+')':''));}
+    if(TEAM.some(x=>other(x)&&(x.name||'').toLowerCase()===name.toLowerCase())){toast('Name existiert bereits');return;}
+    if(TEAM.some(x=>other(x)&&(x.email||'').toLowerCase()===email)){toast('E-Mail ist schon einem Zugang zugeordnet');return;}
+    const id2=TM_EDIT||('m'+Math.random().toString(36).slice(2,10));
+    const mem={id:id2,name,rolle,email,tel:normTel(host.querySelector('#tmTel').value.trim()),alias:host.querySelector('#tmAlias').value.trim()};
+    const war=!!TM_EDIT;
+    try{
+      await teamCol.doc(id2).set(mem);
+      TM_EDIT=null;
+      toast(war?('Zugang aktualisiert: '+name):('Zugang angelegt: '+name+' – Passwort in Firebase (Authentication → Add user) anlegen!'));
+    }catch(e){toast('Speichern fehlgeschlagen'+(e&&e.code?' ('+e.code+')':''));}
   });
+  host.querySelectorAll('[data-edid]').forEach(b=>b.addEventListener('click',()=>{TM_EDIT=b.dataset.edid;renderSteuerung();}));
+  const tc=host.querySelector('#tmCancel');
+  if(tc)tc.addEventListener('click',()=>{TM_EDIT=null;renderSteuerung();});
   host.querySelectorAll('[data-rmid]').forEach(b=>b.addEventListener('click',async()=>{
     const mm=TEAM.find(x=>x.id===b.dataset.rmid);if(!mm)return;
     if(mm.rolle==='admin'&&TEAM.filter(x=>x.rolle==='admin').length<=1){toast('Der letzte Admin kann nicht entfernt werden');return;}
@@ -1311,17 +1321,22 @@ function renderGP(){
   host.querySelector('#gSt').addEventListener('change',e=>{host.__st=e.target.value;renderGP();});
   host.querySelectorAll('tbody tr').forEach(tr=>tr.addEventListener('click',()=>openModal(tr.dataset.id)));
 }
+let TM_EDIT=null;
 function teamPanel(){
   if(MODE!=='db')return `<div class="panel"><h3>Team &amp; Zugänge</h3><div class="empty-col">Zugänge sind aktiv, sobald das CRM online mit Datenbank läuft.</div></div>`;
-  return `<div class="panel"><h3>Team &amp; Zugänge <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— jedes Mitglied meldet sich mit E-Mail + Passwort an und sieht nur die eigenen zugeteilten, freigegebenen Leads. Wichtig: Der Name muss exakt so heißen wie bei der Lead-Zuteilung. Das Passwort legst du in der Firebase-Konsole an (Authentication → Users → Add user, gleiche E-Mail).</span></h3>
-    <div class="st-list">${TEAM.length?TEAM.map(mm=>`<div class="gl" style="cursor:default;flex-wrap:wrap"><span class="gn">${esc(mm.name)}</span><span class="ph">${esc(mm.rolle)}</span><span class="ph">${esc(mm.email||'— keine E-Mail —')}</span><span class="ph tnum">${esc(mm.tel||'—')}</span>${mm.alias?`<span class="ph">alias: ${esc(mm.alias)}</span>`:''}<button class="mini-btn" data-rmid="${esc(mm.id)}" style="color:var(--bad)">Entfernen</button></div>`).join(''):'<div class="empty-col">Noch keine Zugänge – lege zuerst deinen eigenen Admin-Zugang an (mit deiner Anmelde-E-Mail).</div>'}</div>
-    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;align-items:center">
-      <input id="tmName" placeholder="Name" style="width:150px">
-      <select id="tmRolle" style="width:auto"><option value="telefonist">Telefonist</option><option value="analyst">Analyst</option><option value="berater">Berater</option><option value="admin">Admin</option></select>
-      <input id="tmEmail" type="email" placeholder="E-Mail (für Anmeldung)" style="width:200px">
-      <input id="tmTel" placeholder="Handy (für WhatsApp-Info)" style="width:170px">
-      <input id="tmAlias" placeholder="Auch bekannt als … (z. B. CEVIK M., kommagetrennt)" style="width:280px" title="Weitere Schreibweisen des Namens in den Lead-Daten – das CRM erkennt die Person dann unter allen Varianten">
-      <button class="btn" id="tmAdd">+ Zugang anlegen</button>
+  const ed=TM_EDIT?TEAM.find(x=>x.id===TM_EDIT):null;
+  const rSel=r=>['telefonist','analyst','berater','admin'].map(x=>`<option value="${x}"${(ed?ed.rolle:'telefonist')===x?' selected':''}>${x.charAt(0).toUpperCase()+x.slice(1)}</option>`).join('');
+  return `<div class="panel"><h3>Team &amp; Zugänge <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— jedes Mitglied meldet sich mit E-Mail + Passwort an und sieht nur die eigenen zugeteilten, freigegebenen Leads. Das Passwort legst du in der Firebase-Konsole an (Authentication → Users → Add user, gleiche E-Mail).</span></h3>
+    <div class="st-list">${TEAM.length?TEAM.map(mm=>`<div class="gl" style="cursor:default;flex-wrap:wrap${TM_EDIT===mm.id?';border-color:var(--brand)':''}"><span class="gn">${esc(mm.name)}</span><span class="ph">${esc(mm.rolle)}</span><span class="ph">${esc(mm.email||'— keine E-Mail —')}</span><span class="ph tnum">${esc(mm.tel||'—')}</span>${mm.alias?`<span class="ph">alias: ${esc(mm.alias)}</span>`:''}<button class="mini-btn" data-edid="${esc(mm.id)}">✏️ Bearbeiten</button><button class="mini-btn" data-rmid="${esc(mm.id)}" style="color:var(--bad)">Entfernen</button></div>`).join(''):'<div class="empty-col">Noch keine Zugänge – lege zuerst deinen eigenen Admin-Zugang an (mit deiner Anmelde-E-Mail).</div>'}</div>
+    ${ed?`<div style="margin-top:10px;font-size:12.5px;font-weight:700;color:var(--brand-ink)">✏️ Du bearbeitest gerade: ${esc(ed.name)}</div>`:''}
+    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:8px;align-items:center">
+      <input id="tmName" placeholder="Name" style="width:150px" value="${esc(ed?ed.name:'')}">
+      <select id="tmRolle" style="width:auto">${rSel()}</select>
+      <input id="tmEmail" type="email" placeholder="E-Mail (für Anmeldung)" style="width:200px" value="${esc(ed?(ed.email||''):'')}">
+      <input id="tmTel" placeholder="Handy (für WhatsApp-Info)" style="width:170px" value="${esc(ed?(ed.tel||''):'')}">
+      <input id="tmAlias" placeholder="Auch bekannt als … (z. B. CEVIK M., kommagetrennt)" style="width:280px" title="Weitere Schreibweisen des Namens in den Lead-Daten" value="${esc(ed?(ed.alias||''):'')}">
+      <button class="btn${ed?' pri':''}" id="tmAdd">${ed?'💾 Änderungen speichern':'+ Zugang anlegen'}</button>
+      ${ed?'<button class="btn" id="tmCancel">Abbrechen</button>':''}
     </div></div>`;
 }
 
