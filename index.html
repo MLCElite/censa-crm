@@ -308,6 +308,7 @@ const FIREBASE_CONFIG={
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
 const OFFICE_MAIL="";
+const GCAL_CLIENT_ID=""; // Google-Kalender-Sync: OAuth-Client-ID aus der Google Cloud Console (Projekt censa-crm) – solange leer, ist der Sync-Button ausgeblendet
 /* =============================================================================== */
 const STAGES=['Neuer Lead','In Bearbeitung','Analysetermin vereinbart','Analyse & Doku','Beratungstermin vereinbart','Beratung / Angebot'];
 const KEY='imperium_crm_v1';
@@ -1158,7 +1159,7 @@ function wEntriesFor(person,start,wk){
     if(ov)a.status=ov.status||'';
     return a;
   });
-  const man=WOCHE.filter(e=>e.type!=='ov'&&nameEq(e.name,person)).map(e=>({auto:false,_id:e._id,art:e.art||'EG',tag:+e.tag||0,zeit:e.zeit||'',kunde:e.kunde||'',ort:e.ort||'',status:e.status||'',name:person}));
+  const man=WOCHE.filter(e=>e.type!=='ov'&&nameEq(e.name,person)).map(e=>({auto:false,gcal:!!e.gcal,_id:e._id,art:e.art||'EG',tag:+e.tag||0,zeit:e.zeit||'',kunde:e.kunde||'',ort:e.ort||'',status:e.status||'',name:person}));
   return [...auto,...man].sort((a,b)=>(a.tag-b.tag)||((a.zeit||'').localeCompare(b.zeit||'')));
 }
 const wStIc=s=>s==='done'?'✔':s==='moved'?'↗':s==='cancelled'?'✖':'○';
@@ -1174,6 +1175,153 @@ async function wSetStatus(ent,wk,next){
     if(i>=0)WOCHE[i].status=next;
   }
   renderWoche();
+}
+/* ---------- Google-Kalender-Sync (jede Person verbindet ihr eigenes Google-Konto) ---------- */
+let __gisReady=null,__gcalTok=null,__gcalExp=0,__gcalLast={};
+function gisLoad(){
+  if(__gisReady)return __gisReady;
+  __gisReady=new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src='https://accounts.google.com/gsi/client';s.async=true;s.defer=true;
+    s.onload=res;s.onerror=()=>{__gisReady=null;rej(new Error('Google-Script konnte nicht geladen werden'));};
+    document.head.appendChild(s);
+  });
+  return __gisReady;
+}
+function gcalToken(){
+  return new Promise((res,rej)=>{
+    if(__gcalTok&&Date.now()<__gcalExp-60000)return res(__gcalTok);
+    gisLoad().then(()=>{
+      try{
+        const tc=google.accounts.oauth2.initTokenClient({
+          client_id:GCAL_CLIENT_ID,
+          scope:'https://www.googleapis.com/auth/calendar.readonly',
+          callback:r=>{
+            if(r&&r.access_token){__gcalTok=r.access_token;__gcalExp=Date.now()+((r.expires_in||3300)*1000);res(__gcalTok);}
+            else rej(new Error('Keine Freigabe erhalten'));
+          },
+          error_callback:e=>rej(new Error(e&&(e.type==='popup_closed'||e.type==='popup_failed_to_open')?'Google-Fenster geschlossen oder blockiert – bitte Popups erlauben':'Google-Anmeldung fehlgeschlagen'))
+        });
+        tc.requestAccessToken({prompt:''});
+      }catch(e){rej(e);}
+    },rej);
+  });
+}
+function gcalArt(title){
+  const m=(title||'').trim().match(/^(AG|BG|MGT|EG|KG|TG|PRIVAT)\b[\s:\-–]*/i);
+  if(m)return {art:m[1].toUpperCase(),rest:(title||'').trim().slice(m[0].length).trim()};
+  return {art:'PRIVAT',rest:(title||'').trim()};
+}
+async function gcalSync(start,wk,person){
+  if(!GCAL_CLIENT_ID){toast('Google-Kalender-Sync ist noch nicht eingerichtet');return;}
+  if(MODE!=='db'||!wocheCol){toast('Nur online möglich');return;}
+  let tok;
+  try{tok=await gcalToken();}catch(e){toast(e&&e.message?e.message:'Google-Verbindung fehlgeschlagen');return;}
+  __gcalLast[wk]=Date.now();
+  const end=new Date(start.getTime()+7*86400000);
+  let items=[];
+  try{
+    const u='https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=250'+
+      '&timeMin='+encodeURIComponent(start.toISOString())+'&timeMax='+encodeURIComponent(end.toISOString());
+    const r=await fetch(u,{headers:{Authorization:'Bearer '+tok}});
+    if(r.status===401||r.status===403){__gcalTok=null;toast('Google-Zugriff abgelaufen – bitte noch einmal auf 📅 Google-Sync klicken');return;}
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    items=(await r.json()).items||[];
+  }catch(e){toast('Kalender konnte nicht gelesen werden'+(e&&e.message?' ('+e.message+')':''));return;}
+  const batch=firebase.firestore().batch();
+  const seen=new Set();let n=0;
+  items.forEach(ev=>{
+    if(!ev||ev.status==='cancelled')return;
+    const t=(ev.summary||'').trim();
+    if(/^(Analyse|Beratung):/i.test(t))return; // CRM-eigene Termine kommen schon automatisch als AG/BG
+    const hasTime=!!(ev.start&&ev.start.dateTime);
+    if(!hasTime&&!(ev.start&&ev.start.date))return;
+    const dt=hasTime?new Date(ev.start.dateTime):new Date(ev.start.date+'T00:00:00');
+    const day=new Date(dt.getFullYear(),dt.getMonth(),dt.getDate());
+    const tag=Math.round((day-start)/86400000);
+    if(tag<0||tag>6)return;
+    const id=('g'+wk+'_'+(ev.id||'')+'_'+person).replace(/[^0-9A-Za-z_-]/g,'').slice(0,140);
+    seen.add(id);
+    const pa=gcalArt(t);
+    const doc={wk,name:person,tag,zeit:hasTime?(calPad(dt.getHours())+':'+calPad(dt.getMinutes())):'',art:pa.art,kunde:pa.rest||t||'Termin',ort:ev.location||'',status:'',gcal:true,ts:new Date().toISOString()};
+    const old=WOCHE.find(x=>x._id===id);
+    if(old)doc.status=old.status||'';
+    batch.set(wocheCol.doc(id),doc);
+    const i=WOCHE.findIndex(x=>x._id===id);
+    if(i>=0)WOCHE[i]=Object.assign({_id:id},doc);else WOCHE.push(Object.assign({_id:id},doc));
+    n++;
+  });
+  // im Google Kalender gelöschte/verschobene Termine auch hier entfernen
+  WOCHE.filter(e=>e.gcal&&e.wk===wk&&nameEq(e.name,person)&&!seen.has(e._id)).forEach(e=>batch.delete(wocheCol.doc(e._id)));
+  WOCHE=WOCHE.filter(e=>!(e.gcal&&e.wk===wk&&nameEq(e.name,person)&&!seen.has(e._id)));
+  try{await batch.commit();}catch(e){toast('Speichern fehlgeschlagen');return;}
+  toast('Google Kalender: '+n+' Termin'+(n===1?'':'e')+' übernommen');
+  renderWoche();
+}
+/* ---------- Wochenplan-Druck im IVP-Formular-Format (eine A4-Seite je Mitarbeiter) ---------- */
+function wpPrintDoc(names,start,wk){
+  const end=new Date(start.getTime()+6*86400000);
+  const fmtD4=d=>calPad(d.getDate())+'.'+calPad(d.getMonth()+1)+'.'+d.getFullYear();
+  const pages=names.map(p=>{
+    const ents=wEntriesFor(p,start,wk);
+    const grid=ents.filter(e=>e.zeit);
+    const tbl=ents.filter(e=>e.art!=='PRIVAT').sort((a,b)=>(a.tag-b.tag)||((a.zeit||'').localeCompare(b.zeit||'')));
+    let minH=9;grid.forEach(e=>{const h=parseInt(e.zeit,10);if(h>=0&&h<minH)minH=h;});
+    const hrs=[];for(let h=minH;h<=21;h++)hrs.push(h);
+    const cell=(t,h)=>grid.filter(e=>e.tag===t&&parseInt(e.zeit,10)===h).map(e=>`<div class="ge"><b>${esc(e.art)}</b> ${esc(e.zeit)} ${esc(e.kunde)}</div>`).join('');
+    const telOf=e=>{if(!e.dealId)return'';const d=state.deals.find(x=>x.id===e.dealId);return d?(d.telefon||''):'';};
+    const ic=s=>s==='done'?'✔':s==='moved'?'↗':s==='cancelled'?'✖':'';
+    const trows=tbl.map(e=>`<tr><td>${esc(e.kunde)}</td><td class="c">${esc(e.ort||'')}</td><td>${esc(telOf(e))}</td><td class="c"><b>${esc(e.art)}</b></td><td class="c big">${ic(e.status)}</td><td></td><td></td><td></td></tr>`).join('');
+    const frows=Array(Math.max(0,12-tbl.length)).fill('<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>').join('');
+    const cnt=a=>tbl.filter(e=>e.art===a).length,done=a=>tbl.filter(e=>e.art===a&&e.status==='done').length;
+    return `<div class="page">
+      <div class="hd"><div class="kw"><div class="kwn">${isoWeek(start)}</div><div class="kwl">Woche/Jahr ${start.getFullYear()}</div></div><div class="ttl">Wochenplan</div><div class="brand"><span>IHR VERLÄSSLICHER<br>PARTNER</span><b>IVP ✔</b></div></div>
+      <div class="sub"><span>von: <b>${fmtD4(start)}</b></span><span>bis: <b>${fmtD4(end)}</b></span><span>Name: <b>${esc(p)}</b></span><span>Team: <b>Melanie Cevik</b></span></div>
+      <table class="grid"><thead><tr><th class="z">Zeit</th>${WDAYS.map(d2=>`<th>${d2}</th>`).join('')}</tr></thead>
+      <tbody>${hrs.map(h=>`<tr><td class="z">${h}</td>${WDAYS.map((_,t)=>`<td>${cell(t,h)}</td>`).join('')}</tr>`).join('')}</tbody></table>
+      <table class="kt"><thead><tr><th style="width:23%">Kundename</th><th style="width:11%">Wohnort/<br>Terminort</th><th style="width:14%">Telefon</th><th style="width:8%">AG/BG<br>MGT/EG</th><th style="width:7%">Durch-<br>geführt</th><th style="width:6%">EH/<br>GP</th><th style="width:7%">Empf</th><th>Bemerkung</th></tr></thead>
+      <tbody>${trows}${frows}</tbody></table>
+      <div class="ft">
+        <div class="leg"><div class="lh">Terminmöglichkeiten</div><div><span class="lb">✔</span> durchgeführt</div><div><span class="lb">↗</span> verschoben</div><div><span class="lb">✖</span> abgesagt</div></div>
+        <div class="pl"><div class="lh">PLANUNG</div><table><tr><th>AGT</th><th>BGT</th><th>MGT</th><th>EGT</th><th>EH</th><th>Empf</th><th>GP</th></tr><tr><td>${cnt('AG')||''}</td><td>${cnt('BG')||''}</td><td>${cnt('MGT')||''}</td><td>${cnt('EG')||''}</td><td></td><td></td><td></td></tr></table></div>
+        <div class="pl"><div class="lh">ERFOLG</div><table><tr><th colspan="2">AG</th><th colspan="2">BG</th><th colspan="2">MGT</th><th colspan="2">EG</th><th rowspan="2">EH</th><th rowspan="2">Empf</th><th rowspan="2">GP</th></tr><tr><th>T</th><th>D</th><th>T</th><th>D</th><th>T</th><th>D</th><th>T</th><th>D</th></tr><tr><td>${cnt('AG')||''}</td><td>${done('AG')||''}</td><td>${cnt('BG')||''}</td><td>${done('BG')||''}</td><td>${cnt('MGT')||''}</td><td>${done('MGT')||''}</td><td>${cnt('EG')||''}</td><td>${done('EG')||''}</td><td></td><td></td><td></td></tr></table></div>
+      </div>
+    </div>`;
+  }).join('');
+  const css=`body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0;background:#fff}
+.page{width:196mm;margin:0 auto;padding:8mm 0 4mm;page-break-after:always}
+.page:last-child{page-break-after:auto}
+.hd{display:flex;align-items:center;gap:6mm;margin-bottom:3mm}
+.kw{border:2px solid #111;padding:2mm 4mm;min-width:22mm}
+.kwn{font-size:22px;font-weight:800}
+.kwl{font-size:9px}
+.ttl{font-size:30px;font-weight:800;flex:1;text-align:center}
+.brand{text-align:right;font-size:8px;display:flex;gap:2mm;align-items:center}
+.brand b{font-size:20px;white-space:nowrap}
+.sub{display:flex;gap:8mm;border:2px solid #111;padding:1.5mm 3mm;font-size:11px;margin-bottom:3mm}
+table{border-collapse:collapse;width:100%}
+.grid{border:2px solid #111;margin-bottom:4mm}
+.grid th,.grid td{border:1px solid #111;font-size:10px;padding:1px 2px;vertical-align:top}
+.grid th{height:5mm}
+.grid td{height:6.2mm}
+.grid .z{width:9mm;text-align:center;font-weight:700;vertical-align:middle}
+.ge{font-size:9px;line-height:1.15}
+.kt{border:2px solid #111;margin-bottom:3mm}
+.kt th{border:1px solid #111;font-size:9px;padding:1mm}
+.kt td{border:1px solid #111;font-size:10px;padding:0.5mm 1.5mm;height:5.6mm}
+.c{text-align:center}
+.big{font-size:13px;font-weight:700}
+.ft{display:flex;gap:4mm;align-items:flex-start}
+.lh{font-weight:700;font-size:10px;margin-bottom:1mm}
+.leg{border:2px solid #111;padding:2mm;font-size:10px;min-width:32mm}
+.lb{display:inline-block;width:5mm;border:1px solid #111;text-align:center;margin-right:1mm}
+.pl table th,.pl table td{border:1px solid #111;font-size:9px;text-align:center;padding:0.8mm 1.8mm;min-width:5mm;height:4mm}
+@page{size:A4 portrait;margin:8mm}
+@media print{.page{width:auto}}`;
+  const w=window.open('','_blank');
+  if(!w){toast('Popup blockiert – bitte Popups für diese Seite erlauben');return;}
+  w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Wochenplan KW '+isoWeek(start)+'</title><style>'+css+'</style></head><body>'+pages+'<script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script></body></html>');
+  w.document.close();
 }
 function teamplanHtml(start,wk){
   const names=TEAM.map(x=>x.name).filter(Boolean).sort();
@@ -1216,6 +1364,7 @@ async function renderWoche(){
       <button class="btn" id="w-next">›</button>
       ${admin?`<select id="w-person" style="width:auto"${__wTeam?' disabled':''}>${persons.map(p=>`<option${p===me?' selected':''}>${esc(p)}</option>`).join('')}</select>
       <button class="btn${__wTeam?' pri':''}" id="w-team">👥 Teamwochenplan</button>`:''}
+      ${(!__wTeam&&GCAL_CLIENT_ID&&nameEq(me,chatName()))?`<button class="btn" id="w-gcal" title="Holt deine Google-Kalender-Termine dieser Woche in den Wochenplan">📅 Google-Sync</button>`:''}
       <button class="btn" id="w-print" style="margin-left:auto">🖨 Drucken / PDF</button>
     </div>
     ${(__wTeam&&admin)?`<h2 style="font-size:16px;margin:4px 0 10px">Teamwochenplan · KW ${isoWeek(start)}/${String(start.getFullYear()).slice(2)} · ${fmtDM(start)}–${fmtDM(end)} · Team ${esc(chatName())}</h2>`+teamplanHtml(start,wk):
@@ -1224,7 +1373,7 @@ async function renderWoche(){
       const dd=new Date(start.getTime()+t*86400000);
       const today=new Date();today.setHours(0,0,0,0);
       const ents=wEntriesFor(me,start,wk).filter(e=>e.tag===t);
-      return `<div class="wday${dd.getTime()===today.getTime()?' today':''}"><div class="wdh">${d2} ${fmtDM(dd)}</div>${ents.map((e,i2)=>`<div class="wentry" data-wi="${e.auto?('a:'+e.dealId+':'+e.art):('m:'+e._id)}"><button class="wdel" data-wdel="${e.auto?'':e._id}" title="${e.auto?'Automatisch aus dem CRM-Termin':'Eintrag löschen'}">${e.auto?'🔗':'×'}</button><span class="wart" style="background:${WARTC[e.art]||'var(--ink-3)'}">${esc(e.art)}</span><b>${esc(e.zeit)}</b> ${esc(e.kunde)}${e.ort?`<div class="wsub">${esc(e.ort)}</div>`:''}<div class="wsts">${[['done','✔','durchgeführt'],['moved','↗','verschoben'],['cancelled','✖','abgesagt']].map(([s,ic,tt])=>`<button class="wst${e.status===s?' on '+s:''}" data-ws="${s}" title="${tt}">${ic}</button>`).join('')}</div></div>`).join('')||'<div style="font-size:11px;color:var(--ink-3);text-align:center">—</div>'}</div>`;
+      return `<div class="wday${dd.getTime()===today.getTime()?' today':''}"><div class="wdh">${d2} ${fmtDM(dd)}</div>${ents.map((e,i2)=>`<div class="wentry" data-wi="${e.auto?('a:'+e.dealId+':'+e.art):('m:'+e._id)}"><button class="wdel" data-wdel="${e.auto?'':e._id}" title="${e.auto?'Automatisch aus dem CRM-Termin':(e.gcal?'Aus deinem Google Kalender (Sync)':'Eintrag löschen')}">${e.auto?'🔗':(e.gcal?'📅':'×')}</button><span class="wart" style="background:${WARTC[e.art]||'var(--ink-3)'}">${esc(e.art)}</span><b>${esc(e.zeit)}</b> ${esc(e.kunde)}${e.ort?`<div class="wsub">${esc(e.ort)}</div>`:''}<div class="wsts">${[['done','✔','durchgeführt'],['moved','↗','verschoben'],['cancelled','✖','abgesagt']].map(([s,ic,tt])=>`<button class="wst${e.status===s?' on '+s:''}" data-ws="${s}" title="${tt}">${ic}</button>`).join('')}</div></div>`).join('')||'<div style="font-size:11px;color:var(--ink-3);text-align:center">—</div>'}</div>`;
     }).join('')}</div>
     <div class="ehsec wnew" style="margin-top:14px"><div class="ehhead">＋ Eintrag hinzufügen <span class="ehtag">MGT, EG, KG, TG, Privat – AG/BG kommen automatisch aus den Terminen</span></div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
@@ -1238,7 +1387,11 @@ async function renderWoche(){
     </div>`}`;
   host.querySelector('#w-prev').addEventListener('click',()=>{__wOff--;renderWoche();});
   host.querySelector('#w-next').addEventListener('click',()=>{__wOff++;renderWoche();});
-  host.querySelector('#w-print').addEventListener('click',()=>window.print());
+  host.querySelector('#w-print').addEventListener('click',()=>{const names=(__wTeam&&admin)?TEAM.map(x=>x.name).filter(Boolean).sort():[me];wpPrintDoc(names,start,wk);});
+  const wg=host.querySelector('#w-gcal');
+  if(wg)wg.addEventListener('click',()=>gcalSync(start,wk,me));
+  // Auto-Sync: wenn Google bereits verbunden ist, Woche alle 10 Min still aktualisieren
+  if(!__wTeam&&GCAL_CLIENT_ID&&nameEq(me,chatName())&&__gcalTok&&Date.now()<__gcalExp-60000&&(!__gcalLast[wk]||Date.now()-__gcalLast[wk]>600000)){__gcalLast[wk]=Date.now();gcalSync(start,wk,me);}
   const wp=host.querySelector('#w-person');
   if(wp)wp.addEventListener('change',e=>{__wPerson=e.target.value;renderWoche();});
   const wt=host.querySelector('#w-team');
@@ -1267,7 +1420,7 @@ async function renderWoche(){
     del.addEventListener('click',async ev=>{
       ev.stopPropagation();
       if(ent.auto){openModal(ent.dealId);return;}
-      if(!confirm('Eintrag löschen?'))return;
+      if(!confirm(ent.gcal?'Aus dem Wochenplan entfernen? Der Termin bleibt in Google und kommt beim nächsten Sync wieder.':'Eintrag löschen?'))return;
       try{await wocheCol.doc(ent._id).delete();WOCHE=WOCHE.filter(x=>x._id!==ent._id);renderWoche();}catch(e){toast('Löschen fehlgeschlagen');}
     });
     el.addEventListener('click',()=>{if(ent.auto)openModal(ent.dealId);});
