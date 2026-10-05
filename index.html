@@ -898,7 +898,8 @@ function renderSteuerung(){
     ${inbox.length?`<div class="panel" style="border-color:var(--warn)"><h3>📥 Posteingang – neue Listen prüfen <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— nur du siehst das; erst prüfen, dann in der Liste einem Telefonisten zuteilen (Zuteilen gibt automatisch frei)</span></h3><div class="st-list">${inbox.slice(0,60).map(d=>`<div class="gl" data-id="${d.id}"><span class="gn">${esc(d.name||d.org||'—')}</span><span class="ph">${esc(d.quelle||'')}${d.bezirk?' · '+esc(d.bezirk):''}</span><span class="ph tnum">${esc(d.telefon||'')}</span></div>`).join('')}${inbox.length>60?`<div class="empty-col">… und ${inbox.length-60} weitere (Liste-Tab → Filter nutzen)</div>`:''}</div></div>`:''}
     <div class="panel"><h3>Telefon-Protokoll heute <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— wer hat wann telefoniert, wie lange, mit welchem Ergebnis</span></h3>${protoHtml||'<div class="empty-col">Heute noch keine Anrufe protokolliert.</div>'}</div>
     ${(()=>{
-      const cutoff=new Date(Date.now()-30*86400000).toISOString();
+      const cutoff30=new Date(Date.now()-30*86400000).toISOString();
+      const cutoff=(STATS_SINCE&&STATS_SINCE>cutoff30)?STATS_SINCE:cutoff30;
       const acts=ACT.filter(a=>(a.ts||'')>=cutoff);
       const per={};
       acts.forEach(a=>{const n=a.name||a.email||'?';const p=(per[n]=per[n]||{logins:0,days:{},last:''});p.logins++;p.days[(a.ts||'').slice(0,10)]=1;if((a.ts||'')>p.last)p.last=a.ts;});
@@ -911,7 +912,7 @@ function renderSteuerung(){
       const names=[...new Set([...TEAM.map(x=>x.name),...Object.keys(per),...Object.keys(call)])].filter(n=>n&&n!=='?').sort();
       if(!names.length)return '';
       const fmtLast=iso=>{if(!iso)return '<span style="color:var(--bad);font-weight:700">noch nie</span>';const dt=new Date(iso);const diff=Math.floor((Date.now()-dt.getTime())/86400000);const s=String(dt.getDate()).padStart(2,'0')+'.'+String(dt.getMonth()+1).padStart(2,'0')+'. '+dt.toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'});return diff>=3?('<span style="color:var(--bad);font-weight:700">'+s+' (vor '+diff+' Tagen!)</span>'):s;};
-      return `<div class="panel"><h3>📊 Aktivität je Mitarbeiter <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— letzte 30 Tage: wer schaut in die App, wer telefoniert – deine Basis für Bewertung &amp; Lead-Vergabe</span></h3>
+      return `<div class="panel"><h3>📊 Aktivität je Mitarbeiter <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— ${STATS_SINCE&&STATS_SINCE>cutoff30?'seit Reset am '+STATS_SINCE.slice(8,10)+'.'+STATS_SINCE.slice(5,7)+'.':'letzte 30 Tage'}: wer schaut in die App, wer telefoniert – deine Basis für Bewertung &amp; Lead-Vergabe</span><button class="mini-btn" id="statReset" style="float:right" title="Alle Login-Aufzeichnungen löschen und alle Zähler ab jetzt neu starten">🧹 Auf 0 setzen</button></h3>
         <div class="tablewrap"><table style="min-width:680px"><thead><tr><th>Name</th><th>Rolle</th><th>Letzter Login</th><th>Aktive Tage</th><th>App geöffnet</th><th>Anrufe</th><th>Termine</th><th>Minuten</th></tr></thead><tbody>
         ${names.map(n=>{const p=per[n]||{logins:0,days:{},last:''};const c=call[n]||{n:0,term:0,min:0};const mem=TEAM.find(x=>x.name===n);return `<tr style="cursor:default"><td><b>${esc(n)}</b></td><td>${esc(mem?mem.rolle:'—')}</td><td>${fmtLast(p.last)}</td><td class="tnum">${Object.keys(p.days).length}</td><td class="tnum">${p.logins}</td><td class="tnum">${c.n}</td><td class="tnum">${c.term}</td><td class="tnum">${Math.round(c.min)}</td></tr>`;}).join('')}
         </tbody></table></div></div>`;
@@ -941,6 +942,25 @@ function renderSteuerung(){
   }));
   const br=host.querySelector('#btnReports');if(br)br.addEventListener('click',openReports);
   const bc=host.querySelector('#btnCeo');if(bc)bc.addEventListener('click',openCeoUpdate);
+  const sr=host.querySelector('#statReset');
+  if(sr)sr.addEventListener('click',async()=>{
+    if(!isAdmin()||MODE!=='db'||!actCol)return;
+    if(!confirm('Aktivitäts-Statistik wirklich komplett auf 0 setzen?\n\nAlle Login-Aufzeichnungen werden gelöscht und die Zähler (App geöffnet, Anrufe, Termine, Minuten) starten ab jetzt neu.\n\nAnruf-Notizen im Kunden-Verlauf bleiben erhalten.'))return;
+    sr.disabled=true;sr.textContent='Lösche …';
+    try{
+      const fs2=firebase.firestore();
+      for(;;){
+        const snap=await actCol.limit(400).get();
+        if(snap.empty)break;
+        const b=fs2.batch();snap.docs.forEach(x=>b.delete(x.ref));await b.commit();
+        if(snap.size<400)break;
+      }
+      await fs2.collection('meta').doc('stats').set({since:new Date().toISOString(),von:chatName()||''});
+      ACT=[];STATS_SINCE=new Date().toISOString();
+      toast('Statistik auf 0 gesetzt – alle Zähler starten neu');
+      renderSteuerung();
+    }catch(e){toast('Zurücksetzen fehlgeschlagen'+(e&&e.code?' ('+e.code+')':''));renderSteuerung();}
+  });
   wireTeamPanel(host);
 }
 function wireTeamPanel(host){
@@ -1428,7 +1448,7 @@ async function renderWoche(){
 }
 
 /* ---------- Aktivitäts-Tracking (App-Öffnungen je Mitarbeiter) ---------- */
-let actCol=null, actUnsub=null, ACT=[], __lastAct=0;
+let actCol=null, actUnsub=null, ACT=[], __lastAct=0, STATS_SINCE='', metaUnsub=null;
 async function logActivity(){
   if(MODE!=='db'||!actCol||!AUTH_USER)return;
   const now=Date.now();
@@ -2328,6 +2348,10 @@ lsLoad();render();
       logActivity();
       actUnsub=actCol.orderBy('ts','desc').limit(1500).onSnapshot(snap=>{
         ACT=snap.docs.map(s=>s.data());
+        if(isAdmin())renderSteuerung();
+      },err=>{});
+      metaUnsub=fs.collection('meta').doc('stats').onSnapshot(s=>{
+        STATS_SINCE=(s.exists&&(s.data()||{}).since)||'';
         if(isAdmin())renderSteuerung();
       },err=>{});
     }catch(e){
