@@ -362,13 +362,14 @@ function teamByAnyName(val){
   return TEAM.find(x=>splitAliases(x).includes(v))||null;
 }
 function visibleDeals(){
-  if(isAdmin())return state.deals;
+  // Importierte Recruiting-Kandidaten (Quelle=Recruiting) leben NUR im GP-Tab – nie in Liste/Pipeline/Telefon
+  if(isAdmin())return state.deals.filter(d=>(d.quelle||'')!=='Recruiting');
   if(!ME)return [];
   const my=personNames(ME.name);
   const hit=x=>my.includes((x||'').trim().toLowerCase());
   return state.deals.filter(d=>{
     if(d.geprueft===false)return false;
-    if(d.gp)return false;
+    if(d.gp||(d.quelle||'')==='Recruiting')return false;
     return hit(d.telefonist)||hit(d.analyst)||hit(d.berater);
   });
 }
@@ -857,7 +858,7 @@ function renderSteuerung(){
   const beGroups=grpBy(beratung,'berater','— nicht zugeteilt —');
   const setterOpen=state.deals.filter(d=>d.status==='open'&&['Neuer Lead','In Bearbeitung'].includes(d.stage));
   const teGroups=grpBy(setterOpen,'telefonist','— ohne Telefonist —');
-  const inbox=state.deals.filter(d=>d.geprueft===false);
+  const inbox=state.deals.filter(d=>d.geprueft===false&&(d.quelle||'')!=='Recruiting');
   const dispoA=open.filter(d=>d.stage==='Analysetermin vereinbart'&&!(d.analyst||'').trim());
   const anNames=[...new Set([...TEAM.filter(m=>hasRole(m,'analyst')).map(m=>m.name),...state.deals.map(d=>d.analyst).filter(Boolean)])].sort();
   const beNames=[...new Set([...TEAM.filter(m=>hasRole(m,'berater')).map(m=>m.name),...state.deals.map(d=>d.berater).filter(Boolean)])].sort();
@@ -1488,6 +1489,7 @@ function renderGP(){
       <select id="gBez"><option value="">Alle Bezirke</option>${bez.map(x=>`<option${fb===x?' selected':''}>${esc(x)}</option>`).join('')}</select>
       <select id="gSt"><option value="">Alle Status</option><option value="open"${fs==='open'?' selected':''}>Offen</option><option value="won"${fs==='won'?' selected':''}>Gewonnen</option><option value="lost"${fs==='lost'?' selected':''}>Verloren</option></select>
       <span class="kpi" style="margin-left:auto">${rows.length} Kandidaten</span>
+      <button class="btn" id="gDelImp" style="border-color:var(--bad);color:var(--bad)" title="Löscht NUR die importierten Recruiting-Kandidaten – Kunden-Listen und manuell markierte GPs bleiben unberührt">🗑 Recruiting-Import löschen</button>
     </div>
     <div class="tablewrap"><table><thead><tr><th>Name</th><th>Firma</th><th>Telefon</th><th>Bezirk</th><th>Phase</th><th>Anrufe</th><th>Info</th></tr></thead><tbody>
       ${rows.map(d=>`<tr data-id="${d.id}"><td><b>${esc(d.name||'—')}</b></td><td>${esc(d.org||'')}</td><td class="tnum">${esc(d.telefon||'')}</td><td>${esc(d.bezirk||d.ort||'')}</td><td>${d.status==='won'?'<span style="color:var(--good);font-weight:700">Gewonnen</span>':d.status==='lost'?'<span style="color:var(--bad)">Verloren</span>':esc(d.stage)}</td><td class="tnum">${(d.calls||[]).length}</td><td style="max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((d.notizen||'').slice(0,90))}</td></tr>`).join('')}
@@ -1496,6 +1498,26 @@ function renderGP(){
   host.querySelector('#gBez').addEventListener('change',e=>{host.__bez=e.target.value;renderGP();});
   host.querySelector('#gSt').addEventListener('change',e=>{host.__st=e.target.value;renderGP();});
   host.querySelectorAll('tbody tr').forEach(tr=>tr.addEventListener('click',()=>openModal(tr.dataset.id)));
+  const gd=host.querySelector('#gDelImp');
+  if(gd)gd.addEventListener('click',async()=>{
+    const imp=state.deals.filter(d=>d.gp&&(d.quelle||'')==='Recruiting');
+    if(!imp.length){toast('Kein Recruiting-Import vorhanden – manuell markierte GPs werden hier nicht gelöscht');return;}
+    if(MODE!=='db'||!dealsCol){toast('Nur online möglich');return;}
+    if(!confirm('Wirklich alle '+imp.length+' importierten Recruiting-Kandidaten löschen?\n\nKunden-Listen, Pipeline und manuell als GP markierte Leads bleiben unberührt.\nDas kann nicht rückgängig gemacht werden.'))return;
+    gd.disabled=true;gd.textContent='Lösche …';
+    try{
+      const fs2=firebase.firestore();
+      for(let i=0;i<imp.length;i+=450){
+        const b=fs2.batch();
+        imp.slice(i,i+450).forEach(d=>b.delete(dealsCol.doc(d.id)));
+        await b.commit();
+      }
+      const ids=new Set(imp.map(d=>d.id));
+      state.deals=state.deals.filter(d=>!ids.has(d.id));
+      toast(imp.length+' Recruiting-Kandidaten gelöscht');
+      render();
+    }catch(e){toast('Löschen fehlgeschlagen'+(e&&e.code?' ('+e.code+')':''));renderGP();}
+  });
 }
 let TM_EDIT=null;
 function teamPanel(){
