@@ -534,6 +534,7 @@ function listeDetailHtml(d){
       <div style="display:flex;align-items:center;gap:8px"><span style="width:86px;font-size:10.5px;font-weight:800;letter-spacing:.4px;color:var(--ink-3)">BG-TERMIN</span><input data-lf="datumBG" value="${esc(d.datumBG||'')}" placeholder="25.09. 10:00" style="flex:1;min-width:0"></div>
     </div>
     <div class="dfull"><div class="stgs" style="margin:0">${STAGES.map((s,i)=>`<button type="button" class="stg${i===cur?' on':(cur>=0&&i<cur?' done':'')}" data-lstage="${esc(s)}" title="${esc(s)}"><i>${(cur>=0&&i<cur)?'✓':(i+1)}</i>${SHORT[i]}</button>`).join('')}</div></div>
+    ${finBlock(d)?`<div class="dfull">${finBlock(d)}</div>`:''}
     ${(d.briefing||d.notizen)?`<div class="dfull" style="font-size:12px;color:var(--ink-2);line-height:1.5">${d.briefing?'<b>Briefing:</b> '+esc(d.briefing)+'<br>':''}${d.notizen?'<b>Notizen:</b> '+esc((d.notizen||'').slice(0,240)):''}</div>`:''}
     <div class="dfull" style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
       <button class="btn pri" data-lopen="1" style="padding:7px 13px;font-size:12.5px">Vollansicht öffnen</button>
@@ -776,10 +777,11 @@ function renderTelefon(){
   const sel=host.__sel||'';const fb=host.__bez||'';
   host.__skip=host.__skip||{};
   let queue=DS.filter(d=>d.status==='open'&&['Neuer Lead','In Bearbeitung'].includes(d.stage)&&(!sel||(d.telefonist||'')===sel)&&(!fb||(d.bezirk||'')===fb)&&!host.__skip[d.id]);
-  queue.sort((a,b)=>{const oa=isOverdue(a)?0:1,ob=isOverdue(b)?0:1;if(oa!==ob)return oa-ob;const da=parseDMY(a.wiedervorlage),db=parseDMY(b.wiedervorlage);return (da?da.getTime():8.64e15)-(db?db.getTime():8.64e15);});
+  // Sortierung: Überfällige zuerst, dann Bezirk für Bezirk (1010, 1020, …), innerhalb nach Wiedervorlage
+  queue.sort((a,b)=>{const oa=isOverdue(a)?0:1,ob=isOverdue(b)?0:1;if(oa!==ob)return oa-ob;const c=(a.bezirk||'9999').localeCompare((b.bezirk||'9999'),undefined,{numeric:true});if(c)return c;const da=parseDMY(a.wiedervorlage),db=parseDMY(b.wiedervorlage);return (da?da.getTime():8.64e15)-(db?db.getTime():8.64e15);});
   const t=todayStr();let dials=0,termine=0;
   DS.forEach(d=>{if(sel&&(d.telefonist||'')!==sel)return;(d.calls||[]).forEach(c=>{if((c.ts||'').slice(0,10)===t){if(c.outcome==='angerufen')dials++;else if(c.outcome==='termin')termine++;}});});
-  const d0=queue[0];
+  const d0=(host.__pick&&queue.find(x=>x.id===host.__pick))||queue[0];
   host.innerHTML=`
    <div class="filters">
      <select id="tSel"><option value="">Telefonist wählen…</option>${tels.map(x=>`<option${sel===x?' selected':''}>${esc(x)}</option>`).join('')}</select>
@@ -788,10 +790,26 @@ function renderTelefon(){
      <span class="kpi">Termine <b class="tnum">${termine}</b></span>
      <span class="kpi" style="margin-left:auto">${queue.length} in der Liste</span>
    </div>
-   ${d0?dialerCard(d0):`<div class="emptybig"><div class="big">Liste leer${sel?' für '+esc(sel):''} 🎉</div>Alle Anruf-Leads abgearbeitet oder übersprungen.</div>`}`;
-  host.querySelector('#tSel').addEventListener('change',e=>{host.__sel=e.target.value;host.__skip={};renderTelefon();});
-  host.querySelector('#tBez').addEventListener('change',e=>{host.__bez=e.target.value;renderTelefon();});
+   ${d0?dialerCard(d0):`<div class="emptybig"><div class="big">Liste leer${sel?' für '+esc(sel):''} 🎉</div>Alle Anruf-Leads abgearbeitet oder übersprungen.</div>`}
+   ${queue.length>1?`<div style="margin-top:12px;max-width:640px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin-bottom:6px">Als Nächstes – nach Bezirk sortiert (${queue.length-1} weitere)</div><div class="st-list">${queue.filter(x=>x.id!==d0.id).slice(0,10).map(x=>`<div class="gl" data-tpick="${x.id}"><span class="tg">${esc(x.bezirk||'—')}</span><span class="gn">${esc(x.name||x.org||'—')}</span><span class="ph tnum">${esc(x.telefon||'')}</span>${isOverdue(x)?'<span class="od">überfällig</span>':''}</div>`).join('')}</div></div>`:''}`;
+  host.querySelector('#tSel').addEventListener('change',e=>{host.__sel=e.target.value;host.__skip={};host.__pick='';renderTelefon();});
+  host.querySelector('#tBez').addEventListener('change',e=>{host.__bez=e.target.value;host.__pick='';renderTelefon();});
+  host.querySelectorAll('[data-tpick]').forEach(el=>el.addEventListener('click',()=>{host.__pick=el.dataset.tpick;renderTelefon();}));
   if(d0)wireDialer(host,d0);
+}
+function finBlock(d){
+  const fmt=v=>{const n=parseFloat(v);return isNaN(n)?'':(n.toLocaleString('de-AT')+' €');};
+  const rows=[];
+  if(fmt(d.umsatz))rows.push(['Umsatz',fmt(d.umsatz),false]);
+  if(fmt(d.gewinn))rows.push(['Jahresgewinn',fmt(d.gewinn),parseFloat(d.gewinn)<0]);
+  if(fmt(d.anlage))rows.push(['Anlagevermögen',fmt(d.anlage),false]);
+  if(d.maGroesse)rows.push(['Mitarbeiter',d.maGroesse,false]);
+  if(d.finanzJahr)rows.push(['Jahresabschluss',d.finanzJahr,false]);
+  if(!rows.length&&!d.website)return '';
+  return `<div style="margin:0 0 10px;padding:10px 13px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px">
+    <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin-bottom:6px">📊 Jahresabschluss / Firmendaten</div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;align-items:center">${rows.map(([l,v,neg])=>`<span>${l}: <b class="tnum"${neg?' style="color:var(--bad)"':''}>${esc(String(v))}</b></span>`).join('')}${d.website?`<a href="${esc(d.website)}" target="_blank" rel="noopener" style="color:var(--brand-ink);font-weight:700;text-decoration:none">🌐 Website öffnen</a>`:''}</div>
+  </div>`;
 }
 function dialerCard(d){
   const tel=(d.telefon||'').replace(/[^+\d]/g,'');
@@ -803,6 +821,7 @@ function dialerCard(d){
       <div style="font-size:21px;font-weight:800;flex:1" class="tnum">${esc(d.telefon||'— keine Nummer —')}</div>
       ${d.telefon?`<a class="btn pri" id="t-call" href="tel:${esc(tel)}" style="font-size:15px;padding:11px 20px">☎ Anrufen</a>`:''}
     </div>
+    ${finBlock(d)}
     ${d.potenzial?`<div style="font-size:12.5px;margin-bottom:6px"><b>Potenzial:</b> ${esc(d.potenzial)}</div>`:''}
     ${d.briefing?`<div style="font-size:12.5px;margin-bottom:6px"><b>Briefing:</b> ${esc(d.briefing)}</div>`:''}
     ${d.notizen?`<div style="font-size:12px;color:var(--ink-3);margin-bottom:8px;max-height:76px;overflow:auto">${esc(d.notizen)}</div>`:''}
@@ -1604,7 +1623,7 @@ function wireEmpty(host){host.querySelectorAll('[data-act]').forEach(b=>b.addEve
 
 /* ---------- modal ---------- */
 let editId=null;
-function blank(){return {id:uid(),name:'',org:'',kundentyp:'Privat',quelle:'',telefon:'',email:'',strasse:'',plz:'',ort:'',bezirk:'',analyst:'',berater:'',telefonist:'',telHist:[],telBeteiligt:false,gp:false,geprueft:true,briefing:'',potenzial:'',ehS:[],ehA:[],umsatz:'',gewinn:'',anlage:'',finanzJahr:'',stage:'Neuer Lead',status:'open',lostReason:'',lostDate:'',lostBy:'',datumAG:'',datumBG:'',eh:'',notizen:'',wiedervorlage:'',calls:[]};}
+function blank(){return {id:uid(),name:'',org:'',kundentyp:'Privat',quelle:'',telefon:'',email:'',strasse:'',plz:'',ort:'',bezirk:'',analyst:'',berater:'',telefonist:'',telHist:[],telBeteiligt:false,gp:false,geprueft:true,briefing:'',potenzial:'',ehS:[],ehA:[],umsatz:'',gewinn:'',anlage:'',finanzJahr:'',website:'',maGroesse:'',stage:'Neuer Lead',status:'open',lostReason:'',lostDate:'',lostBy:'',datumAG:'',datumBG:'',eh:'',notizen:'',wiedervorlage:'',calls:[]};}
 function bezFromPLZ(v){const m=/\b(1\d{2}0)\b/.exec((v||'')+'');if(!m)return '';const n=parseInt(m[1].slice(1,3),10);return n>=1&&n<=23?('Wien '+n):'';}
 function normTel(t){t=(t||'').trim();if(!t)return t;if(/[A-Za-z:]/.test(t))return t;const d=t.replace(/[^\d+]/g,'');if(d.startsWith('+43'))return '+43 '+d.slice(3);if(d.startsWith('0043'))return '+43 '+d.slice(4);if(d.startsWith('0')&&d.length>=9)return '+43 '+d.slice(1);return t;}
 function lostByFromStage(s){if(A_STAGES.includes(s))return 'Analyst';if(B_STAGES.includes(s))return 'Berater';return 'Telefonist';}
@@ -2206,6 +2225,8 @@ async function importCSV(text){
       d.quelle=g('Quelle')||'Recherche';if(d.quelle==='Recruiting'){d.gp=true;d.kundentyp='Privat';}
       d.stage='Neuer Lead';d.status='open';d.notizen=g('Branche');
       d.umsatz=g('Umsatz_EUR');d.gewinn=g('Gewinn_EUR');d.anlage=g('Anlagevermoegen_EUR');d.finanzJahr=g('Finanz_Jahr');
+      d.website=g('Website');d.maGroesse=g('MA_Groesse');
+      if(g('Quelle_Detail'))d.briefing=g('Quelle_Detail');
       if(g('Finanz_Quelle'))d.notizen+=(d.notizen?' | ':'')+'Finanzdaten: '+g('Finanz_Quelle')+(g('Finanz_Jahr')?' ('+g('Finanz_Jahr')+')':'');
     }else{ d.name=r[0]||''; }
     if(!STAGES.includes(d.stage)&&d.status==='open')d.stage='Neuer Lead';
@@ -2214,9 +2235,9 @@ async function importCSV(text){
     const pp=(d.telefon||'').replace(/\D/g,'');
     const ex=pp.length>=8?phoneIdx[pp]:null;
     if(ex){
-      ['telefonist','bezirk','ort','org','umsatz','gewinn','anlage','analyst','berater'].forEach(f=>{if(d[f]&&!ex[f])ex[f]=d[f];});
+      ['telefonist','bezirk','ort','org','umsatz','gewinn','anlage','finanzJahr','website','maGroesse','briefing','email','strasse','plz','analyst','berater'].forEach(f=>{if(d[f]&&!ex[f])ex[f]=d[f];});
       if(d.wiedervorlage&&!ex.wiedervorlage)ex.wiedervorlage=d.wiedervorlage;
-      if(d.notizen)ex.notizen=(ex.notizen?ex.notizen+' | ':'')+'[Setter] '+d.notizen;
+      if(d.notizen&&!(ex.notizen||'').includes(d.notizen))ex.notizen=(ex.notizen?ex.notizen+' | ':'')+'[Setter] '+d.notizen;
       touched.push(ex);merged++;continue;
     }
     state.deals.push(d);if(pp.length>=8)phoneIdx[pp]=d;touched.push(d);added++;
