@@ -937,6 +937,8 @@ function renderSteuerung(){
         ${names.map(n=>{const p=per[n]||{logins:0,days:{},last:''};const c=call[n]||{n:0,term:0,min:0};const mem=TEAM.find(x=>x.name===n);return `<tr style="cursor:default"><td><b>${esc(n)}</b></td><td>${esc(mem?mem.rolle:'—')}</td><td>${fmtLast(p.last)}</td><td class="tnum">${Object.keys(p.days).length}</td><td class="tnum">${p.logins}</td><td class="tnum">${c.n}</td><td class="tnum">${c.term}</td><td class="tnum">${Math.round(c.min)}</td></tr>`;}).join('')}
         </tbody></table></div></div>`;
     })()}
+    ${ehgPanel()}
+    ${unterlagenPanel()}
     ${teamPanel()}
     <div class="panel"><h3>Telefonisten · offene Anruf-Leads</h3><div class="st-list">${teGroups.length?teGroups.map(([t,list])=>{const wv=list.filter(d=>daysUntil(d.wiedervorlage)!=null&&daysUntil(d.wiedervorlage)<=0).length;return `<details class="grp"><summary>${esc(t)}<span class="cnt">${list.length} offen${wv?` · <span style="color:var(--warn)">${wv} Rückrufe fällig</span>`:''}</span></summary><div class="inner">${list.slice(0,40).map(glItem).join('')}</div></details>`;}).join(''):'<div class="empty-col">Keine offenen Anruf-Leads.</div>'}</div></div>
     <div class="panel"><h3>Reaktivierung fällig <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— „Kein Interesse", alle 2 Monate; Lead öffnen → „Wieder freigeben"</span></h3>${reakt.length?`<div class="st-list">${reakt.slice(0,40).map(glItem).join('')}</div>`:'<div class="empty-col">Aktuell nichts fällig.</div>'}</div>
@@ -962,6 +964,12 @@ function renderSteuerung(){
   }));
   const br=host.querySelector('#btnReports');if(br)br.addEventListener('click',openReports);
   const bc=host.querySelector('#btnCeo');if(bc)bc.addEventListener('click',openCeoUpdate);
+  host.querySelectorAll('[data-udoc]').forEach(b=>b.addEventListener('click',()=>udoc(b.dataset.udoc)));
+  host.querySelectorAll('[data-ehgbook]').forEach(b=>b.addEventListener('click',()=>{
+    const id=b.dataset.ehgbook;
+    const dEl=host.querySelector('input[data-ehgd="'+id+'"]'),zEl=host.querySelector('select[data-ehgz="'+id+'"]');
+    ehgBook(id,dEl?dEl.value:'',zEl?zEl.value:'');
+  }));
   const sr=host.querySelector('#statReset');
   if(sr)sr.addEventListener('click',async()=>{
     if(!isAdmin()||MODE!=='db'||!actCol)return;
@@ -1555,6 +1563,109 @@ function teamPanel(){
       <button class="btn${ed?' pri':''}" id="tmAdd">${ed?'💾 Änderungen speichern':'+ Zugang anlegen'}</button>
       ${ed?'<button class="btn" id="tmCancel">Abbrechen</button>':''}
     </div></div>`;
+}
+
+/* ---------- Unterlagen & Führungsgespräche (Zielvereinbarung + Erwartungshaltung) ---------- */
+function dayDiff(isoA,isoB){const a=new Date(isoA),b=new Date(isoB);if(isNaN(a)||isNaN(b))return null;return Math.round((b-a)/86400000);}
+function ehgSlots(){
+  const base=wkStart(1);
+  return [[1,'10:00'],[2,'14:00'],[3,'16:00']].map(([off,z])=>{const d=new Date(base.getTime()+off*86400000);return fmtDM(d)+' '+z;});
+}
+function ehgPanel(){
+  if(MODE!=='db'||!TEAM.length)return '';
+  const today=todayStr();
+  const gps=TEAM.filter(m=>!hasRole(m,'admin'));
+  if(!gps.length)return '';
+  const zopts=(()=>{let o='<option value="">Uhrzeit…</option>';for(let h=7;h<=21;h++)for(let q=0;q<60;q+=15)o+=`<option>${calPad(h)}:${calPad(q)}</option>`;return o;})();
+  const rows=gps.map(m=>{
+    const last=m.ehg||'';
+    const days=last?dayDiff(last,today):null;
+    const due=!last||days>=90;
+    const st=due?'<span class="tg od">fällig</span>':`<span class="tg" style="background:var(--good);color:#fff">wieder in ${90-days} Tagen</span>`;
+    return `<div class="gl" style="cursor:default;flex-wrap:wrap"><span class="gn">${esc(m.name)}</span><span class="ph">zuletzt: ${last?esc(last.split('-').reverse().join('.')):'noch nie'}</span>${st}<input type="date" data-ehgd="${esc(m.id)}" style="width:140px"><select data-ehgz="${esc(m.id)}" style="width:auto">${zopts}</select><button class="mini-btn" data-ehgbook="${esc(m.id)}">📅 Für uns beide einbuchen</button></div>`;
+  }).join('');
+  return `<div class="panel"><h3>🗓 Erwartungshaltungsgespräche <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— alle 3 Monate je GP · Fällige bekommen automatisch Terminvorschläge in ihre Aufgaben · hier buchst du den Termin fix für euch beide in den Wochenplan</span></h3><div class="st-list">${rows}</div></div>`;
+}
+function unterlagenPanel(){
+  return `<div class="panel"><h3>📁 Unterlagen – Führungsgespräche <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— Leitfäden zum Durchgehen und Ausdrucken</span></h3>
+    <details class="grp"><summary>🎯 Zielvereinbarungsgespräch (Team)<span class="cnt">1:30 h · bewusst NICHT im Büro</span></summary><div class="inner" style="font-size:12.5px;line-height:1.65;padding:8px 4px">
+      <b>Rahmen:</b> 1:30 Stunden · neutraler Ort (nicht im Büro!) · Handys weg.<br>
+      <b>1 · Rückblick (20 Min):</b> Was war gut, was nicht? Erst die GPs reden lassen, dann deine Sicht – Zahlen UND Gefühl.<br>
+      <b>2 · Das Ziel (30 Min):</b> <b>Stufe 6 noch dieses Jahr.</b> Lücke: <b>3.000 EH</b> · Ø <b>70 EH</b>/Abschluss → <b>≈ 43 Abschlüsse</b> → ÷ verbleibende Wochen = Wochenziel → herunterbrechen auf BGs, AGs, Telefonate.<br>
+      <b>3 · Team-Inventur (20 Min):</b> Wen haben wir, wer ist aktiv? (Aktivitäts-Statistik oben live zeigen!) Wer braucht was?<br>
+      <b>4 · Vereinbarung (20 Min):</b> Wer liefert was bis wann – schriftlich, jeder bestätigt, Folgetermin sofort fixieren.
+      <div style="margin-top:8px"><button class="btn" data-udoc="ziel" style="padding:7px 13px;font-size:12.5px">🖨 Leitfaden öffnen / drucken</button></div>
+    </div></details>
+    <details class="grp"><summary>🤝 Erwartungshaltungsgespräch (je GP)<span class="cnt">45–60 Min · alle 3 Monate</span></summary><div class="inner" style="font-size:12.5px;line-height:1.65;padding:8px 4px">
+      Die 7 Punkte: ① Rahmen auf Augenhöhe ② Meine Erwartungen an dich ③ Deine Erwartungen an mich ④ Standortbestimmung mit CRM-Zahlen ⑤ Ziel &amp; Entwicklung ⑥ Motivation &amp; Befinden ⑦ 3 Vereinbarungen + nächster Termin wird SOFORT fixiert.
+      <div style="margin-top:8px"><button class="btn" data-udoc="ehg" style="padding:7px 13px;font-size:12.5px">🖨 Leitfaden öffnen / drucken</button></div>
+    </div></details>
+  </div>`;
+}
+function udoc(type){
+  const css='body{font-family:Segoe UI,Arial,sans-serif;color:#1a2233;margin:0;font-size:13px;line-height:1.55}.pg{width:186mm;margin:0 auto;padding:10mm 0}.kopf{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #0C806D;padding-bottom:4mm;margin-bottom:5mm}.lg{font-size:20px;font-weight:800;letter-spacing:2px;color:#0C806D}.lg small{display:block;font-size:8.5px;color:#858BA0;letter-spacing:.3px}.tt{text-align:right}.tt b{font-size:16px}.tt span{display:block;font-size:9.5px;color:#858BA0}.sec{margin-bottom:5mm;page-break-inside:avoid}.sec h3{font-size:13.5px;color:#0C806D;margin:0 0 1.5mm}.sag{background:#eef6f4;border-radius:6px;padding:2.5mm 3.5mm;font-style:italic;margin:1.5mm 0}.ln{border-bottom:1px solid #d9dde6;height:7mm}.hint{font-size:10.5px;color:#858BA0}ul{margin:1mm 0 1mm 5mm;padding:0}li{margin-bottom:1mm}@page{size:A4;margin:10mm}';
+  let body='';
+  if(type==='ziel'){
+    body=`<div class="sec"><h3>Rahmen</h3>1:30 Stunden · bewusst NICHT im Büro (Kaffeehaus, neutraler Ort) · Handys weg · du moderierst, das Team redet.</div>
+    <div class="sec"><h3>1 · Rückblick – Vergangenheit besprechen (20 Min)</h3><ul><li>Was war gut? Jeden einzeln fragen – zuerst die GPs, dann du.</li><li>Was war nicht gut? Ohne Schuldige – Fakten und Gefühl trennen.</li><li>Zahlen dazulegen: EH bisher, Termine, Aktivität (CRM-Statistik).</li></ul></div>
+    <div class="sec"><h3>2 · Das Ziel (30 Min)</h3><div class="sag">„Unser Ziel ist klar: Wir gehen dieses Jahr noch in die Stufe 6. Uns fehlen 3.000 EH. Unser Schnitt liegt bei 70 EH pro Abschluss – das sind rund 43 Abschlüsse. Rechnen wir gemeinsam aus, was das pro Woche heißt."</div><ul><li>3.000 EH ÷ 70 EH ≈ <b>43 Abschlüsse</b> ÷ verbleibende Wochen = Wochenziel Team</li><li>Herunterbrechen über den Trichter: Abschlüsse → BGs → AGs → Telefonate</li><li>Jeder GP nennt SEINEN Beitrag selbst – was man selbst ausspricht, hält man eher.</li></ul></div>
+    <div class="sec"><h3>3 · Team-Inventur (20 Min)</h3><ul><li>Wen haben wir? Wer ist aktiv, wer nur auf dem Papier? (Aktivitäts-Statistik im CRM live zeigen)</li><li>Wer braucht was: Leads, Training, Begleitung, Druck oder Rückenwind?</li><li>Lücken: Welche Rolle fehlt uns? (→ Recruiting)</li></ul><div class="hint">Detail-Liste je GP folgt (Excel) – wird hier ergänzt.</div></div>
+    <div class="sec"><h3>4 · Vereinbarung (20 Min)</h3><ul><li>Wer liefert was bis wann – schriftlich festhalten, laut vorlesen, jeder bestätigt.</li><li>Wochenziele kommen in den Teamwochenplan (Plan-Spalte!).</li><li>Folgetermin SOFORT fixieren. Positiv enden: „Stufe 6 ist kein Traum – es ist Mathematik."</li></ul></div>
+    <div class="sec"><h3>Notizen</h3><div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div></div>`;
+  }else{
+    body=`<div class="sec"><h3>Rahmen</h3>45–60 Minuten · alle 3 Monate · auf Augenhöhe, KEIN Kritikgespräch · 70 % hört zu: du. Datum und Vereinbarungen danach im CRM festhalten.</div>
+    <div class="sec"><h3>1 · Einstieg</h3><div class="sag">„Das ist unser Quartalsgespräch – kein Zeugnis. Es geht darum, was DU brauchst und was ICH von dir brauche, damit du dein Ziel erreichst."</div></div>
+    <div class="sec"><h3>2 · Meine Erwartungen an dich</h3><ul><li>Aktivität: Termine/Telefonate pro Woche (Zahl nennen!)</li><li>CRM gepflegt: Termine, Übergaben, Pflichtfelder, Bestätigungen</li><li>Wochenplan geführt · Erreichbarkeit · Verlässlichkeit bei Zusagen</li></ul></div>
+    <div class="sec"><h3>3 · Deine Erwartungen an mich</h3><div class="sag">„Und jetzt umgekehrt: Was erwartest du von mir? Wo brauchst du mehr Unterstützung – Leads, Coaching, Begleitung bei Terminen?"</div><div class="ln"></div><div class="ln"></div></div>
+    <div class="sec"><h3>4 · Standortbestimmung (mit CRM-Zahlen)</h3><ul><li>EH seit dem letzten Gespräch · Termine · Aktivität (Statistik ausdrucken/zeigen)</li><li>Was sagen die Zahlen – und deckt sich das mit deinem Gefühl?</li></ul></div>
+    <div class="sec"><h3>5 · Ziel &amp; Entwicklung</h3><ul><li>Wo willst du in 12 Monaten stehen (Stufe, Einkommen, Rolle)?</li><li>Was fehlt dir dahin – Wissen, Übung, Leads, Mut?</li><li>Beitrag zum Teamziel Stufe 6: Was ist DEIN Anteil?</li></ul></div>
+    <div class="sec"><h3>6 · Motivation &amp; Befinden</h3><div class="sag">„Ganz ehrlich: Wie geht es dir gerade mit der Arbeit? Was gibt dir Energie, was zieht dir welche?"</div><div class="ln"></div></div>
+    <div class="sec"><h3>7 · Vereinbarungen</h3><ul><li>Genau 3 konkrete Punkte bis zum nächsten Gespräch – beidseitig! (auch du lieferst etwas)</li><li>Laut zusammenfassen, beide bestätigen.</li><li><b>Nächsten Quartalstermin SOFORT fixieren</b> und im CRM einbuchen.</li></ul><div class="ln"></div><div class="ln"></div><div class="ln"></div></div>`;
+  }
+  const w=window.open('','_blank');
+  if(!w){toast('Popup blockiert – bitte Popups erlauben');return;}
+  const titel=type==='ziel'?'Zielvereinbarungsgespräch':'Erwartungshaltungsgespräch';
+  const sub=type==='ziel'?'Team-Leitfaden · 1:30 h · nicht im Büro':'Leitfaden je GP · 45–60 Min · alle 3 Monate';
+  w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+titel+'</title><style>'+css+'</style></head><body><div class="pg"><div class="kopf"><div class="lg">CENSA<small>Wir übernehmen die Vorsorge. Sie führen die GmbH.</small></div><div class="tt"><b>'+titel+'</b><span>'+sub+'</span></div></div>'+body+'</div><script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script></body></html>');
+  w.document.close();
+}
+async function ehgBook(id,dateStr,zeit){
+  const mm=TEAM.find(x=>x.id===id);if(!mm)return;
+  if(!dateStr){toast('Bitte zuerst ein Datum wählen');return;}
+  if(!zeit){toast('Bitte eine Uhrzeit wählen');return;}
+  if(MODE!=='db'||!wocheCol||!teamCol){toast('Nur online möglich');return;}
+  const dt=new Date(dateStr+'T00:00:00');
+  const wk=wkKeyOf(dt);
+  const tag=(dt.getDay()+6)%7;
+  const mk=name=>({wk,name,tag,zeit,art:'MGT',kunde:'Erwartungshaltungsgespräch '+(name===mm.name?'mit '+chatName():'mit '+mm.name),ort:'',status:'',ts:new Date().toISOString()});
+  try{
+    const b=firebase.firestore().batch();
+    const i1='w'+Date.now().toString(36)+'ea',i2='w'+Date.now().toString(36)+'eb';
+    b.set(wocheCol.doc(i1),mk(mm.name));
+    b.set(wocheCol.doc(i2),mk(chatName()));
+    b.update(teamCol.doc(mm.id),{ehg:dateStr,ehgRemind:''});
+    await b.commit();
+    mm.ehg=dateStr;mm.ehgRemind='';
+    if(wk===WOCHE_WK){WOCHE.push(Object.assign({_id:i1},mk(mm.name)));WOCHE.push(Object.assign({_id:i2},mk(chatName())));}
+    chatSys('🗓 Erwartungshaltungsgespräch eingebucht: '+mm.name+' & '+chatName()+' am '+dateStr.split('-').reverse().join('.')+' um '+zeit+' – bitte bestätigen!',null,mm.name);
+    toast('Eingebucht – steht bei euch beiden im Wochenplan, '+mm.name+' wurde informiert');
+    renderSteuerung();
+  }catch(e){toast('Einbuchen fehlgeschlagen'+(e&&e.code?' ('+e.code+')':''));}
+}
+let __ehgChecked=false;
+async function ehgAutoRemind(){
+  if(__ehgChecked)return;__ehgChecked=true;
+  if(!isAdmin()||MODE!=='db'||!teamCol||!chatCol)return;
+  const today=todayStr();
+  for(const mm of TEAM){
+    if(hasRole(mm,'admin'))continue;
+    const due=!mm.ehg||dayDiff(mm.ehg,today)>=90;
+    const remOk=!mm.ehgRemind||dayDiff(mm.ehgRemind,today)>=7;
+    if(due&&remOk){
+      chatSys('🗓 '+mm.name+': Dein Erwartungshaltungsgespräch mit '+chatName()+' ist fällig (alle 3 Monate). Terminvorschläge: '+ehgSlots().join(' · ')+' – schreib im Chat, welcher passt, dann wird er fix für uns beide eingebucht.',null,mm.name);
+      try{await teamCol.doc(mm.id).update({ehgRemind:today});mm.ehgRemind=today;}catch(e){}
+    }
+  }
 }
 
 function openCeoUpdate(){
@@ -2397,6 +2508,7 @@ lsLoad();render();
         STATS_SINCE=(s.exists&&(s.data()||{}).since)||'';
         if(isAdmin())renderSteuerung();
       },err=>{});
+      setTimeout(ehgAutoRemind,5000);
     }catch(e){
       setDbState('🔴 '+((e&&e.code)||'Fehler')+' – kein Datenzugriff','var(--bad)');
       toast('Datenzugriff fehlgeschlagen: '+((e&&e.code)||'unbekannt'));
