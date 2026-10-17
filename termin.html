@@ -129,6 +129,7 @@ const fs=firebase.firestore();
 const pad=n=>String(n).padStart(2,'0');
 const WD=['So','Mo','Di','Mi','Do','Fr','Sa'];
 const SLOT_H=[9,10,11,13,14,15,16]; // Startzeiten (45 Min + Puffer)
+const KAP=3; // so viele PARALLELE Termine sind je Uhrzeit buchbar (mehrere Analysten)
 let selDay=null, selTime=null, gmbh=null, BELEGT={}, ANT={gf:null,ma:null,gewinn:null}, WO=null;
 
 function tage(){
@@ -144,7 +145,7 @@ function key(day,hm){return day.getFullYear()+'-'+pad(day.getMonth()+1)+'-'+pad(
 function fmtD(d){return pad(d.getDate())+'.'+pad(d.getMonth()+1)+'.';}
 
 async function ladeBelegt(){
-  try{const s=await fs.collection('slots').get();s.docs.forEach(x=>BELEGT[x.id]=1);}catch(e){}
+  try{const s=await fs.collection('slots').get();s.docs.forEach(x=>{const base=x.id.split('__')[0];BELEGT[base]=(BELEGT[base]||0)+1;});}catch(e){}
   paint();
 }
 function paint(){
@@ -154,7 +155,7 @@ function paint(){
   dh.innerHTML=days.map(d=>`<div class="day${key(d,'x')===key(selDay,'x')?' on':''}" data-d="${d.getTime()}"><b>${fmtD(d)}</b><span>${WD[d.getDay()]}</span></div>`).join('');
   dh.querySelectorAll('.day').forEach(el=>el.addEventListener('click',()=>{selDay=new Date(+el.dataset.d);selTime=null;paint();}));
   const th=document.getElementById('times');
-  th.innerHTML=SLOT_H.map(h=>{const hm=pad(h)+':00';const aus=BELEGT[key(selDay,hm)];return `<div class="tm${selTime===hm?' on':''}${aus?' aus':''}" data-t="${hm}">${hm}</div>`;}).join('');
+  th.innerHTML=SLOT_H.map(h=>{const hm=pad(h)+':00';const aus=(BELEGT[key(selDay,hm)]||0)>=KAP;return `<div class="tm${selTime===hm?' on':''}${aus?' aus':''}" data-t="${hm}">${hm}</div>`;}).join('');
   th.querySelectorAll('.tm:not(.aus)').forEach(el=>el.addEventListener('click',()=>{selTime=el.dataset.t;paint();}));
   const b=document.getElementById('buchen');
   b.disabled=!(gmbh==='ja'&&selDay&&selTime);
@@ -205,16 +206,15 @@ document.getElementById('buchen').addEventListener('click',async()=>{
   const btn=document.getElementById('buchen');btn.disabled=true;btn.textContent='Reserviere …';
   try{
     const batch=fs.batch();
-    batch.set(fs.collection('slots').doc(sid),{b:1,ts:new Date().toISOString()});
-    batch.set(fs.collection('buchungen').doc(),{typ:'termin',slot:sid,name,firma,tel,email:document.getElementById('f-email').value.trim(),msg:document.getElementById('f-msg').value.trim(),gf:ANT.gf,ma:ANT.ma,gewinn:ANT.gewinn,wo:WO,str:WO==='kunde'?str:'',plz:WO==='kunde'?plz:'',stadt:WO==='kunde'?stadt:'',ts:new Date().toISOString()});
+    batch.set(fs.collection('slots').doc(sid+'__'+Math.random().toString(36).slice(2,8)),{b:1,ts:new Date().toISOString()});
+    batch.set(fs.collection('buchungen').doc(),{typ:'termin',slot:sid,name,firma,tel,email:mail,msg:document.getElementById('f-msg').value.trim(),gf:ANT.gf,ma:ANT.ma,gewinn:ANT.gewinn,wo:WO,str:WO==='kunde'?str:'',plz:WO==='kunde'?plz:'',stadt:WO==='kunde'?stadt:'',ts:new Date().toISOString()});
     await batch.commit();
     document.getElementById('form-teil').classList.add('hide');
     document.getElementById('ok-teil').classList.remove('hide');
     document.getElementById('ok-txt').textContent=fmtD(selDay)+selDay.getFullYear()+' um '+selTime+' Uhr · '+firma+(WO==='kunde'?' · bei Ihnen vor Ort':' · im CENSA-Büro, 1230 Wien');
   }catch(e){
-    BELEGT[sid]=1;selTime=null;paint();
-    btn.disabled=false;
-    err.textContent='Dieser Termin wurde gerade vergeben – bitte wählen Sie einen anderen.';err.style.display='block';
+    btn.disabled=false;btn.textContent='✅ Termin fixieren: '+fmtD(selDay)+' um '+selTime;
+    err.textContent='Verbindung fehlgeschlagen – bitte noch einmal auf den Button klicken.';err.style.display='block';
   }
 });
 document.getElementById('card-termin').classList.add('hide');
