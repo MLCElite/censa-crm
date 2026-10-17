@@ -295,6 +295,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 /* ==== FIREBASE-KONFIGURATION: Werte aus der Firebase-Konsole hier einsetzen ==== */
 const FIREBASE_CONFIG={
@@ -1086,14 +1087,16 @@ async function chatAck(id){
       const loc=[dd2.strasse,dd2.plz,dd2.ort].filter(Boolean).join(', ')||((dd2.notizen||'').indexOf('CENSA-Büro')>=0?'CENSA Büro, 1230 Wien':'');
       const maMail=teamMail(mcal.art==='analyse-zuord'?dd2.analyst:dd2.berater);
       const det='Tel: '+(dd2.telefon||'-')+(dd2.briefing?' | '+dd2.briefing:'');
-      if(GCAL_CLIENT_ID){
+      const haveTok=!!__gcalTok&&Date.now()<__gcalExp-60000;
+      if(GCAL_CLIENT_ID&&haveTok){
         gcalInsert(title,dt2,60,det,loc,[dd2.email,OFFICE_MAIL]).then(ok=>{
           if(ok)toast('📅 Termin automatisch in deinen Google Kalender eingetragen'+(dd2.email?' – der Kunde hat die Einladung per E-Mail bekommen':' (keine Kunden-E-Mail hinterlegt – bitte nachtragen)'));
-          else{window.open(calGoogle(title,dt2,det,loc,[dd2.email,maMail,OFFICE_MAIL]),'_blank');toast('📅 Automatik nicht möglich – bitte im Kalender-Tab einmal auf „Speichern" klicken');}
+          else toast('📅 Automatisches Eintragen fehlgeschlagen – bitte in der Aufgaben-Box „Google-Kalender verbinden" neu klicken');
         });
       }else{
+        // Noch nicht verbunden: Kalender-Tab sofort synchron öffnen (wird so nicht geblockt)
         window.open(calGoogle(title,dt2,det,loc,[dd2.email,maMail,OFFICE_MAIL]),'_blank');
-        toast('📅 Kalender geöffnet – WICHTIG: auf „Speichern" klicken, erst dann steht der Termin und der Kunde bekommt die Einladung');
+        toast('📅 Kalender-Tab geöffnet – auf „Speichern" klicken! Tipp: Einmal „Google-Kalender verbinden" (in der Aufgaben-Box), dann passiert das ab sofort vollautomatisch');
       }
     }
   }
@@ -1213,6 +1216,7 @@ function openTodo(force){
   const m=document.getElementById('modal');m.classList.remove('wide');
   m.innerHTML=`<h2>📌 Deine offenen Aufgaben</h2>
     <div class="sub">${acks.length?(acks.length+' Bestätigung'+(acks.length>1?'en':'')+' offen – bitte kurz abarbeiten'):'Alles bestätigt 👍'}</div>
+    ${(GCAL_CLIENT_ID&&!(__gcalTok&&Date.now()<__gcalExp-60000))?`<div style="background:var(--surface-2);border:1.5px solid var(--brand);border-radius:10px;padding:10px 13px;margin:4px 0 10px;font-size:12.5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b>📅 Google-Kalender verbinden</b><span style="color:var(--ink-2)">– einmal klicken, dann landet jeder bestätigte Termin automatisch in deinem Kalender und der Kunde bekommt sofort die Einladung.</span><button class="btn pri" id="td-gcal" style="padding:6px 14px;font-size:12.5px">Jetzt verbinden</button></div>`:''}
     ${acks.map(a=>{const t=a.ts?new Date(a.ts):null;const zeit=t?(String(t.getDate()).padStart(2,'0')+'.'+String(t.getMonth()+1).padStart(2,'0')+'.'):'';
       const canDec=(a.art==='beratung-zuord'||a.art==='analyse-zuord')&&personNames(me).includes((a.ackWer||'').trim().toLowerCase());
       return `<div class="ehrow" style="flex-wrap:wrap"><span class="nm" style="min-width:220px;white-space:normal">${zeit?zeit+' · ':''}${esc(a.text)}</span>${a.dealId?`<button class="mini-btn" data-tdl="${esc(a.dealId)}">Lead öffnen</button>`:''}<button class="mini-btn" style="border-color:var(--good);color:var(--good);font-weight:700" data-tda="${esc(a._id||'')}">✔ Annehmen</button>${canDec?`<button class="mini-btn" style="border-color:var(--bad);color:var(--bad)" data-tdd="${esc(a._id||'')}">✖ Ablehnen</button>`:''}</div>`;}).join('')}
@@ -1221,6 +1225,12 @@ function openTodo(force){
     <div class="modal-foot"><button class="btn${acks.length?'':' pri'}" id="m-close">${acks.length?'Später':'Los geht’s'}</button></div>`;
   document.getElementById('ov').classList.add('show');
   m.querySelector('#m-close').addEventListener('click',closeModal);
+  const tg=m.querySelector('#td-gcal');
+  if(tg)tg.addEventListener('click',()=>{
+    tg.disabled=true;tg.textContent='Verbinde …';
+    gcalToken().then(()=>{toast('✅ Google-Kalender verbunden – bestätigte Termine landen ab jetzt automatisch im Kalender');openTodo(true);})
+    .catch(e=>{tg.disabled=false;tg.textContent='Jetzt verbinden';toast(e&&e.message?e.message:'Verbindung fehlgeschlagen – Popups erlauben und nochmal versuchen');});
+  });
   m.querySelectorAll('[data-tdl]').forEach(b=>b.addEventListener('click',()=>openModal(b.dataset.tdl)));
   m.querySelectorAll('[data-tda]').forEach(b=>b.addEventListener('click',async()=>{await chatAck(b.dataset.tda);openTodo(true);}));
   m.querySelectorAll('[data-tdd]').forEach(b=>b.addEventListener('click',async()=>{await chatDecline(b.dataset.tdd);openTodo(true);}));
@@ -1283,12 +1293,14 @@ async function wSetStatus(ent,wk,next){
 /* ---------- Google-Kalender-Sync (jede Person verbindet ihr eigenes Google-Konto) ---------- */
 let __gisReady=null,__gcalTok=null,__gcalExp=0,__gcalLast={};
 function gisLoad(){
+  if(window.google&&google.accounts&&google.accounts.oauth2)return Promise.resolve();
   if(__gisReady)return __gisReady;
   __gisReady=new Promise((res,rej)=>{
-    const s=document.createElement('script');
-    s.src='https://accounts.google.com/gsi/client';s.async=true;s.defer=true;
-    s.onload=res;s.onerror=()=>{__gisReady=null;rej(new Error('Google-Script konnte nicht geladen werden'));};
-    document.head.appendChild(s);
+    let tries=0;
+    const t=setInterval(()=>{tries++;
+      if(window.google&&google.accounts&&google.accounts.oauth2){clearInterval(t);res();}
+      else if(tries>50){clearInterval(t);__gisReady=null;rej(new Error('Google-Script konnte nicht geladen werden – Internet prüfen und neu laden'));}
+    },100);
   });
   return __gisReady;
 }
