@@ -906,6 +906,7 @@ function renderSteuerung(){
       <div class="mc"><div class="l">Offene Beratungen</div><div class="v tnum">${beratung.length}</div></div>
       <div class="mc bad"><div class="l">Überfällig</div><div class="v tnum">${overdue}</div></div>
     </div>
+    ${buchPanel()}
     <div style="display:flex;gap:9px;flex-wrap:wrap;margin:0 0 16px">
       <button class="btn pri" id="btnCeo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M3 3v18h18M7 14l4-4 3 3 5-6"/></svg>CEO-Wochenupdate</button>
       <button class="btn" id="btnReports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Wochenbericht je Berater</button>
@@ -964,6 +965,24 @@ function renderSteuerung(){
   }));
   const br=host.querySelector('#btnReports');if(br)br.addEventListener('click',openReports);
   const bc=host.querySelector('#btnCeo');if(bc)bc.addEventListener('click',openCeoUpdate);
+  host.querySelectorAll('[data-blead]').forEach(btn=>btn.addEventListener('click',async()=>{
+    const b=BUCH.find(x=>x._id===btn.dataset.blead);if(!b)return;
+    const d=blank();
+    const p=(b.slot||'').split('_');const ds=(p[0]||'').split('-');
+    d.kundentyp='GmbH';d.org=b.firma||'';d.name=b.name||b.firma||'—';d.telefon=normTel(b.tel||'');d.email=b.email||'';
+    d.quelle='Online-Buchung';d.stage='Analysetermin vereinbart';
+    d.datumAG=ds.length===3?(ds[2]+'.'+ds[1]+'.'+ds[0]+' '+(p[1]||'')):'';
+    d.notizen=(b.msg?('Anliegen: '+b.msg+' | '):'')+'Selbst gebucht über die CENSA-Website';
+    histAdd(d,'Online-Buchung übernommen ('+(b.slot||'')+')');
+    state.deals.unshift(d);dbPersist(d);
+    try{await buchCol.doc(b._id).update({done:true});b.done=true;}catch(e){}
+    chatSys('🌐 Neue Online-Buchung: '+(d.org||d.name)+' – AG am '+d.datumAG+' · Zuordnung über die Tages-Dispo',d);
+    toast('Lead angelegt – AG-Termin '+d.datumAG);render();
+  }));
+  host.querySelectorAll('[data-bdone]').forEach(btn=>btn.addEventListener('click',async()=>{
+    if(!confirm('Buchung ausblenden (Spam/Absage)? Der Zeit-Slot bleibt gesperrt.'))return;
+    try{await buchCol.doc(btn.dataset.bdone).update({done:true});}catch(e){toast('Fehlgeschlagen');}
+  }));
   host.querySelectorAll('[data-udoc]').forEach(b=>b.addEventListener('click',()=>udoc(b.dataset.udoc)));
   host.querySelectorAll('[data-ehgbook]').forEach(b=>b.addEventListener('click',()=>{
     const id=b.dataset.ehgbook;
@@ -1476,7 +1495,7 @@ async function renderWoche(){
 }
 
 /* ---------- Aktivitäts-Tracking (App-Öffnungen je Mitarbeiter) ---------- */
-let actCol=null, actUnsub=null, ACT=[], __lastAct=0, STATS_SINCE='', metaUnsub=null;
+let actCol=null, actUnsub=null, ACT=[], __lastAct=0, STATS_SINCE='', metaUnsub=null, buchCol=null, buchUnsub=null, BUCH=[];
 async function logActivity(){
   if(MODE!=='db'||!actCol||!AUTH_USER)return;
   const now=Date.now();
@@ -1570,6 +1589,12 @@ function dayDiff(isoA,isoB){const a=new Date(isoA),b=new Date(isoB);if(isNaN(a)|
 function ehgSlots(){
   const base=wkStart(1);
   return [[1,'10:00'],[2,'14:00'],[3,'16:00']].map(([off,z])=>{const d=new Date(base.getTime()+off*86400000);return fmtDM(d)+' '+z;});
+}
+function buchPanel(){
+  const offen=BUCH.filter(b=>!b.done);
+  if(!offen.length)return '';
+  const f=b=>{const p=(b.slot||'').split('_');const dd=p[0]?p[0].split('-').reverse().join('.'):'';return dd+' · '+(p[1]||'');};
+  return `<div class="panel" style="border-color:var(--brand)"><h3>🌐 Online-Buchungen (${offen.length}) <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— selbst gebucht über die CENSA-Website · „Lead anlegen" übernimmt alles inkl. AG-Termin</span></h3><div class="st-list">${offen.map(b=>`<div class="gl" style="cursor:default;flex-wrap:wrap"><span class="gn">${esc(b.name||'—')}</span><span class="ph">${esc(b.firma||'')}</span><span class="ph tnum">${esc(b.tel||'')}</span><span class="tg" style="background:var(--brand);color:#fff">${esc(f(b))}</span>${b.msg?`<span class="ph">„${esc((b.msg||'').slice(0,60))}"</span>`:''}<button class="mini-btn" data-blead="${esc(b._id)}">＋ Lead anlegen</button><button class="mini-btn" data-bdone="${esc(b._id)}" style="color:var(--bad)" title="Ausblenden (Spam/Absage)">✕</button></div>`).join('')}</div></div>`;
 }
 function ehgPanel(){
   if(MODE!=='db'||!TEAM.length)return '';
@@ -2509,6 +2534,11 @@ lsLoad();render();
         if(isAdmin())renderSteuerung();
       },err=>{});
       setTimeout(ehgAutoRemind,5000);
+      buchCol=fs.collection('buchungen');
+      buchUnsub=buchCol.orderBy('ts','desc').limit(80).onSnapshot(snap=>{
+        BUCH=snap.docs.map(s=>{const x=Object.assign({},s.data());x._id=s.id;return x;});
+        if(isAdmin())renderSteuerung();
+      },err=>{});
     }catch(e){
       setDbState('🔴 '+((e&&e.code)||'Fehler')+' – kein Datenzugriff','var(--bad)');
       toast('Datenzugriff fehlgeschlagen: '+((e&&e.code)||'unbekannt'));
