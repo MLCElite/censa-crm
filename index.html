@@ -821,6 +821,7 @@ function dialerCard(d){
       <div style="font-size:21px;font-weight:800;flex:1" class="tnum">${esc(d.telefon||'— keine Nummer —')}</div>
       ${d.telefon?`<a class="btn pri" id="t-call" href="tel:${esc(tel)}" style="font-size:15px;padding:11px 20px">☎ Anrufen</a>`:''}
     </div>
+    ${OFFICE_MAIL?`<div style="font-size:12.5px;margin:-6px 0 10px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:7px 11px"><b>✉ Office-Mail für den Kunden:</b> <span class="t-office" style="color:var(--brand-ink);font-weight:700;cursor:pointer" title="Klicken = kopieren">${esc(OFFICE_MAIL)}</span> <span style="color:var(--ink-3)">— „Schicken Sie Ihre Unterlagen einfach an …"</span></div>`:''}
     ${finBlock(d)}
     ${d.potenzial?`<div style="font-size:12.5px;margin-bottom:6px"><b>Potenzial:</b> ${esc(d.potenzial)}</div>`:''}
     ${d.briefing?`<div style="font-size:12.5px;margin-bottom:6px"><b>Briefing:</b> ${esc(d.briefing)}</div>`:''}
@@ -839,6 +840,9 @@ function dialerCard(d){
   </div>`;
 }
 function wireDialer(host,d){
+  host.querySelectorAll('.t-office').forEach(el=>el.addEventListener('click',()=>{
+    try{navigator.clipboard.writeText(OFFICE_MAIL);toast('Office-Mail kopiert – einfach einfügen');}catch(e){toast(OFFICE_MAIL);}
+  }));
   const call=host.querySelector('#t-call');
   const meta=()=>{const du=host.querySelector('#t-dur'),no=host.querySelector('#t-note');const o={};if(du&&du.value)o.dur=parseFloat(du.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
   if(call)call.addEventListener('click',()=>{d.calls=d.calls||[];d.calls.push({ts:new Date().toISOString(),outcome:'angerufen'});dbPersist(d);});
