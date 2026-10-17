@@ -87,7 +87,7 @@
       <label>Ihr Name *</label><input id="f-name" placeholder="Vor- und Nachname" maxlength="79">
       <label>Firma (GmbH) *</label><input id="f-firma" placeholder="Muster GmbH" maxlength="119">
       <label>Telefon *</label><input id="f-tel" placeholder="+43 …" maxlength="29">
-      <label>E-Mail</label><input id="f-email" placeholder="fuer die Terminbestätigung" maxlength="119">
+      <label>E-Mail *</label><input id="f-email" placeholder="für die Kalender-Einladung" maxlength="119">
       <label>Wie viele Gesellschafter / Geschäftsführer? *</label>
       <div class="gmbh"><div class="gw qw" data-q="gf" data-v="1">1</div><div class="gw qw" data-q="gf" data-v="2">2</div><div class="gw qw" data-q="gf" data-v="3 oder mehr">3+</div></div>
       <label>Wie viele Mitarbeiter? *</label>
@@ -195,6 +195,8 @@ document.getElementById('buchen').addEventListener('click',async()=>{
   const firma=document.getElementById('f-firma').value.trim();
   const tel=document.getElementById('f-tel').value.trim();
   if(name.length<2||firma.length<2||tel.length<6){err.textContent='Bitte Name, Firma und Telefonnummer ausfüllen.';err.style.display='block';return;}
+  const mail=document.getElementById('f-email').value.trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mail)){err.textContent='Bitte eine gültige E-Mail angeben – darüber bekommen Sie Ihre Kalender-Einladung.';err.style.display='block';return;}
   if(!ANT.gf||!ANT.ma||!ANT.gewinn){err.textContent='Bitte die drei Fragen zu Gesellschaftern, Mitarbeitern und Gewinn beantworten.';err.style.display='block';return;}
   if(!WO){err.textContent='Bitte wählen: Termin bei Ihnen oder im CENSA-Büro?';err.style.display='block';return;}
   const str=document.getElementById('f-str').value.trim(),plz=document.getElementById('f-plz').value.trim(),stadt=document.getElementById('f-stadt').value.trim();

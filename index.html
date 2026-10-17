@@ -1069,6 +1069,23 @@ function chatSys(text,d,ackWer,art){chatPost(text,{sys:true,dealId:d?d.id:null,d
 async function chatAck(id){
   if(!chatCol)return;
   const n=chatName();if(!n)return;
+  // Beim Bestätigen einer Termin-Zuordnung: Kalender SOFORT vorbefüllt öffnen (Kunde + Mitarbeiter als Gäste)
+  // – muss VOR dem await passieren, sonst blockt der Browser das Fenster
+  const mcal=CHAT.find(x=>x._id===id);
+  const myN=personNames(n);
+  if(mcal&&mcal.dealId&&(mcal.art==='analyse-zuord'||mcal.art==='beratung-zuord')&&myN.includes((mcal.ackWer||'').trim().toLowerCase())){
+    const dd2=state.deals.find(x=>x.id===mcal.dealId);
+    const dt2=dd2?parseTermin(mcal.art==='analyse-zuord'?dd2.datumAG:dd2.datumBG):null;
+    if(dd2&&dt2){
+      const kunde=dd2.name||dd2.org||'Kunde';
+      const title=(mcal.art==='analyse-zuord'?'Analyse: ':'Beratung: ')+kunde;
+      const loc=[dd2.strasse,dd2.plz,dd2.ort].filter(Boolean).join(', ')||((dd2.notizen||'').indexOf('CENSA-Büro')>=0?'CENSA Büro, 1230 Wien':'');
+      const maMail=teamMail(mcal.art==='analyse-zuord'?dd2.analyst:dd2.berater);
+      const det='Tel: '+(dd2.telefon||'-')+(dd2.briefing?' | '+dd2.briefing:'');
+      window.open(calGoogle(title,dt2,det,loc,[dd2.email,maMail,OFFICE_MAIL]),'_blank');
+      toast(dd2.email?'📅 Kalender geöffnet – einmal „Speichern" klicken, dann ist der Termin bei dir UND beim Kunden fix eingebucht':'📅 Kalender geöffnet – Achtung: keine Kunden-E-Mail hinterlegt, der Kunde bekommt so keine Einladung');
+    }
+  }
   try{await chatCol.doc(id).update({ackBy:firebase.firestore.FieldValue.arrayUnion(n)});}catch(e){toast('Bestätigen fehlgeschlagen');return;}
   const msg=CHAT.find(x=>x._id===id);
   if(msg&&!(msg.ackBy||[]).includes(n)){msg.ackBy=[...(msg.ackBy||[]),n];updateTodoBadge();updateChatLog();}
