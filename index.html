@@ -1086,8 +1086,15 @@ async function chatAck(id){
       const loc=[dd2.strasse,dd2.plz,dd2.ort].filter(Boolean).join(', ')||((dd2.notizen||'').indexOf('CENSA-Büro')>=0?'CENSA Büro, 1230 Wien':'');
       const maMail=teamMail(mcal.art==='analyse-zuord'?dd2.analyst:dd2.berater);
       const det='Tel: '+(dd2.telefon||'-')+(dd2.briefing?' | '+dd2.briefing:'');
-      window.open(calGoogle(title,dt2,det,loc,[dd2.email,maMail,OFFICE_MAIL]),'_blank');
-      toast(dd2.email?'📅 Kalender geöffnet – einmal „Speichern" klicken, dann ist der Termin bei dir UND beim Kunden fix eingebucht':'📅 Kalender geöffnet – Achtung: keine Kunden-E-Mail hinterlegt, der Kunde bekommt so keine Einladung');
+      if(GCAL_CLIENT_ID){
+        gcalInsert(title,dt2,60,det,loc,[dd2.email,OFFICE_MAIL]).then(ok=>{
+          if(ok)toast('📅 Termin automatisch in deinen Google Kalender eingetragen'+(dd2.email?' – der Kunde hat die Einladung per E-Mail bekommen':' (keine Kunden-E-Mail hinterlegt – bitte nachtragen)'));
+          else{window.open(calGoogle(title,dt2,det,loc,[dd2.email,maMail,OFFICE_MAIL]),'_blank');toast('📅 Automatik nicht möglich – bitte im Kalender-Tab einmal auf „Speichern" klicken');}
+        });
+      }else{
+        window.open(calGoogle(title,dt2,det,loc,[dd2.email,maMail,OFFICE_MAIL]),'_blank');
+        toast('📅 Kalender geöffnet – WICHTIG: auf „Speichern" klicken, erst dann steht der Termin und der Kunde bekommt die Einladung');
+      }
     }
   }
   try{await chatCol.doc(id).update({ackBy:firebase.firestore.FieldValue.arrayUnion(n)});}catch(e){toast('Bestätigen fehlgeschlagen');return;}
@@ -1292,7 +1299,7 @@ function gcalToken(){
       try{
         const tc=google.accounts.oauth2.initTokenClient({
           client_id:GCAL_CLIENT_ID,
-          scope:'https://www.googleapis.com/auth/calendar.readonly',
+          scope:'https://www.googleapis.com/auth/calendar.events',
           callback:r=>{
             if(r&&r.access_token){__gcalTok=r.access_token;__gcalExp=Date.now()+((r.expires_in||3300)*1000);res(__gcalTok);}
             else rej(new Error('Keine Freigabe erhalten'));
@@ -1303,6 +1310,20 @@ function gcalToken(){
       }catch(e){rej(e);}
     },rej);
   });
+}
+async function gcalInsert(title,dt,durMin,desc,loc,attendees){
+  if(!GCAL_CLIENT_ID)return false;
+  let tok;try{tok=await gcalToken();}catch(e){return false;}
+  const end=new Date(dt.getTime()+durMin*60000);
+  const body={summary:title,description:desc||'',location:loc||'',
+    start:{dateTime:dt.toISOString(),timeZone:'Europe/Vienna'},
+    end:{dateTime:end.toISOString(),timeZone:'Europe/Vienna'},
+    attendees:(attendees||[]).filter(Boolean).map(e=>({email:e})),
+    reminders:{useDefault:true}};
+  try{
+    const r=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    return r.ok;
+  }catch(e){return false;}
 }
 function gcalArt(title){
   const m=(title||'').trim().match(/^(AG|BG|MGT|EG|KG|TG|PRIVAT)\b[\s:\-–]*/i);
