@@ -249,6 +249,11 @@
   .msg .lk{color:var(--brand-ink);cursor:pointer;text-decoration:underline}
   .chatin{display:flex;gap:8px;padding-top:10px}
   .tabbadge{background:var(--bad);color:#fff;font-size:10px;font-weight:800;border-radius:10px;padding:1px 6px;margin-left:5px;vertical-align:middle}
+  .bchip{border:1.5px solid var(--line);background:var(--surface);border-radius:20px;padding:6px 13px;font-size:12.5px;font-weight:700;color:var(--ink-2);cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:6px}
+  .bchip b{color:var(--brand-ink);font-size:12px}
+  .bchip:hover{border-color:var(--brand)}
+  .bchip.on{background:var(--brand);border-color:transparent;color:#fff;box-shadow:0 3px 10px rgba(12,128,109,.3)}
+  .bchip.on b{color:#fff}
   ::selection{background:var(--brand-bg);color:var(--brand-ink)}
   *::-webkit-scrollbar{width:9px;height:9px}
   *::-webkit-scrollbar-track{background:transparent}
@@ -783,28 +788,35 @@ function renderTelefon(){
   const DS=visibleDeals();
   if(!DS.length){host.innerHTML=emptyState();wireEmpty(host);return;}
   const tels=[...new Set(DS.map(d=>d.telefonist).filter(Boolean))].sort();
-  const bez=[...new Set(DS.map(d=>d.bezirk).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
   if(host.__sel===undefined&&ME&&hasRole(ME,'telefonist'))host.__sel=ME.name;
   const sel=host.__sel||'';const fb=host.__bez||'';
   host.__skip=host.__skip||{};
-  let queue=DS.filter(d=>d.status==='open'&&['Neuer Lead','In Bearbeitung'].includes(d.stage)&&(!sel||(d.telefonist||'')===sel)&&(!fb||(d.bezirk||'')===fb)&&!host.__skip[d.id]);
+  const base=DS.filter(d=>d.status==='open'&&['Neuer Lead','In Bearbeitung'].includes(d.stage)&&(!sel||(d.telefonist||'')===sel)&&!host.__skip[d.id]);
+  const bezCnt={};let ohneBez=0;
+  base.forEach(d=>{const b=(d.bezirk||'').trim();if(b)bezCnt[b]=(bezCnt[b]||0)+1;else ohneBez++;});
+  const bez=Object.keys(bezCnt).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  let queue=base.filter(d=>!fb||(fb==='__none'?!(d.bezirk||'').trim():(d.bezirk||'').trim()===fb));
   // Sortierung: Überfällige zuerst, dann Bezirk für Bezirk (1010, 1020, …), innerhalb nach Wiedervorlage
   queue.sort((a,b)=>{const oa=isOverdue(a)?0:1,ob=isOverdue(b)?0:1;if(oa!==ob)return oa-ob;const c=(a.bezirk||'9999').localeCompare((b.bezirk||'9999'),undefined,{numeric:true});if(c)return c;const da=parseDMY(a.wiedervorlage),db=parseDMY(b.wiedervorlage);return (da?da.getTime():8.64e15)-(db?db.getTime():8.64e15);});
   const t=todayStr();let dials=0,termine=0;
   DS.forEach(d=>{if(sel&&(d.telefonist||'')!==sel)return;(d.calls||[]).forEach(c=>{if((c.ts||'').slice(0,10)===t){if(c.outcome==='angerufen')dials++;else if(c.outcome==='termin')termine++;}});});
   const d0=(host.__pick&&queue.find(x=>x.id===host.__pick))||queue[0];
   host.innerHTML=`
+   <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px;align-items:center">
+     <button class="bchip${!fb?' on':''}" data-bz="">Alle Bezirke <b>${base.length}</b></button>
+     ${bez.map(b=>`<button class="bchip${fb===b?' on':''}" data-bz="${esc(b)}">${esc(b)} <b>${bezCnt[b]}</b></button>`).join('')}
+     ${ohneBez?`<button class="bchip${fb==='__none'?' on':''}" data-bz="__none">Ohne Bezirk <b>${ohneBez}</b></button>`:''}
+   </div>
    <div class="filters">
-     <select id="tSel"><option value="">Telefonist wählen…</option>${tels.map(x=>`<option${sel===x?' selected':''}>${esc(x)}</option>`).join('')}</select>
-     <select id="tBez"><option value="">Alle Bezirke</option>${bez.map(x=>`<option${fb===x?' selected':''}>${esc(x)}</option>`).join('')}</select>
+     <select id="tSel" style="width:auto"><option value="">Telefonist wählen…</option>${tels.map(x=>`<option${sel===x?' selected':''}>${esc(x)}</option>`).join('')}</select>
      <span class="kpi">☎ Heute <b class="tnum">${dials}</b></span>
      <span class="kpi">Termine <b class="tnum">${termine}</b></span>
      <span class="kpi" style="margin-left:auto">${queue.length} in der Liste</span>
    </div>
    ${d0?dialerCard(d0):`<div class="emptybig"><div class="big">Liste leer${sel?' für '+esc(sel):''} 🎉</div>Alle Anruf-Leads abgearbeitet oder übersprungen.</div>`}
-   ${queue.length>1?`<div style="margin-top:12px;max-width:640px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin-bottom:6px">Als Nächstes – nach Bezirk sortiert (${queue.length-1} weitere)</div><div class="st-list">${queue.filter(x=>x.id!==d0.id).slice(0,10).map(x=>`<div class="gl" data-tpick="${x.id}"><span class="tg">${esc(x.bezirk||'—')}</span><span class="gn">${esc(x.name||x.org||'—')}</span><span class="ph tnum">${esc(x.telefon||'')}</span>${isOverdue(x)?'<span class="od">überfällig</span>':''}</div>`).join('')}</div></div>`:''}`;
+   ${queue.length>1?`<div style="margin-top:12px;max-width:640px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin-bottom:6px">${fb?(fb==='__none'?'Ohne Bezirk':'Bezirk '+esc(fb))+' – alle '+queue.length+' Kunden':'Als Nächstes – nach Bezirk sortiert ('+(queue.length-1)+' weitere)'}</div><div class="st-list">${(fb?queue:queue.filter(x=>x.id!==d0.id).slice(0,10)).map(x=>`<div class="gl" data-tpick="${x.id}"${x.id===d0.id?' style="border-color:var(--brand);background:var(--brand-bg)"':''}><span class="tg">${esc(x.bezirk||'—')}</span><span class="gn">${x.id===d0.id?'▶ ':''}${esc(x.name||x.org||'—')}</span><span class="ph">${esc(x.org&&x.name!==x.org?x.org:'')}</span><span class="ph tnum">${esc(x.telefon||'')}</span>${isOverdue(x)?'<span class="od">überfällig</span>':''}</div>`).join('')}</div></div>`:''}`;
+  host.querySelectorAll('[data-bz]').forEach(b=>b.addEventListener('click',()=>{host.__bez=b.dataset.bz;host.__pick='';renderTelefon();}));
   host.querySelector('#tSel').addEventListener('change',e=>{host.__sel=e.target.value;host.__skip={};host.__pick='';renderTelefon();});
-  host.querySelector('#tBez').addEventListener('change',e=>{host.__bez=e.target.value;host.__pick='';renderTelefon();});
   host.querySelectorAll('[data-tpick]').forEach(el=>el.addEventListener('click',()=>{host.__pick=el.dataset.tpick;renderTelefon();}));
   if(d0)wireDialer(host,d0);
 }
