@@ -324,7 +324,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.10-F";
+const APP_VERSION="19.10-G";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -990,11 +990,34 @@ function mergeDeals(ids){
 }
 function openDupCheck(){
   try{
-  const groups=dupGroups();
+  // === AUTOMATIK: sichere Duplikate sofort zusammenführen ===
+  // sicher = gleiche Telefonnummer ODER Namens-Teilmenge (z. B. "Sascha Achunow" ⊆ "Manasche (Sascha) Achunow"? nein –
+  // aber "Achunow Manasche" ⊆ "Manasche (Sascha) Achunow" ja; verbunden wird, was eindeutig dieselbe Person ist)
+  const TITEL=['mag','dr','ing','msc','bsc','mba','herr','frau','dipl','fh','jun','sen'];
+  const toksOf=d=>new Set((d.name||'').toLowerCase().replace(/\(.*?\)/g,' ').replace(/[^a-zäöüß ]/g,' ').split(/\s+/).filter(w=>w.length>=2&&!TITEL.includes(w)));
+  const auto=[];
+  dupGroups().forEach(g=>{
+    const par={};const fnd=x=>{while(par[x]!==x)x=par[x]=par[par[x]];return x;};const uni=(a,b)=>{a=fnd(a);b=fnd(b);if(a!==b)par[b]=a;};
+    g.forEach(d=>par[d.id]=d.id);
+    const byTel={};
+    g.forEach(d=>{const t=(d.telefon||'').replace(/\D/g,'');if(t.length>=9){const k=t.slice(-9);if(byTel[k])uni(byTel[k],d.id);else byTel[k]=d.id;}});
+    for(let i=0;i<g.length;i++)for(let j=i+1;j<g.length;j++){
+      const A=toksOf(g[i]),B=toksOf(g[j]);if(!A.size||!B.size)continue;
+      const kl=A.size<=B.size?A:B,gr=A.size<=B.size?B:A;
+      if([...kl].every(w=>gr.has(w)))uni(g[i].id,g[j].id);
+    }
+    const cl={};g.forEach(d=>{const r=fnd(d.id);(cl[r]=cl[r]||[]).push(d);});
+    Object.values(cl).forEach(c=>{
+      if(c.length>1){const b=mergeDeals(c.map(x=>x.id));if(b)auto.push(esc(b.name||b.org||'—')+' <span style="color:var(--ink-3)">('+c.length+' Einträge → 1)</span>');}
+    });
+  });
+  const groups=dupGroups(); // was jetzt noch übrig ist = echte Zweifelsfälle
   const m=document.getElementById('modal');m.classList.add('wide');
   const anz=groups.reduce((s,g)=>s+g.length,0);
+  const autoHtml=auto.length?`<div style="background:var(--good-bg);border:1.5px solid var(--good);border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12.5px"><b style="color:var(--good)">🔗 Automatisch zusammengeführt (${auto.length}):</b><br>${auto.join('<br>')}</div>`:`<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12.5px">Keine eindeutigen Duplikate (mehr) – alles, was sicher zusammengehört, ist bereits vereint ✔</div>`;
   m.innerHTML=`<h2>🔍 Duplikat-Check</h2>
-    <div class="sub">${groups.length?groups.length+' mögliche Duplikat-Gruppen ('+anz+' Datensätze) – gefunden über Telefonnummer, Namens-Varianten und Firma. Prüfen und je Gruppe zusammenführen: Es gehen KEINE Daten verloren (Anrufe, Notizen, Verlauf, Termine werden vereint, der vollständigste Datensatz bleibt).':'Keine Duplikate gefunden – alles sauber ✔'}</div>
+    ${autoHtml}
+    <div class="sub">${groups.length?groups.length+' Zweifelsfall-Gruppe'+(groups.length>1?'n':'')+' ('+anz+' Datensätze) übrig – hier war die Automatik bewusst vorsichtig (gleicher Nachname, aber andere Vornamen/Nummern). Anhaken, was wirklich dieselbe Person ist, dann zusammenführen.':'Keine Zweifelsfälle übrig – alles sauber ✔'}</div>
     <div class="repwrap">${groups.slice(0,60).map(g=>`<div class="rep"><div class="rh">${esc(g[0].name||g[0].org||'—')}<span style="color:var(--ink-3);font-weight:600">· ${g.length} Einträge</span><button class="mini-btn" style="margin-left:auto;border-color:var(--brand);color:var(--brand-ink);font-weight:800" data-dmerge="1">🔗 Angehakte zusammenführen</button></div>
       ${g.map(d=>`<div class="gl" style="border:0;border-bottom:1px solid var(--line-2);border-radius:0" data-id="${d.id}"><input type="checkbox" class="dupcb" data-did="${d.id}" checked style="width:17px;height:17px;accent-color:var(--brand);flex:0 0 auto;cursor:pointer"><span class="gn">${esc(d.name||'—')}</span><span class="ph">${esc(d.org||'')}</span><span class="ph tnum">${esc(d.telefon||'— kein Tel —')}</span><span class="tg">${esc(d.stage)}${d.status!=='open'?' · '+esc(d.status):''}</span><span class="ph">${esc([d.telefonist&&'T:'+d.telefonist,d.analyst&&'A:'+d.analyst,d.berater&&'B:'+d.berater].filter(Boolean).join(' '))}</span><span class="ph">${(d.calls||[]).length}☎</span><span class="ph">${esc((d.quelle||'').slice(0,18))}</span></div>`).join('')}
     </div>`).join('')}${groups.length>60?'<div class="empty-col">… und '+(groups.length-60)+' weitere Gruppen – nach dem Aufräumen erneut öffnen.</div>':''}</div>
