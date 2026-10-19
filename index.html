@@ -2584,14 +2584,14 @@ lsLoad();render();
       try{await fs.enablePersistence({synchronizeTabs:true});}catch(e){}
       const t0=await teamCol.limit(200).get();
       TEAM=t0.docs.map(s=>{const m=Object.assign({},s.data()||{});m.id=s.id;return m;});
-      const s0=await dealsCol.limit(100000).get();
+      const s0=await dealsCol.limit(10000).get();
       MODE='db';
       state.deals=s0.docs.map(s=>{const b=Object.assign(blank(),s.data());b.id=s.id;return b;});
       matchMe();
       setDbState('🟢 CENSA-DB · '+state.deals.length,'var(--good)');
       applyRoleUI();render();
       if(!ME&&TEAM.length&&!isAdmin())toast('Deine E-Mail ist keinem Zugang zugeordnet – bitte beim Admin melden');
-      unsubDeals=dealsCol.limit(100000).onSnapshot(snap=>{
+      unsubDeals=dealsCol.limit(10000).onSnapshot(snap=>{
         MODE='db';
         state.deals=snap.docs.map(s=>{const b=Object.assign(blank(),s.data());b.id=s.id;return b;});
         setDbState('🟢 CENSA-DB · '+state.deals.length,'var(--good)');
