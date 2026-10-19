@@ -989,17 +989,21 @@ function openDupCheck(){
   const anz=groups.reduce((s,g)=>s+g.length,0);
   m.innerHTML=`<h2>🔍 Duplikat-Check</h2>
     <div class="sub">${groups.length?groups.length+' mögliche Duplikat-Gruppen ('+anz+' Datensätze) – gefunden über Telefonnummer, Namens-Varianten und Firma. Prüfen und je Gruppe zusammenführen: Es gehen KEINE Daten verloren (Anrufe, Notizen, Verlauf, Termine werden vereint, der vollständigste Datensatz bleibt).':'Keine Duplikate gefunden – alles sauber ✔'}</div>
-    <div class="repwrap">${groups.slice(0,60).map(g=>`<div class="rep"><div class="rh">${esc(g[0].name||g[0].org||'—')}<span style="color:var(--ink-3);font-weight:600">· ${g.length} Einträge</span><button class="mini-btn" style="margin-left:auto;border-color:var(--brand);color:var(--brand-ink);font-weight:800" data-dmerge="${g.map(x=>x.id).join(',')}">🔗 Zusammenführen</button></div>
-      ${g.map(d=>`<div class="gl" style="border:0;border-bottom:1px solid var(--line-2);border-radius:0" data-id="${d.id}"><span class="gn">${esc(d.name||'—')}</span><span class="ph">${esc(d.org||'')}</span><span class="ph tnum">${esc(d.telefon||'— kein Tel —')}</span><span class="tg">${esc(d.stage)}${d.status!=='open'?' · '+esc(d.status):''}</span><span class="ph">${esc([d.telefonist&&'T:'+d.telefonist,d.analyst&&'A:'+d.analyst,d.berater&&'B:'+d.berater].filter(Boolean).join(' '))}</span><span class="ph">${(d.calls||[]).length}☎</span><span class="ph">${esc((d.quelle||'').slice(0,18))}</span></div>`).join('')}
+    <div class="repwrap">${groups.slice(0,60).map(g=>`<div class="rep"><div class="rh">${esc(g[0].name||g[0].org||'—')}<span style="color:var(--ink-3);font-weight:600">· ${g.length} Einträge</span><button class="mini-btn" style="margin-left:auto;border-color:var(--brand);color:var(--brand-ink);font-weight:800" data-dmerge="1">🔗 Angehakte zusammenführen</button></div>
+      ${g.map(d=>`<div class="gl" style="border:0;border-bottom:1px solid var(--line-2);border-radius:0" data-id="${d.id}"><input type="checkbox" class="dupcb" data-did="${d.id}" checked style="width:17px;height:17px;accent-color:var(--brand);flex:0 0 auto;cursor:pointer"><span class="gn">${esc(d.name||'—')}</span><span class="ph">${esc(d.org||'')}</span><span class="ph tnum">${esc(d.telefon||'— kein Tel —')}</span><span class="tg">${esc(d.stage)}${d.status!=='open'?' · '+esc(d.status):''}</span><span class="ph">${esc([d.telefonist&&'T:'+d.telefonist,d.analyst&&'A:'+d.analyst,d.berater&&'B:'+d.berater].filter(Boolean).join(' '))}</span><span class="ph">${(d.calls||[]).length}☎</span><span class="ph">${esc((d.quelle||'').slice(0,18))}</span></div>`).join('')}
     </div>`).join('')}${groups.length>60?'<div class="empty-col">… und '+(groups.length-60)+' weitere Gruppen – nach dem Aufräumen erneut öffnen.</div>':''}</div>
     <div class="modal-foot"><button class="btn pri" id="m-close">Fertig</button></div>`;
   document.getElementById('ov').classList.add('show');
   m.querySelector('#m-close').addEventListener('click',closeModal);
   m.querySelectorAll('[data-id]').forEach(el=>el.addEventListener('click',()=>openModal(el.dataset.id)));
+  m.querySelectorAll('.dupcb').forEach(cb=>cb.addEventListener('click',ev=>ev.stopPropagation()));
   m.querySelectorAll('[data-dmerge]').forEach(b=>b.addEventListener('click',ev=>{
     ev.stopPropagation();
-    const ids=b.dataset.dmerge.split(',');
-    if(!confirm(ids.length+' Einträge zu EINEM Kunden zusammenführen? Alle Infos werden vereint, die überzähligen Datensätze gelöscht.'))return;
+    const grpEl=b.closest('.rep');
+    const ids=[...grpEl.querySelectorAll('.dupcb:checked')].map(c=>c.dataset.did);
+    if(ids.length<2){toast('Bitte mindestens 2 Einträge anhaken – nur die angehakten werden zusammengeführt');return;}
+    const namen=ids.map(id=>{const dd=state.deals.find(x=>x.id===id);return dd?((dd.name||dd.org||'—')+(dd.telefon?' ('+dd.telefon+')':'')):id;});
+    if(!confirm('Diese '+ids.length+' ANGEHAKTEN Einträge zu EINEM Kunden zusammenführen?\n\n• '+namen.join('\n• ')+'\n\nDer vollständigste bleibt als Basis, alle Infos (Anrufe, Notizen, Termine, Verlauf) werden vereint, die übrigen gelöscht.\nNICHT angehakte Einträge bleiben unberührt.'))return;
     const base=mergeDeals(ids);
     toast(base?('🔗 Zusammengeführt: '+(base.name||base.org)):'Zusammenführen fehlgeschlagen');
     render();openDupCheck();
