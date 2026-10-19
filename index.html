@@ -646,7 +646,10 @@ function renderListe(){
         if(role==='telefonist'&&old.trim()&&old!==val&&val){d.telHist=d.telHist||[];if(!d.telHist.includes(old))d.telHist.push(old);}
         d[role]=val;if(val)d.geprueft=true;
         histAdd(d,(role==='telefonist'?'Telefonist':role==='analyst'?'Analyst':'Berater')+': '+(old||'—')+' → '+(val||'—'));
-        if(val&&role!=='telefonist')chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet: '+(d.name||d.org||'—')+' → '+val+' – bitte annehmen!',d,val,role==='berater'?'beratung-zuord':'analyse-zuord');
+        if(val&&role!=='telefonist'){
+          if(externCal(d,role))chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet (EXTERN): '+(d.name||d.org||'—')+' → '+val+' – Einladung per Kalender',d);
+          else chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet: '+(d.name||d.org||'—')+' → '+val+' – bitte annehmen!',d,val,role==='berater'?'beratung-zuord':'analyse-zuord');
+        }
         if(role==='berater'&&val&&d.stage==='Analyse & Doku')d.stage='Beratungstermin vereinbart';
         dbPersist(d);renderListe();toast('Gespeichert ✓');
       }));
@@ -987,7 +990,8 @@ function renderSteuerung(){
     dbPersist(d);
     const nm=d.name||d.org||'—';
     const term=role==='analyst'?d.datumAG:d.datumBG;
-    chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet: '+nm+' → '+name+(term?' ('+term+')':'')+' – bitte annehmen!',d,name,role==='berater'?'beratung-zuord':'analyse-zuord');
+    if(externCal(d,role))chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet (EXTERN): '+nm+' → '+name+(term?' ('+term+')':'')+' – Einladung per Kalender',d);
+    else chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet: '+nm+' → '+name+(term?' ('+term+')':'')+' – bitte annehmen!',d,name,role==='berater'?'beratung-zuord':'analyse-zuord');
     toast(nm+' → '+name);render();
   }));
   const br=host.querySelector('#btnReports');if(br)br.addEventListener('click',openReports);
@@ -1358,6 +1362,31 @@ async function gcalInsert(title,dt,durMin,desc,loc,attendees){
     const r=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify(body)});
     return r.ok;
   }catch(e){return false;}
+}
+/* Externe Berater/Analysten: Name endet auf "-extern" (z. B. SCHINKO-extern) ->
+   kein Bestätigungs-Workflow, stattdessen SOFORT Kalender-Einladung an Extern + Kunde */
+function isExternName(n){return /[-\s]extern\.?\s*$/i.test((n||'').trim());}
+function externCal(d,role){
+  const name=role==='analyst'?d.analyst:d.berater;
+  if(!isExternName(name))return false;
+  const dt=parseTermin(role==='analyst'?d.datumAG:d.datumBG);
+  const mail=teamMail(name);
+  const kunde=d.name||d.org||'Kunde';
+  const title=(role==='analyst'?'Analyse: ':'Beratung: ')+kunde;
+  const loc=[d.strasse,d.plz,d.ort].filter(Boolean).join(', ')||((d.notizen||'').indexOf('CENSA-Büro')>=0?'CENSA Büro, 1230 Wien':'');
+  const det='Tel: '+(d.telefon||'-')+(d.briefing?' | '+d.briefing:'')+' | Zugeteilt an: '+name;
+  if(!dt){toast('⚠️ '+name+' ist extern – bitte ZUERST das Termin-Datum eintragen, dann zuordnen (die Einladung geht per Kalender)');return true;}
+  if(!mail){toast('⚠️ '+name+' hat keine E-Mail unter Team & Zugänge – ohne E-Mail keine Kalender-Einladung möglich');return true;}
+  const haveTok=!!__gcalTok&&Date.now()<__gcalExp-60000;
+  if(GCAL_CLIENT_ID&&haveTok){
+    gcalInsert(title,dt,60,det,loc,[d.email,mail,OFFICE_MAIL]).then(ok=>{
+      toast(ok?('📅 Einladung raus: '+name+' (extern)'+(d.email?' und der Kunde haben':' hat')+' den Termin im Kalender'):'📅 Eintragen fehlgeschlagen – bitte in der Aufgaben-Box „Google-Kalender verbinden" und neu zuordnen');
+    });
+  }else{
+    window.open(calGoogle(title,dt,det,loc,[d.email,mail,OFFICE_MAIL]),'_blank');
+    toast('📅 Kalender-Tab geöffnet – auf „Speichern" klicken, dann bekommen '+name+' und der Kunde die Einladung');
+  }
+  return true;
 }
 function gcalArt(title){
   const m=(title||'').trim().match(/^(AG|BG|MGT|EG|KG|TG|PRIVAT)\b[\s:\-–]*/i);
@@ -2339,7 +2368,8 @@ function openUebergabe(id){
     if(d.status==='open'&&d.stage!=='Beratung / Angebot')d.stage='Beratungstermin vereinbart';
     histAdd(d,'Übergabe-Formular '+(war?'aktualisiert':'ausgefüllt'));
     dbPersist(d);
-    chatSys('📋 Übergabe '+(war?'aktualisiert':'ausgefüllt')+': '+(d.name||d.org||'—')+(d.berater?' – Berater '+d.berater+', bitte annehmen!':' – bereit für Berater-Zuordnung (Dispo)'),d,d.berater||null,d.berater?'beratung-zuord':null);
+    const beraterExt=d.berater?externCal(d,'berater'):false;
+    chatSys('📋 Übergabe '+(war?'aktualisiert':'ausgefüllt')+': '+(d.name||d.org||'—')+(d.berater?(beraterExt?' – Berater '+d.berater+' (extern, Einladung per Kalender)':' – Berater '+d.berater+', bitte annehmen!'):' – bereit für Berater-Zuordnung (Dispo)'),d,(d.berater&&!beraterExt)?d.berater:null,(d.berater&&!beraterExt)?'beratung-zuord':null);
     render();openModal(d.id);toast('Übergabe gespeichert');
   });
 }
