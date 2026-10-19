@@ -810,11 +810,11 @@ function renderTelefon(){
   const host=document.getElementById('view-telefon');
   const DS=visibleDeals();
   if(!DS.length){host.innerHTML=emptyState();wireEmpty(host);return;}
-  const tels=[...new Set(DS.map(d=>d.telefonist).filter(Boolean))].sort();
+  const tels=[...new Set(DS.map(d=>canonName(d.telefonist||'')).filter(Boolean))].sort();
   if(host.__sel===undefined&&ME&&hasRole(ME,'telefonist'))host.__sel=ME.name;
   const sel=host.__sel||'';const fb=host.__bez||'';
   host.__skip=host.__skip||{};
-  const base=DS.filter(d=>d.status==='open'&&['Neuer Lead','In Bearbeitung'].includes(d.stage)&&(!sel||(d.telefonist||'')===sel)&&!host.__skip[d.id]);
+  const base=DS.filter(d=>d.status==='open'&&['Neuer Lead','In Bearbeitung'].includes(d.stage)&&(!sel||canonName(d.telefonist||'')===sel)&&!host.__skip[d.id]);
   const bezCnt={};let ohneBez=0;
   base.forEach(d=>{const b=(d.bezirk||'').trim();if(b)bezCnt[b]=(bezCnt[b]||0)+1;else ohneBez++;});
   const bez=Object.keys(bezCnt).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
@@ -822,7 +822,7 @@ function renderTelefon(){
   // Sortierung: Überfällige zuerst, dann Bezirk für Bezirk (1010, 1020, …), innerhalb nach Wiedervorlage
   queue.sort((a,b)=>{const oa=isOverdue(a)?0:1,ob=isOverdue(b)?0:1;if(oa!==ob)return oa-ob;const c=(a.bezirk||'9999').localeCompare((b.bezirk||'9999'),undefined,{numeric:true});if(c)return c;const da=parseDMY(a.wiedervorlage),db=parseDMY(b.wiedervorlage);return (da?da.getTime():8.64e15)-(db?db.getTime():8.64e15);});
   const t=todayStr();let dials=0,termine=0;
-  DS.forEach(d=>{if(sel&&(d.telefonist||'')!==sel)return;(d.calls||[]).forEach(c=>{if((c.ts||'').slice(0,10)===t){if(c.outcome==='angerufen')dials++;else if(c.outcome==='termin')termine++;}});});
+  DS.forEach(d=>{if(sel&&canonName(d.telefonist||'')!==sel)return;(d.calls||[]).forEach(c=>{if((c.ts||'').slice(0,10)===t){if(c.outcome==='angerufen')dials++;else if(c.outcome==='termin')termine++;}});});
   const d0=(host.__pick&&queue.find(x=>x.id===host.__pick))||queue[0];
   host.innerHTML=`
    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px;align-items:center">
@@ -910,7 +910,18 @@ function daysUntil(s){const d=parseDMY(s);if(!d)return null;const t=new Date();t
 function isoWeek(dt){const d=new Date(Date.UTC(dt.getFullYear(),dt.getMonth(),dt.getDate()));const day=d.getUTCDay()||7;d.setUTCDate(d.getUTCDate()+4-day);const ys=new Date(Date.UTC(d.getUTCFullYear(),0,1));return Math.ceil((((d-ys)/86400000)+1)/7);}
 const A_STAGES=['Analysetermin vereinbart','Analyse & Doku'];
 const B_STAGES=['Beratungstermin vereinbart','Beratung / Angebot'];
-function grpBy(list,f,fb){const m={};list.forEach(d=>{const k=(d[f]||'').trim()||fb;(m[k]=m[k]||[]).push(d);});return Object.entries(m).sort((a,b)=>b[1].length-a[1].length);}
+function grpBy(list,f,fb){
+  // gruppiert über den KANONISCHEN Team-Namen (case-insensitiv) – „Moshammer", „MOSHAMMER ", „Moshammer Niclas" = EINE Gruppe
+  const m={},disp={};
+  list.forEach(d=>{
+    const raw=(d[f]||'').trim();
+    const can=raw?canonName(raw):'';
+    const k=(can||fb).toLowerCase();
+    if(!disp[k])disp[k]=can||fb;
+    (m[k]=m[k]||[]).push(d);
+  });
+  return Object.keys(m).map(k=>[disp[k],m[k]]).sort((a,b)=>b[1].length-a[1].length);
+}
 function isOverdue(d){const du=daysUntil(d.wiedervorlage);return du!=null&&du<0;}
 function glItem(d){const od=isOverdue(d)?`<span class="od">überfällig ${-daysUntil(d.wiedervorlage)}T</span>`:'';return `<div class="gl" data-id="${d.id}"><span class="gn">${esc(d.name||d.org||'—')}</span><span class="ph">${esc(d.stage)}</span>${od}</div>`;}
 
@@ -977,7 +988,7 @@ function renderSteuerung(){
       const call={};
       state.deals.forEach(d=>(d.calls||[]).forEach(c=>{
         if((c.ts||'')<cutoff)return;
-        const who=c.von||d.telefonist||'?';
+        const who=canonName(c.von||d.telefonist||'')||'?';
         const o=(call[who]=call[who]||{n:0,term:0,min:0});o.n++;if(c.outcome==='termin')o.term++;o.min+=(parseFloat(c.dur)||0);
       }));
       const names=[...new Set([...TEAM.map(x=>x.name),...Object.keys(per),...Object.keys(call)])].filter(n=>n&&n!=='?').sort();
