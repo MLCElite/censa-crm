@@ -324,7 +324,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.10-H";
+const APP_VERSION="19.10-I";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -960,7 +960,7 @@ function dupGroups(){
   state.deals.forEach(d=>{const r=find(d.id);(groups[r]=groups[r]||[]).push(d);});
   return Object.values(groups).filter(g=>g.length>1).sort((a,b)=>b.length-a.length);
 }
-function mergeDeals(ids){
+async function mergeDeals(ids){
   const ds=ids.map(id=>state.deals.find(x=>x.id===id)).filter(Boolean);
   if(ds.length<2)return;
   const score=d=>(d.calls||[]).length*3+(d.hist||[]).length*2+(d.uebergabe?20:0)+(d.status==='won'?100:d.status==='open'?50:0)+Object.values(d).filter(v=>v&&typeof v==='string').length;
@@ -984,11 +984,11 @@ function mergeDeals(ids){
   });
   base.calls.sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
   histAdd(base,'🔗 '+rest.length+' Duplikat'+(rest.length>1?'e':'')+' zusammengeführt ('+rest.map(o=>o.name||o.org||o.id).join(', ')+')');
-  dbPersist(base);
-  rest.forEach(o=>{state.deals=state.deals.filter(x=>x.id!==o.id);dbRemove(o.id);});
+  await dbPersist(base);
+  for(const o of rest){state.deals=state.deals.filter(x=>x.id!==o.id);await dbRemove(o.id);}
   return base;
 }
-function openDupCheck(){
+async function openDupCheck(){
   try{
   // === AUTOMATIK: sichere Duplikate sofort zusammenführen ===
   // sicher = gleiche Telefonnummer ODER Namens-Teilmenge (z. B. "Sascha Achunow" ⊆ "Manasche (Sascha) Achunow"? nein –
@@ -996,7 +996,7 @@ function openDupCheck(){
   const TITEL=['mag','dr','ing','msc','bsc','mba','herr','frau','dipl','fh','jun','sen'];
   const toksOf=d=>new Set((d.name||'').toLowerCase().replace(/\(.*?\)/g,' ').replace(/[^a-zäöüß ]/g,' ').split(/\s+/).filter(w=>w.length>=2&&!TITEL.includes(w)));
   const auto=[];
-  dupGroups().forEach(g=>{
+  for(const g of dupGroups()){
     const par={};const fnd=x=>{while(par[x]!==x)x=par[x]=par[par[x]];return x;};const uni=(a,b)=>{a=fnd(a);b=fnd(b);if(a!==b)par[b]=a;};
     g.forEach(d=>par[d.id]=d.id);
     const byTel={};
@@ -1007,10 +1007,10 @@ function openDupCheck(){
       if([...kl].every(w=>gr.has(w)))uni(g[i].id,g[j].id);
     }
     const cl={};g.forEach(d=>{const r=fnd(d.id);(cl[r]=cl[r]||[]).push(d);});
-    Object.values(cl).forEach(c=>{
-      if(c.length>1){const b=mergeDeals(c.map(x=>x.id));if(b)auto.push(esc(b.name||b.org||'—')+' <span style="color:var(--ink-3)">('+c.length+' Einträge → 1)</span>');}
-    });
-  });
+    for(const c of Object.values(cl)){
+      if(c.length>1){const b=await mergeDeals(c.map(x=>x.id));if(b)auto.push(esc(b.name||b.org||'—')+' <span style="color:var(--ink-3)">('+c.length+' Einträge → 1)</span>');}
+    }
+  }
   const groups=dupGroups(); // was jetzt noch übrig ist = echte Zweifelsfälle
   const m=document.getElementById('modal');m.classList.add('wide');
   const anz=groups.reduce((s,g)=>s+g.length,0);
@@ -1026,14 +1026,15 @@ function openDupCheck(){
   m.querySelector('#m-close').addEventListener('click',closeModal);
   m.querySelectorAll('[data-id]').forEach(el=>el.addEventListener('click',()=>openModal(el.dataset.id)));
   m.querySelectorAll('.dupcb').forEach(cb=>cb.addEventListener('click',ev=>ev.stopPropagation()));
-  m.querySelectorAll('[data-dmerge]').forEach(b=>b.addEventListener('click',ev=>{
+  m.querySelectorAll('[data-dmerge]').forEach(b=>b.addEventListener('click',async ev=>{
     ev.stopPropagation();
     const grpEl=b.closest('.rep');
     const ids=[...grpEl.querySelectorAll('.dupcb:checked')].map(c=>c.dataset.did);
     if(ids.length<2){toast('Bitte mindestens 2 Einträge anhaken – nur die angehakten werden zusammengeführt');return;}
     const namen=ids.map(id=>{const dd=state.deals.find(x=>x.id===id);return dd?((dd.name||dd.org||'—')+(dd.telefon?' ('+dd.telefon+')':'')):id;});
     if(!confirm('Diese '+ids.length+' ANGEHAKTEN Einträge zu EINEM Kunden zusammenführen?\n\n• '+namen.join('\n• ')+'\n\nDer vollständigste bleibt als Basis, alle Infos (Anrufe, Notizen, Termine, Verlauf) werden vereint, die übrigen gelöscht.\nNICHT angehakte Einträge bleiben unberührt.'))return;
-    const base=mergeDeals(ids);
+    b.disabled=true;b.textContent='Führe zusammen …';
+    const base=await mergeDeals(ids);
     toast(base?('🔗 Zusammengeführt: '+(base.name||base.org)):'Zusammenführen fehlgeschlagen');
     render();openDupCheck();
   }));
