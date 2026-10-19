@@ -324,7 +324,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.10-G";
+const APP_VERSION="19.10-H";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -985,7 +985,7 @@ function mergeDeals(ids){
   base.calls.sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
   histAdd(base,'🔗 '+rest.length+' Duplikat'+(rest.length>1?'e':'')+' zusammengeführt ('+rest.map(o=>o.name||o.org||o.id).join(', ')+')');
   dbPersist(base);
-  rest.forEach(o=>{state.deals=state.deals.filter(x=>x.id!==o.id);dbDelete(o.id);});
+  rest.forEach(o=>{state.deals=state.deals.filter(x=>x.id!==o.id);dbRemove(o.id);});
   return base;
 }
 function openDupCheck(){
