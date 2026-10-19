@@ -984,6 +984,7 @@ function mergeDeals(ids){
   return base;
 }
 function openDupCheck(){
+  try{
   const groups=dupGroups();
   const m=document.getElementById('modal');m.classList.add('wide');
   const anz=groups.reduce((s,g)=>s+g.length,0);
@@ -1008,6 +1009,7 @@ function openDupCheck(){
     toast(base?('🔗 Zusammengeführt: '+(base.name||base.org)):'Zusammenführen fehlgeschlagen');
     render();openDupCheck();
   }));
+  }catch(e){alert('🔍 Duplikat-Check Fehler: '+((e&&e.message)||e)+'\n\nBitte diese Meldung an Claude weitergeben.');}
 }
 function renderSteuerung(){
   const host=document.getElementById('view-steuerung');
