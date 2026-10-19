@@ -304,6 +304,7 @@
   <div class="fld"><label>Passwort</label><input id="loginPw" type="password" autocomplete="current-password"></div>
   <div id="loginErr" style="color:var(--bad);font-size:12.5px;margin-bottom:10px"></div>
   <button class="btn pri" id="loginBtn" style="width:100%;justify-content:center">Anmelden</button>
+  <div style="text-align:center;margin-top:10px"><span id="pwReset" style="font-size:12px;color:var(--brand-ink);cursor:pointer;font-weight:600">Passwort vergessen?</span></div>
 </div></div>
 <div class="toast" id="toast"></div>
 
@@ -2593,6 +2594,16 @@ lsLoad();render();
     btn.disabled=false;btn.textContent='Anmelden';
   };
   document.getElementById('loginBtn').addEventListener('click',doLogin);
+  document.getElementById('pwReset').addEventListener('click',async()=>{
+    const em=document.getElementById('loginEmail').value.trim();
+    const errEl=document.getElementById('loginErr');
+    if(!em){errEl.textContent='Bitte zuerst oben deine E-Mail eintragen, dann auf „Passwort vergessen?" klicken.';return;}
+    try{
+      await auth.sendPasswordResetEmail(em);
+      errEl.style.color='var(--good)';
+      errEl.textContent='✅ E-Mail ist unterwegs an '+em+' – Link anklicken, neues Passwort setzen, hier anmelden. (Auch im Spam-Ordner schauen!)';
+    }catch(e){errEl.style.color='var(--bad)';errEl.textContent=errDe(e);}
+  });
   document.getElementById('loginPw').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
   document.getElementById('loginEmail').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
   let unsubDeals=null,unsubTeam=null;
