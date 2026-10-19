@@ -378,6 +378,25 @@ function teamByAnyName(val){
   const v=(val||'').trim().toLowerCase();if(!v)return null;
   return TEAM.find(x=>splitAliases(x).includes(v))||null;
 }
+// Kanonischer Team-Name: exakter Alias-Treffer, sonst EINDEUTIGER Wort-Treffer (z. B. "Moshammer Niclas" -> "MOSHAMMER")
+function canonName(v){
+  v=(v||'').trim();if(!v)return '';
+  const mm=teamByAnyName(v);if(mm)return mm.name;
+  const toks=v.toLowerCase().split(/[\s,\.\-\/]+/).filter(t=>t.length>=3&&t!=='extern');
+  let hit=null;
+  for(const m of TEAM){
+    const mt=(m.name+' '+(m.alias||'')).toLowerCase().split(/[\s,\.\-\/]+/).filter(t=>t.length>=3&&t!=='extern');
+    if(toks.some(t=>mt.includes(t))){if(hit&&hit!==m)return v;hit=m;}
+  }
+  return hit?hit.name:v;
+}
+// Dropdown-Optionen: NUR echte Team-Mitglieder der Rolle (+ aktueller Fremdwert als markierte Option, damit nichts verloren geht)
+function roleDropdown(role,cur){
+  const names=TEAM.filter(m=>hasRole(m,role)).map(m=>m.name).sort();
+  let html=`<option value=""${!cur?' selected':''}>— frei —</option>`+names.map(o=>`<option${o===cur?' selected':''}>${esc(o)}</option>`).join('');
+  if(cur&&!names.includes(cur))html+=`<option selected>${esc(cur)}</option>`;
+  return html;
+}
 function visibleDeals(){
   // Importierte Recruiting-Kandidaten (Quelle=Recruiting) leben NUR im GP-Tab – nie in Liste/Pipeline/Telefon
   if(isAdmin())return state.deals.filter(d=>(d.quelle||'')!=='Recruiting');
@@ -526,7 +545,7 @@ function leadCard(d){
 }
 
 function listeDetailHtml(d){
-  const roleOpts=(role,cur)=>{const opts=[...new Set([...TEAM.map(t=>t.name),...state.deals.map(x=>x[role]).filter(Boolean),cur].filter(Boolean))].sort();return `<option value=""${!cur?' selected':''}>— frei —</option>`+opts.map(o=>`<option${o===cur?' selected':''}>${esc(o)}</option>`).join('');};
+  const roleOpts=(role,cur)=>roleDropdown(role,cur);
   const SHORT=['Neu','Bearb.','AG term.','Analyse','BG term.','Beratung'];
   const cur=STAGES.indexOf(d.stage);
   const eh=ehAbschluss(d);
@@ -910,8 +929,8 @@ function renderSteuerung(){
   const teGroups=grpBy(setterOpen,'telefonist','— ohne Telefonist —');
   const inbox=state.deals.filter(d=>d.geprueft===false&&(d.quelle||'')!=='Recruiting');
   const dispoA=open.filter(d=>d.stage==='Analysetermin vereinbart'&&!(d.analyst||'').trim());
-  const anNames=[...new Set([...TEAM.filter(m=>hasRole(m,'analyst')).map(m=>m.name),...state.deals.map(d=>d.analyst).filter(Boolean)])].sort();
-  const beNames=[...new Set([...TEAM.filter(m=>hasRole(m,'berater')).map(m=>m.name),...state.deals.map(d=>d.berater).filter(Boolean)])].sort();
+  const anNames=TEAM.filter(m=>hasRole(m,'analyst')).map(m=>m.name).sort();
+  const beNames=TEAM.filter(m=>hasRole(m,'berater')).map(m=>m.name).sort();
   const dRow=(d,role,names)=>`<div class="gl" style="cursor:default;flex-wrap:wrap"><span class="gn" style="cursor:pointer" data-open="${d.id}">${esc(d.name||d.org||'—')}</span><span class="ph tnum">${esc((role==='analyst'?d.datumAG:d.datumBG)||d.wiedervorlage||'— Termin fehlt —')}</span><select data-dsel="${d.id}" style="width:150px;padding:5px 8px;font-size:12px"><option value="">wählen…</option>${names.map(n=>`<option>${esc(n)}</option>`).join('')}</select><button class="mini-btn" data-dispo="${d.id}" data-role="${role}">Zuordnen</button></div>`;
   const t0=todayStr();
   const proto={};
@@ -1077,6 +1096,27 @@ function wireTeamPanel(host){
   host.querySelectorAll('[data-edid]').forEach(b=>b.addEventListener('click',()=>{TM_EDIT=b.dataset.edid;renderSteuerung();}));
   const tc=host.querySelector('#tmCancel');
   if(tc)tc.addEventListener('click',()=>{TM_EDIT=null;renderSteuerung();});
+  const tz=host.querySelector('#tmMerge');
+  if(tz)tz.addEventListener('click',async()=>{
+    if(!confirm('In ALLEN Kunden die Schreibweisen von Telefonist/Analyst/Berater auf die offiziellen Team-Namen vereinheitlichen?\n\nBeispiel: "Moshammer Niclas", "moshammer" → MOSHAMMER.\nNicht eindeutig Zuordenbares bleibt unverändert.'))return;
+    tz.disabled=true;tz.textContent='Räume auf …';
+    const touched=[];const fremd={};
+    state.deals.forEach(d=>{
+      let ch=false;
+      ['telefonist','analyst','berater'].forEach(f=>{
+        const alt=(d[f]||'').trim();if(!alt)return;
+        const neu=canonName(alt);
+        if(neu!==alt){d[f]=neu;ch=true;}
+        else if(!teamByAnyName(alt))fremd[alt]=(fremd[alt]||0)+1;
+      });
+      if(ch)touched.push(d);
+    });
+    if(touched.length){toast('Speichere '+touched.length+' bereinigte Kunden …');await dbPersistMany(touched);}
+    const fr=Object.entries(fremd).sort((a,b)=>b[1]-a[1]).map(([n,c])=>n+' ('+c+'×)');
+    alert('🧹 Fertig!\n\n'+touched.length+' Kunden vereinheitlicht.'+(fr.length?('\n\nNicht zuordenbar (unverändert):\n'+fr.slice(0,12).join('\n')+(fr.length>12?'\n…':'')+'\n\nTipp: Diese Schreibweise beim richtigen Team-Mitglied unter „Auch bekannt als…" (Alias) eintragen und nochmal klicken.'):'\n\nKeine unbekannten Namen übrig ✔'));
+    tz.disabled=false;tz.textContent='🧹 Schreibweisen zusammenführen';
+    render();
+  });
   host.querySelectorAll('[data-rmid]').forEach(b=>b.addEventListener('click',async()=>{
     const mm=TEAM.find(x=>x.id===b.dataset.rmid);if(!mm)return;
     if(hasRole(mm,'admin')&&TEAM.filter(x=>hasRole(x,'admin')).length<=1){toast('Der letzte Admin kann nicht entfernt werden');return;}
@@ -1696,6 +1736,7 @@ function teamPanel(){
       <input id="tmAlias" placeholder="Auch bekannt als … (z. B. CEVIK M., kommagetrennt)" style="width:280px" title="Weitere Schreibweisen des Namens in den Lead-Daten" value="${esc(ed?(ed.alias||''):'')}">
       <button class="btn${ed?' pri':''}" id="tmAdd">${ed?'💾 Änderungen speichern':'+ Zugang anlegen'}</button>
       ${ed?'<button class="btn" id="tmCancel">Abbrechen</button>':''}
+      <button class="btn" id="tmMerge" title="Vereinheitlicht in ALLEN Kunden die Schreibweisen von Telefonist/Analyst/Berater auf die Team-Namen (nutzt Name + Aliase)">🧹 Schreibweisen zusammenführen</button>
     </div></div>`;
 }
 
@@ -1972,10 +2013,7 @@ function openModal(id){
         </div>
         <div style="padding:0 13px 11px;font-size:11.5px;font-weight:700;color:var(--brand-ink)" id="m-bezview">${d.bezirk?'· '+esc(d.bezirk):''}</div>
       </details>
-      ${(()=>{const roleSel=(id2,label,cur,role)=>{
-        const opts=[...new Set([...TEAM.map(t=>t.name),...state.deals.map(x=>x[role]).filter(Boolean),cur].filter(Boolean))].sort();
-        return `<div class="fld"><label>${label}</label><select id="${id2}"><option value=""${!cur?' selected':''}>— frei —</option>${opts.map(o=>`<option${o===cur?' selected':''}>${esc(o)}</option>`).join('')}</select></div>`;
-      };
+      ${(()=>{const roleSel=(id2,label,cur,role)=>`<div class="fld"><label>${label}</label><select id="${id2}">${roleDropdown(role,cur)}</select></div>`;
       return roleSel('m-telf','Telefonist',d.telefonist||'','telefonist')+roleSel('m-an','Analyst',d.analyst||'','analyst')+roleSel('m-be','Berater',d.berater||'','berater');})()}
       ${(d.telHist&&d.telHist.length)?`<div class="fld full"><div class="histline">Frühere Anrufer: ${esc(d.telHist.join(', '))}</div></div>`:''}
       <div class="fld"><label>Wiedervorlage</label><input type="date" id="m-wv" value="${esc(d.wiedervorlage)}"></div>
@@ -2465,9 +2503,9 @@ async function importCSV(text){
     if(isBestand){
       d.kundentyp=g('Kundentyp')||'Privat';d.org=g('Organisation');d.name=g('Name');d.telefon=g('Telefon');d.ort=g('Ort');
       d.email=g('Email')||g('E-Mail');d.strasse=g('Strasse');d.plz=g('PLZ');
-      d.bezirk=g('Bezirk')||bezFromPLZ(g('PLZ'))||bezFromPLZ(g('Ort'));d.telefonist=g('Telefonist')||d.telefonist;
+      d.bezirk=g('Bezirk')||bezFromPLZ(g('PLZ'))||bezFromPLZ(g('Ort'));d.telefonist=canonName(g('Telefonist'))||d.telefonist;
       if(g('Wiedervorlage'))d.wiedervorlage=g('Wiedervorlage');
-      d.quelle=g('Quelle')||'Bestand';d.analyst=g('Analyst');d.berater=g('Berater');
+      d.quelle=g('Quelle')||'Bestand';d.analyst=canonName(g('Analyst'));d.berater=canonName(g('Berater'));
       d.stage=g('Pipedrive_Stage')||'Neuer Lead';d.status=g('Pipedrive_Status')||'open';d.lostReason=g('Lost_Reason');
       d.datumAG=g('Datum_AG');d.datumBG=g('Datum_BG');d.eh=g('EH');d.notizen=g('Notizen');
     }else if(isRech){
