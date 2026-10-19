@@ -263,7 +263,7 @@
 
 <header>
   <div class="logo">C</div>
-  <h1>CENSA&nbsp;CRM</h1>
+  <h1>CENSA&nbsp;CRM <span style="font-size:9.5px;font-weight:600;color:var(--ink-3);vertical-align:middle" id="verBadge"></span></h1>
   <div class="tabs">
     <button data-tab="steuerung" class="on">CEO</button>
     <button data-tab="gp">GP</button>
@@ -324,6 +324,11 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
+const APP_VERSION="19.10-F";
+// Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
+window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
+window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
+try{document.getElementById('verBadge').textContent='v'+APP_VERSION;}catch(_){}
 const OFFICE_MAIL="";
 const GCAL_CLIENT_ID="289633541904-kdul89o1q4boov89jpm97o5mqkuk2vug.apps.googleusercontent.com"; // Google-Kalender: Sync + automatisches Eintragen bei Termin-Bestätigung
 /* =============================================================================== */
