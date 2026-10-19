@@ -925,6 +925,86 @@ function grpBy(list,f,fb){
 function isOverdue(d){const du=daysUntil(d.wiedervorlage);return du!=null&&du<0;}
 function glItem(d){const od=isOverdue(d)?`<span class="od">überfällig ${-daysUntil(d.wiedervorlage)}T</span>`:'';return `<div class="gl" data-id="${d.id}"><span class="gn">${esc(d.name||d.org||'—')}</span><span class="ph">${esc(d.stage)}</span>${od}</div>`;}
 
+/* ---------- Duplikat-Check & verlustfreies Zusammenführen (Admin) ---------- */
+function dupKeys(d,lastCnt){
+  const ks=[];
+  const t=(d.telefon||'').replace(/\D/g,'');
+  if(t.length>=9)ks.push('T'+t.slice(-9));
+  const nm=(d.name||'').toLowerCase().replace(/\(.*?\)/g,' ').replace(/[^a-zäöüß ]/g,' ').split(/\s+/).filter(w=>w.length>=2&&!['mag','dr','ing','msc','bsc','mba','herr','frau','dipl','fh'].includes(w));
+  if(nm.length){
+    ks.push('N'+nm.slice().sort().join('_'));
+    const last=nm[nm.length-1];
+    if(last.length>=5&&(lastCnt[last]||0)<=5)ks.push('F'+last); // seltener Nachname verbindet auch "Sascha" vs "Manasche"
+  }
+  const org=(d.org||'').toLowerCase().replace(/gmbh|gesmbh|e\.u\.|og|kg/g,'').replace(/[^a-z0-9äöüß]/g,'');
+  if(org.length>=6)ks.push('O'+org);
+  return ks;
+}
+function dupGroups(){
+  const lastCnt={};
+  state.deals.forEach(d=>{const nm=(d.name||'').toLowerCase().replace(/\(.*?\)/g,' ').replace(/[^a-zäöüß ]/g,' ').trim().split(/\s+/);const l=nm[nm.length-1];if(l&&l.length>=5)lastCnt[l]=(lastCnt[l]||0)+1;});
+  const parent={};
+  const find=x=>{while(parent[x]!==x)x=parent[x]=parent[parent[x]];return x;};
+  const union=(a,b)=>{a=find(a);b=find(b);if(a!==b)parent[b]=a;};
+  state.deals.forEach(d=>parent[d.id]=d.id);
+  const byKey={};
+  state.deals.forEach(d=>dupKeys(d,lastCnt).forEach(k=>{
+    if(byKey[k])union(byKey[k],d.id);else byKey[k]=d.id;
+  }));
+  const groups={};
+  state.deals.forEach(d=>{const r=find(d.id);(groups[r]=groups[r]||[]).push(d);});
+  return Object.values(groups).filter(g=>g.length>1).sort((a,b)=>b.length-a.length);
+}
+function mergeDeals(ids){
+  const ds=ids.map(id=>state.deals.find(x=>x.id===id)).filter(Boolean);
+  if(ds.length<2)return;
+  const score=d=>(d.calls||[]).length*3+(d.hist||[]).length*2+(d.uebergabe?20:0)+(d.status==='won'?100:d.status==='open'?50:0)+Object.values(d).filter(v=>v&&typeof v==='string').length;
+  ds.sort((a,b)=>score(b)-score(a));
+  const base=ds[0],rest=ds.slice(1);
+  const FILL=['org','telefon','email','strasse','plz','ort','bezirk','telefonist','analyst','berater','datumAG','datumBG','eh','wiedervorlage','briefing','potenzial','umsatz','gewinn','anlage','finanzJahr','website','maGroesse','quelle'];
+  rest.forEach(o=>{
+    FILL.forEach(f=>{if(o[f]&&!base[f])base[f]=o[f];});
+    if(o.notizen&&!(base.notizen||'').includes(o.notizen))base.notizen=((base.notizen?base.notizen+' | ':'')+o.notizen).slice(0,1500);
+    base.calls=[...(base.calls||[]),...(o.calls||[])];
+    base.hist=[...(base.hist||[]),...(o.hist||[])];
+    base.telHist=[...new Set([...(base.telHist||[]),...(o.telHist||[])])];
+    base.ehS=[...(base.ehS||[]),...(o.ehS||[])];
+    base.ehA=[...(base.ehA||[]),...(o.ehA||[])];
+    if(o.gp)base.gp=true;
+    if(o.geprueft!==false)base.geprueft=o.geprueft===undefined?base.geprueft:(base.geprueft===false?o.geprueft:base.geprueft);
+    if(!base.uebergabe&&o.uebergabe)base.uebergabe=o.uebergabe;
+    if(o.status==='won')base.status='won';
+    else if(o.status==='open'&&base.status==='lost'){base.status='open';base.lostReason='';}
+    if(base.status==='open'&&STAGES.indexOf(o.stage)>STAGES.indexOf(base.stage))base.stage=o.stage;
+  });
+  base.calls.sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
+  histAdd(base,'🔗 '+rest.length+' Duplikat'+(rest.length>1?'e':'')+' zusammengeführt ('+rest.map(o=>o.name||o.org||o.id).join(', ')+')');
+  dbPersist(base);
+  rest.forEach(o=>{state.deals=state.deals.filter(x=>x.id!==o.id);dbDelete(o.id);});
+  return base;
+}
+function openDupCheck(){
+  const groups=dupGroups();
+  const m=document.getElementById('modal');m.classList.add('wide');
+  const anz=groups.reduce((s,g)=>s+g.length,0);
+  m.innerHTML=`<h2>🔍 Duplikat-Check</h2>
+    <div class="sub">${groups.length?groups.length+' mögliche Duplikat-Gruppen ('+anz+' Datensätze) – gefunden über Telefonnummer, Namens-Varianten und Firma. Prüfen und je Gruppe zusammenführen: Es gehen KEINE Daten verloren (Anrufe, Notizen, Verlauf, Termine werden vereint, der vollständigste Datensatz bleibt).':'Keine Duplikate gefunden – alles sauber ✔'}</div>
+    <div class="repwrap">${groups.slice(0,60).map(g=>`<div class="rep"><div class="rh">${esc(g[0].name||g[0].org||'—')}<span style="color:var(--ink-3);font-weight:600">· ${g.length} Einträge</span><button class="mini-btn" style="margin-left:auto;border-color:var(--brand);color:var(--brand-ink);font-weight:800" data-dmerge="${g.map(x=>x.id).join(',')}">🔗 Zusammenführen</button></div>
+      ${g.map(d=>`<div class="gl" style="border:0;border-bottom:1px solid var(--line-2);border-radius:0" data-id="${d.id}"><span class="gn">${esc(d.name||'—')}</span><span class="ph">${esc(d.org||'')}</span><span class="ph tnum">${esc(d.telefon||'— kein Tel —')}</span><span class="tg">${esc(d.stage)}${d.status!=='open'?' · '+esc(d.status):''}</span><span class="ph">${esc([d.telefonist&&'T:'+d.telefonist,d.analyst&&'A:'+d.analyst,d.berater&&'B:'+d.berater].filter(Boolean).join(' '))}</span><span class="ph">${(d.calls||[]).length}☎</span><span class="ph">${esc((d.quelle||'').slice(0,18))}</span></div>`).join('')}
+    </div>`).join('')}${groups.length>60?'<div class="empty-col">… und '+(groups.length-60)+' weitere Gruppen – nach dem Aufräumen erneut öffnen.</div>':''}</div>
+    <div class="modal-foot"><button class="btn pri" id="m-close">Fertig</button></div>`;
+  document.getElementById('ov').classList.add('show');
+  m.querySelector('#m-close').addEventListener('click',closeModal);
+  m.querySelectorAll('[data-id]').forEach(el=>el.addEventListener('click',()=>openModal(el.dataset.id)));
+  m.querySelectorAll('[data-dmerge]').forEach(b=>b.addEventListener('click',ev=>{
+    ev.stopPropagation();
+    const ids=b.dataset.dmerge.split(',');
+    if(!confirm(ids.length+' Einträge zu EINEM Kunden zusammenführen? Alle Infos werden vereint, die überzähligen Datensätze gelöscht.'))return;
+    const base=mergeDeals(ids);
+    toast(base?('🔗 Zusammengeführt: '+(base.name||base.org)):'Zusammenführen fehlgeschlagen');
+    render();openDupCheck();
+  }));
+}
 function renderSteuerung(){
   const host=document.getElementById('view-steuerung');
   if(!state.deals.length){host.innerHTML=emptyState()+teamPanel();wireEmpty(host);wireTeamPanel(host);return;}
@@ -971,6 +1051,7 @@ function renderSteuerung(){
     <div style="display:flex;gap:9px;flex-wrap:wrap;margin:0 0 16px">
       <button class="btn pri" id="btnCeo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M3 3v18h18M7 14l4-4 3 3 5-6"/></svg>CEO-Wochenupdate</button>
       <button class="btn" id="btnReports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Wochenbericht je Berater</button>
+      <button class="btn" id="btnDup">🔍 Duplikat-Check</button>
     </div>
     <div class="panel" style="border-color:var(--brand)"><h3>📋 Tages-Dispo – Termine zuordnen <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— am Tagesende neue Termine dem passenden Mitarbeiter zuweisen; die Person sieht es sofort in ihrer Liste und im Chat</span></h3>
       ${dispoA.length?`<div class="ehgt" style="margin:2px 0 6px">Analysen ohne Analyst (${dispoA.length})</div><div class="st-list">${dispoA.map(d=>dRow(d,'analyst',anNames)).join('')}</div>`:''}
@@ -1027,6 +1108,7 @@ function renderSteuerung(){
   }));
   const br=host.querySelector('#btnReports');if(br)br.addEventListener('click',openReports);
   const bc=host.querySelector('#btnCeo');if(bc)bc.addEventListener('click',openCeoUpdate);
+  const bd=host.querySelector('#btnDup');if(bd)bd.addEventListener('click',openDupCheck);
   host.querySelectorAll('[data-blead]').forEach(btn=>btn.addEventListener('click',async()=>{
     const b=BUCH.find(x=>x._id===btn.dataset.blead);if(!b)return;
     const d=blank();
