@@ -324,7 +324,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.10-I";
+const APP_VERSION="20.10-A";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1865,6 +1865,7 @@ function teamPanel(){
       <button class="btn${ed?' pri':''}" id="tmAdd">${ed?'💾 Änderungen speichern':'+ Zugang anlegen'}</button>
       ${ed?'<button class="btn" id="tmCancel">Abbrechen</button>':''}
       <button class="btn" id="tmMerge" title="Vereinheitlicht in ALLEN Kunden die Schreibweisen von Telefonist/Analyst/Berater auf die Team-Namen (nutzt Name + Aliase)">🧹 Schreibweisen zusammenführen</button>
+      <a class="btn pri" href="https://console.firebase.google.com/project/censa-crm/authentication/users" target="_blank" rel="noopener" title="Hier legst du für neue Mitarbeiter E-Mail + Passwort an (Add user) und setzt Passwörter zurück">🔑 Mitarbeiter-Konten anlegen (Firebase)</a>
     </div></div>`;
 }
 
