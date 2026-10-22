@@ -324,7 +324,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="20.10-A";
+const APP_VERSION="22.10-A";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -684,9 +684,9 @@ function renderListe(){
         d[f]=val;
         const L={wiedervorlage:'Wiedervorlage',datumAG:'AG-Termin',datumBG:'BG-Termin'};
         histAdd(d,L[f]+': '+(old||'—')+' → '+(val||'—'));
-        if(f==='datumAG'&&val)chatSys('📅 Analysetermin '+(old?'GEÄNDERT (war '+old+')':'gesetzt')+': '+(d.name||d.org||'—')+' – '+val,d,old?(d.analyst||d.telefonist||null):null);
-        if(f==='datumBG'&&val)chatSys('📅 Beratungstermin '+(old?'GEÄNDERT (war '+old+')':'gesetzt')+': '+(d.name||d.org||'—')+' – '+val,d,old?(d.berater||d.analyst||null):null);
-        if(f==='datumAG'&&val&&['Neuer Lead','In Bearbeitung'].includes(d.stage)&&(d.analyst||'').trim())d.stage='Analysetermin vereinbart';
+        if(f==='datumAG'&&val)chatSys('📅 Analysetermin '+(old?'GEÄNDERT (war '+old+')':'gesetzt')+': '+(d.name||d.org||'—')+' – '+val+((d.analyst||'').trim()?'':' · Zuordnung über die Tages-Dispo'),d,old?(d.analyst||d.telefonist||null):null);
+        if(f==='datumBG'&&val)chatSys('📅 Beratungstermin '+(old?'GEÄNDERT (war '+old+')':'gesetzt')+': '+(d.name||d.org||'—')+' – '+val+((d.berater||'').trim()?'':' · Zuordnung über die Tages-Dispo'),d,old?(d.berater||d.analyst||null):null);
+        terminStage(d);
         dbPersist(d);renderListe();toast('Gespeichert ✓');
       }));
       det.querySelectorAll('[data-lstage]').forEach(b=>b.addEventListener('click',()=>{
@@ -2049,6 +2049,11 @@ function bezFromPLZ(v){const m=/\b(1\d{2}0)\b/.exec((v||'')+'');if(!m)return '';
 function normTel(t){t=(t||'').trim();if(!t)return t;if(/[A-Za-z:]/.test(t))return t;const d=t.replace(/[^\d+]/g,'');if(d.startsWith('+43'))return '+43 '+d.slice(3);if(d.startsWith('0043'))return '+43 '+d.slice(4);if(d.startsWith('0')&&d.length>=9)return '+43 '+d.slice(1);return t;}
 function lostByFromStage(s){if(A_STAGES.includes(s))return 'Analyst';if(B_STAGES.includes(s))return 'Berater';return 'Telefonist';}
 /* ---------- Kalender: Termin-Text parsen + Google/ICS-Eintrag ---------- */
+function terminStage(d){ // NORM: Termin eingetragen => Pipeline springt automatisch (Lead landet unzugeordnet in der Tages-Dispo)
+  if((d.datumBG||'').trim()&&['Neuer Lead','In Bearbeitung','Analysetermin vereinbart','Analyse & Doku'].includes(d.stage)){d.stage='Beratungstermin vereinbart';return 'BG';}
+  if((d.datumAG||'').trim()&&['Neuer Lead','In Bearbeitung'].includes(d.stage)){d.stage='Analysetermin vereinbart';return 'AG';}
+  return null;
+}
 function parseTermin(s){
   s=(s||'').trim();if(!s)return null;
   const m=/(\d{1,2})\.(\d{1,2})\.?\s*(\d{2,4})?\D*?(?:(\d{1,2})[:.h](\d{2}))?\s*$/.exec(s)||/(\d{1,2})\.(\d{1,2})\.?\s*(\d{2,4})?(?:\D+?(\d{1,2})[:.h](\d{2}))?/.exec(s);
@@ -2229,8 +2234,8 @@ function openModal(id){
     const dag=m.querySelector('#m-dag'),dbg=m.querySelector('#m-dbg');
     if(dag)d.datumAG=dag.value.trim();if(dbg)d.datumBG=dbg.value.trim();};
   const terminEvents=()=>{if(isNew)return;const nm=d.name||d.org||'—';
-    if((d.datumAG||'')!==before.ag&&d.datumAG)chatSys('📅 Analysetermin '+(before.ag?'GEÄNDERT (war '+before.ag+')':'gesetzt')+': '+nm+' – '+d.datumAG,d,before.ag?(d.analyst||d.telefonist||null):null);
-    if((d.datumBG||'')!==before.bg&&d.datumBG)chatSys('📅 Beratungstermin '+(before.bg?'GEÄNDERT (war '+before.bg+')':'gesetzt')+': '+nm+' – '+d.datumBG,d,before.bg?(d.berater||d.analyst||null):null);
+    if((d.datumAG||'')!==before.ag&&d.datumAG)chatSys('📅 Analysetermin '+(before.ag?'GEÄNDERT (war '+before.ag+')':'gesetzt')+': '+nm+' – '+d.datumAG+((d.analyst||'').trim()?'':' · Zuordnung über die Tages-Dispo'),d,before.ag?(d.analyst||d.telefonist||null):null);
+    if((d.datumBG||'')!==before.bg&&d.datumBG)chatSys('📅 Beratungstermin '+(before.bg?'GEÄNDERT (war '+before.bg+')':'gesetzt')+': '+nm+' – '+d.datumBG+((d.berater||'').trim()?'':' · Zuordnung über die Tages-Dispo'),d,before.bg?(d.berater||d.analyst||null):null);
     if((d.wiedervorlage||'')!==before.wv&&d.wiedervorlage)chatSys('🔁 Wiedervorlage: '+nm+' – '+d.wiedervorlage.split('-').reverse().join('.'),d);};
   const persist=()=>{histDiff();if(isNew&&!state.deals.includes(d))state.deals.unshift(d);dbPersist(d);render();};
   const callMeta=()=>{const dur=m.querySelector('#m-dur'),no=m.querySelector('#m-cnote');const o={};if(dur&&dur.value)o.dur=parseFloat(dur.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
@@ -2289,7 +2294,7 @@ function openModal(id){
     chatSys('❗ Beratungstermin ABGESAGT: '+(d.name||d.org||'—')+' (war '+alt+') – '+(d.berater?('Berater '+d.berater):'Berater')+'/'+(d.analyst||'Analyst')+' bitte neu terminisieren!',d,d.berater||d.analyst||null);
     persist();closeModal();toast('Abgesagt – Termin muss neu gesetzt werden');});
   m.querySelector('#m-save').addEventListener('click',()=>{collect();d.status='open';
-    if(['Neuer Lead','In Bearbeitung'].includes(d.stage)&&(d.datumAG||'').trim()&&(d.analyst||'').trim())d.stage='Analysetermin vereinbart';
+    terminStage(d);
     terminEvents();persist();closeModal();toast('Gespeichert');});
   m.querySelector('#m-won').addEventListener('click',()=>{collect();d.status='won';chatSys('🏆 Gewonnen: '+(d.name||d.org||'—'),d);
     const sd=new Date(Date.now()+14*86400000).toISOString().slice(0,10);
