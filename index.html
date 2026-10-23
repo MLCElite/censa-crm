@@ -324,7 +324,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="23.10-C";
+const APP_VERSION="23.10-D";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2243,16 +2243,10 @@ function openModal(id){
       <div class="fld"><label>Wiedervorlage</label><input type="date" id="m-wv" value="${esc(d.wiedervorlage)}"></div>
       <div class="fld"><label>Analysetermin (AG)</label><input id="m-dag" value="${esc(d.datumAG||'')}" placeholder="z. B. 22.09. 14:00"></div>
       <div class="fld"><label>Beratungstermin (BG)</label><input id="m-dbg" value="${esc(d.datumBG||'')}" placeholder="z. B. 25.09. 10:00"></div>
-      <div class="fld full"><label>Termin eintragen &amp; Kunde einladen <span style="font-weight:500;color:var(--ink-3);text-transform:none">— Google trägt die Kunden-E-Mail als Gast ein: beim Speichern „Einladung senden" klicken, dann hat der Kunde den Termin automatisch im Kalender</span></label>
+      <div class="fld full"><label>Termin verschoben? <span style="font-weight:500;color:var(--ink-3);text-transform:none">— setzt den Termin auf „verschoben": einfach neu terminisieren, zuordnen &amp; bestätigen – Kunde und Analyst/Berater bekommen den neuen Termin automatisch per Kalender-Einladung</span></label>
         <div style="display:flex;gap:7px;flex-wrap:wrap">
-          <button type="button" class="mini-btn" id="cal-ag-g">📅 AG → Google Kalender + Kunde</button>
-          <button type="button" class="mini-btn" id="cal-ag-w">📲 AG per WhatsApp bestätigen</button>
-          <button type="button" class="mini-btn" id="cal-ag-i">AG → ICS</button>
-          <button type="button" class="mini-btn" id="cal-bg-g">📅 BG → Google Kalender + Kunde</button>
-          <button type="button" class="mini-btn" id="cal-bg-w">📲 BG per WhatsApp bestätigen</button>
-          <button type="button" class="mini-btn" id="cal-bg-i">BG → ICS</button>
-          <button type="button" class="mini-btn" id="cal-ag-x" style="color:var(--bad)">❗ AG abgesagt</button>
-          <button type="button" class="mini-btn" id="cal-bg-x" style="color:var(--bad)">❗ BG abgesagt</button>
+          <button type="button" class="mini-btn" id="cal-ag-x" style="color:var(--bad)">❗ AG abgesagt / verschoben</button>
+          <button type="button" class="mini-btn" id="cal-bg-x" style="color:var(--bad)">❗ BG abgesagt / verschoben</button>
         </div>
       </div>
       ${isAdmin()?`<div class="fld"><label>Potenzieller Geschäftspartner? <span style="color:var(--ink-3);font-weight:500;text-transform:none">(nur für Admins sichtbar)</span></label><label class="gptoggle"><input type="checkbox" id="m-gp" ${d.gp?'checked':''}> Ja – fürs Recruiting vormerken</label></div>`:''}
@@ -2331,38 +2325,11 @@ function openModal(id){
   const callMeta=()=>{const dur=m.querySelector('#m-dur'),no=m.querySelector('#m-cnote');const o={};if(dur&&dur.value)o.dur=parseFloat(dur.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
   const fb=m.querySelector('#m-frei');
   if(fb)fb.addEventListener('click',()=>{collect();d.geprueft=true;persist();closeModal();toast('Freigegeben – jetzt in der Liste dem Telefonisten zuteilen');});
-  const calWire=(gSel,iSel,wSel,which)=>{
-    const get=()=>{
-      const inp=m.querySelector(which==='ag'?'#m-dag':'#m-dbg');
-      const dt=parseTermin(inp?inp.value:'');
-      if(!dt){toast('Bitte zuerst den Termin eintragen, z. B. 22.09. 14:00');return null;}
-      const kunde=m.querySelector('#m-name').value||(m.querySelector('#m-org')?m.querySelector('#m-org').value:'')||'Kunde';
-      const title=(which==='ag'?'Analyse: ':'Beratung: ')+kunde;
-      const loc=[m.querySelector('#m-str').value,m.querySelector('#m-plz').value,m.querySelector('#m-ort').value].filter(Boolean).join(', ');
-      const det='Tel: '+(m.querySelector('#m-tel').value||'-')+(m.querySelector('#m-brief').value?' | Briefing: '+m.querySelector('#m-brief').value:'');
-      const kundeMail=(m.querySelector('#m-email')?m.querySelector('#m-email').value.trim():'');
-      const maMail=teamMail(which==='ag'?m.querySelector('#m-an').value:m.querySelector('#m-be').value);
-      const guests=[kundeMail,maMail,OFFICE_MAIL];
-      return {title,dt,det,loc,guests,kundeMail,kunde};
-    };
-    const g=m.querySelector(gSel);if(g)g.addEventListener('click',()=>{const x=get();if(!x)return;
-      if(!x.kundeMail)toast('Tipp: E-Mail des Kunden eintragen, dann wird er automatisch eingeladen');
-      window.open(calGoogle(x.title,x.dt,x.det,x.loc,x.guests),'_blank');});
-    const i=m.querySelector(iSel);if(i)i.addEventListener('click',()=>{const x=get();if(x)calICS(x.title,x.dt,x.det,x.loc);});
-    const w=m.querySelector(wSel);if(w)w.addEventListener('click',()=>{const x=get();if(!x)return;
-      const tel=(m.querySelector('#m-tel').value||'').replace(/\D/g,'');
-      if(tel.length<8){toast('Keine gültige Telefonnummer für WhatsApp');return;}
-      const art=which==='ag'?'Analysetermin':'Beratungstermin';
-      const txt='Guten Tag! Wie telefonisch besprochen bestätigen wir Ihren '+art+' am '+terminText(x.dt)+(x.loc?' ('+x.loc+')':'')+'. Sie erhalten zusätzlich eine Kalender-Einladung per E-Mail. Bei Fragen erreichen Sie uns jederzeit unter dieser Nummer. Beste Grüße!';
-      window.open('https://wa.me/'+tel+'?text='+encodeURIComponent(txt),'_blank');});
-  };
-  calWire('#cal-ag-g','#cal-ag-i','#cal-ag-w','ag');
-  calWire('#cal-bg-g','#cal-bg-i','#cal-bg-w','bg');
   const agx=m.querySelector('#cal-ag-x');
   if(agx)agx.addEventListener('click',()=>{
     collect();
     if(!d.datumAG){toast('Kein Analysetermin eingetragen');return;}
-    if(!confirm('Analysetermin ('+d.datumAG+') als abgesagt markieren?\n\nDer Lead geht zurück in die Anrufliste von '+(d.telefonist||'— kein Telefonist —')+'.'))return;
+    if(!confirm('Analysetermin ('+d.datumAG+') auf VERSCHOBEN setzen?\n\nDer Lead geht zurück in die Anrufliste von '+(d.telefonist||'— kein Telefonist —')+'.\n\nSobald der neue Termin eingetragen, zugeordnet und bestätigt ist, bekommen Kunde und Analyst die neue Kalender-Einladung automatisch.'))return;
     const alt=d.datumAG;
     if(d.telefonist&&confirm('WhatsApp-Info an '+d.telefonist+' vorbereiten? (falls er/sie gerade nicht in der App ist)'))
       waNotify(d.telefonist,'❗ CENSA: Analysetermin '+(d.name||d.org||'—')+' (war '+alt+') wurde ABGESAGT – bitte im CRM bestätigen und neu terminisieren: https://mlcelite.github.io/censa-crm/');
@@ -2374,7 +2341,7 @@ function openModal(id){
   if(bgx)bgx.addEventListener('click',()=>{
     collect();
     if(!d.datumBG){toast('Kein Beratungstermin eingetragen');return;}
-    if(!confirm('Beratungstermin ('+d.datumBG+') als abgesagt markieren?'))return;
+    if(!confirm('Beratungstermin ('+d.datumBG+') auf VERSCHOBEN setzen?\n\nSobald der neue Termin eingetragen, zugeordnet und bestätigt ist, bekommen Kunde und Berater die neue Kalender-Einladung automatisch.'))return;
     const alt=d.datumBG;
     const bWer=d.berater||d.analyst;
     if(bWer&&confirm('WhatsApp-Info an '+bWer+' vorbereiten? (falls er/sie gerade nicht in der App ist)'))
