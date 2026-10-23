@@ -324,7 +324,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="23.10-D";
+const APP_VERSION="23.10-E";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -887,7 +887,7 @@ function infoBlock(d){
   return {usedNotizen:!!brancheTxt&&(d.notizen||'').trim()===brancheTxt,html:`<div style="margin:0 0 10px;padding:10px 13px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px">
     <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin-bottom:6px">ℹ️ Kunden-Info</div>
     ${rows.map(([l,v])=>`<div style="font-size:12.5px;margin-bottom:3px"><b>${l}:</b> ${esc(v)}</div>`).join('')}
-    ${fabc?`<a class="mini-btn" href="${fabc}" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block;margin-top:4px" title="Öffnet die FirmenABC-Suche direkt mit dieser Firma">🔎 FirmenABC-Eintrag öffnen</a>`:''}
+    ${fabc?`<a class="mini-btn" href="${fabc}" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block;margin-top:4px" title="Öffnet die FirmenABC-Suche direkt mit dieser Firma">🔎 FirmenABC-Eintrag öffnen</a> <a class="mini-btn" href="https://www.northdata.com/${encodeURIComponent(firma+(d.ort?', '+d.ort:''))}" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block;margin-top:4px" title="Finanz-Chart, Kapital und GF-Netzwerk – gratis">📊 Northdata-Zahlen</a>`:''}
   </div>`};
 }
 function dialerCard(d){
