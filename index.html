@@ -324,7 +324,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="22.10-C";
+const APP_VERSION="23.10-A";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -862,24 +862,40 @@ function finBlock(d){
     <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;align-items:center">${rows.map(([l,v,neg])=>`<span>${l}: <b class="tnum"${neg?' style="color:var(--bad)"':''}>${esc(String(v))}</b></span>`).join('')}${d.website?`<a href="${esc(d.website)}" target="_blank" rel="noopener" style="color:var(--brand-ink);font-weight:700;text-decoration:none">🌐 Website öffnen</a>`:''}</div>
   </div>`;
 }
+function infoBlock(d){
+  const br=(d.notizen||'').trim();
+  const isBranche=br&&br.length<=90&&!br.includes('|')&&!/\d{2}\.\d{2}/.test(br); // kurze notiz ohne datum = Branche aus dem Import
+  const rows=[];
+  if(isBranche)rows.push(['Branche',br]);
+  if(d.briefing)rows.push(['Tätigkeit',d.briefing]);
+  if(d.potenzial)rows.push(['Potenzial',d.potenzial]);
+  const firma=(d.org||d.name||'').trim();
+  const fabc=firma?'https://www.google.com/search?q='+encodeURIComponent('site:firmenabc.at "'+firma+'"'):'';
+  if(!rows.length&&!fabc)return {usedNotizen:false,html:''};
+  return {usedNotizen:isBranche,html:`<div style="margin:0 0 10px;padding:10px 13px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px">
+    <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin-bottom:6px">ℹ️ Kunden-Info</div>
+    ${rows.map(([l,v])=>`<div style="font-size:12.5px;margin-bottom:3px"><b>${l}:</b> ${esc(v)}</div>`).join('')}
+    ${fabc?`<a class="mini-btn" href="${fabc}" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block;margin-top:4px">🔎 FirmenABC-Eintrag öffnen</a>`:''}
+  </div>`};
+}
 function dialerCard(d){
   const tel=(d.telefon||'').replace(/[^+\d]/g,'');
+  const info=infoBlock(d);
   return `<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:22px 24px;max-width:640px">
     <div style="font-size:23px;font-weight:800;letter-spacing:-.4px">${esc(d.name||d.org||'—')}</div>
     ${d.org&&d.name!==d.org?`<div style="font-size:13px;color:var(--ink-2)">${esc(d.org)}</div>`:''}
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${badge(d.kundentyp)}${(d.gp&&isAdmin())?'<span class="tg gpb">GP?</span>':''}${d.bezirk?`<span class="tg">${esc(d.bezirk)}</span>`:''}${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''}${isOverdue(d)?'<span class="tg od">überfällig</span>':''}${naInfo(d)}</div>
     <div style="display:flex;align-items:center;gap:13px;margin:16px 0;padding:14px 16px;background:var(--surface-2);border:1px solid var(--line);border-radius:12px">
-      <div style="font-size:21px;font-weight:800;flex:1" class="tnum">${esc(d.telefon||'— keine Nummer —')}</div>
+      <div id="t-telnum" title="Doppelklick = Nummer kopieren" style="font-size:21px;font-weight:800;flex:1;cursor:copy;user-select:all" class="tnum">${esc(d.telefon||'— keine Nummer —')}</div>
       ${d.telefon?`<a class="btn pri" id="t-call" href="tel:${esc(tel)}" style="font-size:15px;padding:11px 20px">☎ Anrufen</a>`:''}
     </div>
     ${OFFICE_MAIL?`<div style="font-size:12.5px;margin:-6px 0 10px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:7px 11px"><b>✉ Office-Mail für den Kunden:</b> <span class="t-office" style="color:var(--brand-ink);font-weight:700;cursor:pointer" title="Klicken = kopieren">${esc(OFFICE_MAIL)}</span> <span style="color:var(--ink-3)">— „Schicken Sie Ihre Unterlagen einfach an …"</span></div>`:''}
+    ${info.html}
     ${finBlock(d)}
-    ${d.potenzial?`<div style="font-size:12.5px;margin-bottom:6px"><b>Potenzial:</b> ${esc(d.potenzial)}</div>`:''}
-    ${d.briefing?`<div style="font-size:12.5px;margin-bottom:6px"><b>Briefing:</b> ${esc(d.briefing)}</div>`:''}
-    ${d.notizen?`<div style="font-size:12px;color:var(--ink-3);margin-bottom:8px;max-height:76px;overflow:auto">${esc(d.notizen)}</div>`:''}
+    ${(!info.usedNotizen&&d.notizen)?`<div style="font-size:12px;color:var(--ink-3);margin-bottom:8px;max-height:76px;overflow:auto">${esc(d.notizen)}</div>`:''}
     ${(d.telHist&&d.telHist.length)?`<div class="histline">Frühere Anrufer: ${esc(d.telHist.join(', '))}</div>`:''}
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin:12px 0 8px">Gesprächsergebnis</div>
-    <div style="display:flex;gap:7px;margin-bottom:9px;flex-wrap:wrap"><input id="t-dur" type="number" min="0" placeholder="Dauer (Min.)" style="width:110px;padding:7px 9px;font-size:12.5px"><input id="t-note" placeholder="Kurze Zusammenfassung des Gesprächs…" style="flex:1;min-width:180px;padding:7px 9px;font-size:12.5px"></div>
+    <div style="display:flex;gap:7px;margin-bottom:9px;flex-wrap:wrap"><input id="t-ag" placeholder="AG-Termin: 27.10. 14:00" style="width:175px;padding:7px 9px;font-size:12.5px"><input id="t-dur" type="number" min="0" placeholder="Dauer (Min.)" style="width:110px;padding:7px 9px;font-size:12.5px"><input id="t-note" placeholder="Kurze Zusammenfassung des Gesprächs…" style="flex:1;min-width:180px;padding:7px 9px;font-size:12.5px"></div>
     <div class="obtns">
       <button class="ob termin" data-to="termin"><span class="d"></span>Termin vereinbart</button>
       <button class="ob rueckruf" data-to="rueckruf"><span class="d"></span>Rückruf</button>
@@ -894,6 +910,10 @@ function wireDialer(host,d){
   host.querySelectorAll('.t-office').forEach(el=>el.addEventListener('click',()=>{
     try{navigator.clipboard.writeText(OFFICE_MAIL);toast('Office-Mail kopiert – einfach einfügen');}catch(e){toast(OFFICE_MAIL);}
   }));
+  const tn=host.querySelector('#t-telnum');
+  if(tn&&d.telefon)tn.addEventListener('dblclick',()=>{
+    try{navigator.clipboard.writeText(d.telefon);toast('☎ Nummer kopiert ✓');}catch(e){toast(d.telefon);}
+  });
   const call=host.querySelector('#t-call');
   const meta=()=>{const du=host.querySelector('#t-dur'),no=host.querySelector('#t-note');const o={};if(du&&du.value)o.dur=parseFloat(du.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
   if(call)call.addEventListener('click',()=>{d.calls=d.calls||[];d.calls.push({ts:new Date().toISOString(),outcome:'angerufen'});dbPersist(d);});
@@ -902,7 +922,12 @@ function wireDialer(host,d){
     if(o==='skip'){host.__skip[d.id]=1;renderTelefon();return;}
     if(o==='open'){openModal(d.id);return;}
     d.calls=d.calls||[];d.calls.push(Object.assign({ts:new Date().toISOString(),outcome:o},meta()));
-    if(o==='termin'){d.stage='Analysetermin vereinbart';chatSys('📅 Neuer Analysetermin: '+(d.name||d.org||'—')+' · Zuordnung über die Tages-Dispo',d);dbPersist(d);render();openModal(d.id);toast('Termin! Datum (AG) im Lead eintragen – zugeordnet wird über die Dispo');return;}
+    if(o==='termin'){
+      const ag=((host.querySelector('#t-ag')||{}).value||'').trim();
+      d.stage='Analysetermin vereinbart';
+      if(ag){d.datumAG=ag;histAdd(d,'AG-Termin: — → '+ag+' (Telefon-Tab)');chatSys('📅 Neuer Analysetermin: '+(d.name||d.org||'—')+' – '+ag+' · Zuordnung über die Tages-Dispo',d);dbPersist(d);render();toast('✓ Termin '+ag+' gespeichert – Melanie ordnet über die Dispo zu');return;}
+      chatSys('📅 Neuer Analysetermin: '+(d.name||d.org||'—')+' · Zuordnung über die Tages-Dispo',d);dbPersist(d);render();openModal(d.id);toast('Termin! Datum (AG) im Lead eintragen – zugeordnet wird über die Dispo');return;
+    }
     if(o==='rueckruf'){d.stage='In Bearbeitung';dbPersist(d);render();openModal(d.id);toast('Rückruf – Wiedervorlage-Datum eintragen');return;}
     if(o==='nichterreicht'){if(d.stage==='Neuer Lead')d.stage='In Bearbeitung';naStamp(d);host.__skip[d.id]=1;dbPersist(d);render();toast('n.a. mit Datum vermerkt – nächster Lead');return;}
     if(o==='keininteresse'){d.status='lost';d.lostReason='Kein Interesse';d.lostDate=todayStr();d.lostBy='Telefonist';d.wiedervorlage=new Date(Date.now()+61*86400000).toISOString().slice(0,10);dbPersist(d);render();toast('Kein Interesse – Reaktivierung in 2 Monaten');return;}
@@ -2138,7 +2163,7 @@ function openModal(id){
   };
   const m=document.getElementById('modal');m.classList.add('wide');
   m.innerHTML=`
-    <h2>${isNew?'Neuer Lead':esc(d.name||d.org||'Lead')}</h2>
+    <h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${isNew?'Neuer Lead':esc(d.name||d.org||'Lead')}<button class="btn pri" id="m-save-top" style="margin-left:auto;padding:8px 18px;font-size:13.5px">💾 Speichern</button></h2>
     <div class="sub">${isNew?'Datensatz anlegen':'Status: '+(d.status==='won'?'Gewonnen':d.status==='lost'?'Verloren ('+esc(d.lostReason||'')+')':esc(d.stage))}</div>
     ${!isNew?`<div class="callbar"><div class="top"><span>☎ Anrufe gesamt: </span><span class="num">${(d.calls||[]).length}</span>${naInfo(d)}${d.telefon?`<a class="btn pri" style="margin-left:auto;padding:7px 13px" href="tel:${esc((d.telefon||'').replace(/[^+\d]/g,''))}" id="m-call">☎ Anrufen</a>`:''}</div>
       <div style="display:flex;gap:7px;margin-bottom:9px;flex-wrap:wrap"><input id="m-dur" type="number" min="0" placeholder="Dauer (Min.)" style="width:110px;padding:7px 9px;font-size:12.5px"><input id="m-cnote" placeholder="Kurze Zusammenfassung des Gesprächs…" style="flex:1;min-width:180px;padding:7px 9px;font-size:12.5px"></div>
@@ -2326,6 +2351,7 @@ function openModal(id){
   m.querySelector('#m-save').addEventListener('click',()=>{collect();d.status='open';
     terminStage(d);
     terminEvents();persist();closeModal();toast('Gespeichert');});
+  const mst=m.querySelector('#m-save-top');if(mst)mst.addEventListener('click',()=>m.querySelector('#m-save').click());
   m.querySelector('#m-won').addEventListener('click',()=>{collect();d.status='won';chatSys('🏆 Gewonnen: '+(d.name||d.org||'—'),d);
     const sd=new Date(Date.now()+14*86400000).toISOString().slice(0,10);
     d.wiedervorlage=sd;d.notizen=('SERVICETERMIN (Pflicht) bis '+sd.split('-').reverse().join('.')+' | '+(d.notizen||'')).trim(' |');
