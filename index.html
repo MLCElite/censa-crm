@@ -324,7 +324,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="23.10-A";
+const APP_VERSION="23.10-B";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -906,13 +906,21 @@ function dialerCard(d){
     </div>
   </div>`;
 }
+function copyText(txt,el,okMsg){ // clipboard-API scheitert ASYNCHRON (Promise) – try/catch reicht nicht
+  const fallback=()=>{try{
+    if(el){const r=document.createRange();r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r);}
+    document.execCommand('copy');toast(okMsg);
+  }catch(e){toast(txt);}};
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(txt).then(()=>toast(okMsg)).catch(fallback);
+  else fallback();
+}
 function wireDialer(host,d){
   host.querySelectorAll('.t-office').forEach(el=>el.addEventListener('click',()=>{
-    try{navigator.clipboard.writeText(OFFICE_MAIL);toast('Office-Mail kopiert – einfach einfügen');}catch(e){toast(OFFICE_MAIL);}
+    copyText(OFFICE_MAIL,el,'Office-Mail kopiert – einfach einfügen');
   }));
   const tn=host.querySelector('#t-telnum');
   if(tn&&d.telefon)tn.addEventListener('dblclick',()=>{
-    try{navigator.clipboard.writeText(d.telefon);toast('☎ Nummer kopiert ✓');}catch(e){toast(d.telefon);}
+    copyText(d.telefon,tn,'☎ Nummer kopiert ✓');
   });
   const call=host.querySelector('#t-call');
   const meta=()=>{const du=host.querySelector('#t-dur'),no=host.querySelector('#t-note');const o={};if(du&&du.value)o.dur=parseFloat(du.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
