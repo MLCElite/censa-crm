@@ -324,7 +324,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="23.10-B";
+const APP_VERSION="23.10-C";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -850,10 +850,13 @@ function renderTelefon(){
 }
 function finBlock(d){
   const fmt=v=>{const n=parseFloat(v);return isNaN(n)?'':(n.toLocaleString('de-AT')+' €');};
+  const hatZahlen=fmt(d.umsatz)||fmt(d.gewinn)||fmt(d.anlage);
   const rows=[];
-  if(fmt(d.umsatz))rows.push(['Umsatz',fmt(d.umsatz),false]);
-  if(fmt(d.gewinn))rows.push(['Jahresgewinn',fmt(d.gewinn),parseFloat(d.gewinn)<0]);
-  if(fmt(d.anlage))rows.push(['Anlagevermögen',fmt(d.anlage),false]);
+  if(hatZahlen||d.kundentyp==='GmbH'){ // GmbH: immer zeigen, fehlende Werte als — (Telefonist sieht sofort, was bekannt ist)
+    rows.push(['Umsatz',fmt(d.umsatz)||'—',false]);
+    rows.push(['Jahresgewinn',fmt(d.gewinn)||'—',parseFloat(d.gewinn)<0]);
+    rows.push(['Anlagevermögen',fmt(d.anlage)||'—',false]);
+  }
   if(d.maGroesse)rows.push(['Mitarbeiter',d.maGroesse,false]);
   if(d.finanzJahr)rows.push(['Jahresabschluss',d.finanzJahr,false]);
   if(!rows.length&&!d.website)return '';
@@ -862,20 +865,29 @@ function finBlock(d){
     <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;align-items:center">${rows.map(([l,v,neg])=>`<span>${l}: <b class="tnum"${neg?' style="color:var(--bad)"':''}>${esc(String(v))}</b></span>`).join('')}${d.website?`<a href="${esc(d.website)}" target="_blank" rel="noopener" style="color:var(--brand-ink);font-weight:700;text-decoration:none">🌐 Website öffnen</a>`:''}</div>
   </div>`;
 }
+function brancheVon(d){ // echtes Feld, sonst erster notizen-Teil (Importe schreiben die Branche dorthin)
+  const b=(d.branche||'').trim();if(b)return b;
+  const erst=((d.notizen||'').split('|')[0]||'').trim();
+  if(!erst||erst.length>90)return '';
+  if(/\d{1,2}\.\d{1,2}|termin|reaktiviert|\[setter\]|abgesagt|anliegen|gebucht|finanzdaten|weitere nummern/i.test(erst))return '';
+  return erst;
+}
+function fabcUrl(firma){ // Direktsuche firmenabc.at – cHash ist der statische Formular-Hash (live getestet 23.10.: sword darf variieren, where muss leer bleiben)
+  return 'https://www.firmenabc.at/suche/ergebnisse?tx_indexedsearch_pi2%5Baction%5D=search&tx_indexedsearch_pi2%5Bsearch%5D%5Bsword%5D='+encodeURIComponent(firma)+'&tx_indexedsearch_pi2%5Bsearch%5D%5BsearchMode%5D=&tx_indexedsearch_pi2%5Bsearch%5D%5BwhatId%5D=0&tx_indexedsearch_pi2%5Bsearch%5D%5BwhatIndustry%5D=0&tx_indexedsearch_pi2%5Bsearch%5D%5Bwhere%5D=&tx_indexedsearch_pi2%5Bsearch%5D%5BwhereId%5D=&tx_indexedsearch_pi2%5Bsearch%5D%5BwhereRegion%5D=0&cHash=0a9ce70f741885651ffd976dcd4f18db';
+}
 function infoBlock(d){
-  const br=(d.notizen||'').trim();
-  const isBranche=br&&br.length<=90&&!br.includes('|')&&!/\d{2}\.\d{2}/.test(br); // kurze notiz ohne datum = Branche aus dem Import
+  const brancheTxt=brancheVon(d);
   const rows=[];
-  if(isBranche)rows.push(['Branche',br]);
+  if(brancheTxt)rows.push(['Branche',brancheTxt]);
   if(d.briefing)rows.push(['Tätigkeit',d.briefing]);
   if(d.potenzial)rows.push(['Potenzial',d.potenzial]);
   const firma=(d.org||d.name||'').trim();
-  const fabc=firma?'https://www.google.com/search?q='+encodeURIComponent('site:firmenabc.at "'+firma+'"'):'';
+  const fabc=firma?fabcUrl(firma):'';
   if(!rows.length&&!fabc)return {usedNotizen:false,html:''};
-  return {usedNotizen:isBranche,html:`<div style="margin:0 0 10px;padding:10px 13px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px">
+  return {usedNotizen:!!brancheTxt&&(d.notizen||'').trim()===brancheTxt,html:`<div style="margin:0 0 10px;padding:10px 13px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px">
     <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin-bottom:6px">ℹ️ Kunden-Info</div>
     ${rows.map(([l,v])=>`<div style="font-size:12.5px;margin-bottom:3px"><b>${l}:</b> ${esc(v)}</div>`).join('')}
-    ${fabc?`<a class="mini-btn" href="${fabc}" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block;margin-top:4px">🔎 FirmenABC-Eintrag öffnen</a>`:''}
+    ${fabc?`<a class="mini-btn" href="${fabc}" target="_blank" rel="noopener" style="text-decoration:none;display:inline-block;margin-top:4px" title="Öffnet die FirmenABC-Suche direkt mit dieser Firma">🔎 FirmenABC-Eintrag öffnen</a>`:''}
   </div>`};
 }
 function dialerCard(d){
@@ -890,12 +902,14 @@ function dialerCard(d){
       ${d.telefon?`<a class="btn pri" id="t-call" href="tel:${esc(tel)}" style="font-size:15px;padding:11px 20px">☎ Anrufen</a>`:''}
     </div>
     ${OFFICE_MAIL?`<div style="font-size:12.5px;margin:-6px 0 10px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:7px 11px"><b>✉ Office-Mail für den Kunden:</b> <span class="t-office" style="color:var(--brand-ink);font-weight:700;cursor:pointer" title="Klicken = kopieren">${esc(OFFICE_MAIL)}</span> <span style="color:var(--ink-3)">— „Schicken Sie Ihre Unterlagen einfach an …"</span></div>`:''}
-    ${info.html}
     ${finBlock(d)}
+    ${info.html}
     ${(!info.usedNotizen&&d.notizen)?`<div style="font-size:12px;color:var(--ink-3);margin-bottom:8px;max-height:76px;overflow:auto">${esc(d.notizen)}</div>`:''}
     ${(d.telHist&&d.telHist.length)?`<div class="histline">Frühere Anrufer: ${esc(d.telHist.join(', '))}</div>`:''}
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin:12px 0 8px">Gesprächsergebnis</div>
-    <div style="display:flex;gap:7px;margin-bottom:9px;flex-wrap:wrap"><input id="t-ag" placeholder="AG-Termin: 27.10. 14:00" style="width:175px;padding:7px 9px;font-size:12.5px"><input id="t-dur" type="number" min="0" placeholder="Dauer (Min.)" style="width:110px;padding:7px 9px;font-size:12.5px"><input id="t-note" placeholder="Kurze Zusammenfassung des Gesprächs…" style="flex:1;min-width:180px;padding:7px 9px;font-size:12.5px"></div>
+    <div style="display:flex;gap:7px;margin-bottom:7px;flex-wrap:wrap"><input id="t-ag" placeholder="AG-Termin: 27.10. 14:00" style="width:175px;padding:7px 9px;font-size:12.5px"><input id="t-dur" type="number" min="0" placeholder="Dauer (Min.)" style="width:110px;padding:7px 9px;font-size:12.5px"><input id="t-email" type="email" value="${esc(d.email||'')}" placeholder="E-Mail des Kunden" style="flex:1;min-width:170px;padding:7px 9px;font-size:12.5px"></div>
+    <div style="display:flex;gap:7px;margin-bottom:7px;flex-wrap:wrap"><input id="t-note" placeholder="Zusammenfassung des Gesprächs → wird in die Notizen übernommen" style="flex:1;min-width:180px;padding:7px 9px;font-size:12.5px"></div>
+    <div style="display:flex;gap:7px;margin-bottom:9px;flex-wrap:wrap"><input id="t-brief" value="${esc(d.briefing||'')}" placeholder="Briefing für den Analysten – Branche, jung/alt, Entscheider, was wurde besprochen" style="flex:1;min-width:180px;padding:7px 9px;font-size:12.5px"></div>
     <div class="obtns">
       <button class="ob termin" data-to="termin"><span class="d"></span>Termin vereinbart</button>
       <button class="ob rueckruf" data-to="rueckruf"><span class="d"></span>Rückruf</button>
@@ -922,6 +936,17 @@ function wireDialer(host,d){
   if(tn&&d.telefon)tn.addEventListener('dblclick',()=>{
     copyText(d.telefon,tn,'☎ Nummer kopiert ✓');
   });
+  const em=host.querySelector('#t-email');
+  if(em)em.addEventListener('change',()=>{
+    const v=em.value.trim();
+    if(v&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)){toast('E-Mail bitte prüfen – sieht unvollständig aus');return;}
+    if(v!==(d.email||'')){d.email=v;histAdd(d,'E-Mail: '+(v||'—')+' (Telefon-Tab)');dbPersist(d);toast('✉ E-Mail gespeichert ✓');}
+  });
+  const bf=host.querySelector('#t-brief');
+  if(bf)bf.addEventListener('change',()=>{
+    const v=bf.value.trim();
+    if(v!==(d.briefing||'')){d.briefing=v;histAdd(d,'Briefing aktualisiert (Telefon-Tab)');dbPersist(d);toast('Briefing gespeichert ✓');}
+  });
   const call=host.querySelector('#t-call');
   const meta=()=>{const du=host.querySelector('#t-dur'),no=host.querySelector('#t-note');const o={};if(du&&du.value)o.dur=parseFloat(du.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
   if(call)call.addEventListener('click',()=>{d.calls=d.calls||[];d.calls.push({ts:new Date().toISOString(),outcome:'angerufen'});dbPersist(d);});
@@ -930,6 +955,8 @@ function wireDialer(host,d){
     if(o==='skip'){host.__skip[d.id]=1;renderTelefon();return;}
     if(o==='open'){openModal(d.id);return;}
     d.calls=d.calls||[];d.calls.push(Object.assign({ts:new Date().toISOString(),outcome:o},meta()));
+    const noteV=((host.querySelector('#t-note')||{}).value||'').trim();
+    if(noteV)d.notizen=(todayStr().split('-').reverse().join('.')+' '+(ME?ME.name:'')+': '+noteV+(d.notizen?' | '+d.notizen:'')); // Zusammenfassung wandert in die Lead-Notizen
     if(o==='termin'){
       const ag=((host.querySelector('#t-ag')||{}).value||'').trim();
       d.stage='Analysetermin vereinbart';
@@ -999,7 +1026,7 @@ async function mergeDeals(ids){
   const score=d=>(d.calls||[]).length*3+(d.hist||[]).length*2+(d.uebergabe?20:0)+(d.status==='won'?100:d.status==='open'?50:0)+Object.values(d).filter(v=>v&&typeof v==='string').length;
   ds.sort((a,b)=>score(b)-score(a));
   const base=ds[0],rest=ds.slice(1);
-  const FILL=['org','telefon','email','strasse','plz','ort','bezirk','telefonist','analyst','berater','datumAG','datumBG','eh','wiedervorlage','briefing','potenzial','umsatz','gewinn','anlage','finanzJahr','website','maGroesse','quelle'];
+  const FILL=['org','telefon','email','strasse','plz','ort','bezirk','branche','telefonist','analyst','berater','datumAG','datumBG','eh','wiedervorlage','briefing','potenzial','umsatz','gewinn','anlage','finanzJahr','website','maGroesse','quelle'];
   rest.forEach(o=>{
     FILL.forEach(f=>{if(o[f]&&!base[f])base[f]=o[f];});
     if(o.notizen&&!(base.notizen||'').includes(o.notizen))base.notizen=((base.notizen?base.notizen+' | ':'')+o.notizen).slice(0,1500);
@@ -2107,7 +2134,7 @@ function wireEmpty(host){host.querySelectorAll('[data-act]').forEach(b=>b.addEve
 
 /* ---------- modal ---------- */
 let editId=null;
-function blank(){return {id:uid(),name:'',org:'',kundentyp:'Privat',quelle:'',telefon:'',email:'',strasse:'',plz:'',ort:'',bezirk:'',analyst:'',berater:'',telefonist:'',telHist:[],telBeteiligt:false,gp:false,geprueft:true,briefing:'',potenzial:'',ehS:[],ehA:[],umsatz:'',gewinn:'',anlage:'',finanzJahr:'',website:'',maGroesse:'',stage:'Neuer Lead',status:'open',lostReason:'',lostDate:'',lostBy:'',datumAG:'',datumBG:'',eh:'',notizen:'',wiedervorlage:'',calls:[]};}
+function blank(){return {id:uid(),name:'',org:'',kundentyp:'Privat',quelle:'',telefon:'',email:'',strasse:'',plz:'',ort:'',bezirk:'',branche:'',analyst:'',berater:'',telefonist:'',telHist:[],telBeteiligt:false,gp:false,geprueft:true,briefing:'',potenzial:'',ehS:[],ehA:[],umsatz:'',gewinn:'',anlage:'',finanzJahr:'',website:'',maGroesse:'',stage:'Neuer Lead',status:'open',lostReason:'',lostDate:'',lostBy:'',datumAG:'',datumBG:'',eh:'',notizen:'',wiedervorlage:'',calls:[]};}
 function bezFromPLZ(v){const m=/\b(1\d{2}0)\b/.exec((v||'')+'');if(!m)return '';const n=parseInt(m[1].slice(1,3),10);return n>=1&&n<=23?('Wien '+n):'';}
 function normTel(t){t=(t||'').trim();if(!t)return t;if(/[A-Za-z:]/.test(t))return t;const d=t.replace(/[^\d+]/g,'');if(d.startsWith('+43'))return '+43 '+d.slice(3);if(d.startsWith('0043'))return '+43 '+d.slice(4);if(d.startsWith('0')&&d.length>=9)return '+43 '+d.slice(1);return t;}
 function lostByFromStage(s){if(A_STAGES.includes(s))return 'Analyst';if(B_STAGES.includes(s))return 'Berater';return 'Telefonist';}
@@ -2711,7 +2738,7 @@ async function importCSV(text){
       d.email=g('Email')||g('E-Mail');
       d.ort=g('Ort');d.bezirk=g('Bezirk')||bezFromPLZ(g('PLZ'));d.strasse=g('Strasse');d.plz=g('PLZ');
       d.quelle=g('Quelle')||'Recherche';if(d.quelle==='Recruiting'){d.gp=true;d.kundentyp='Privat';}
-      d.stage='Neuer Lead';d.status='open';d.notizen=g('Branche');
+      d.stage='Neuer Lead';d.status='open';d.notizen=g('Branche');d.branche=g('Branche');
       d.umsatz=g('Umsatz_EUR');d.gewinn=g('Gewinn_EUR');d.anlage=g('Anlagevermoegen_EUR');d.finanzJahr=g('Finanz_Jahr');
       d.website=g('Website');d.maGroesse=g('MA_Groesse');
       if(g('Quelle_Detail'))d.briefing=g('Quelle_Detail');
