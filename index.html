@@ -270,6 +270,7 @@
     <button data-tab="telefon">Telefon</button>
     <button data-tab="pipeline">Pipeline</button>
     <button data-tab="liste">Liste</button>
+    <button data-tab="foerder">💶 Förderungen</button>
     <button data-tab="dashboard">Dashboard</button>
     <button data-tab="woche">Woche</button>
     <button data-tab="chat">Chat</button>
@@ -293,6 +294,7 @@
   <div id="view-telefon" class="hide"></div>
   <div id="view-pipeline" class="hide"></div>
   <div id="view-liste" class="hide"></div>
+  <div id="view-foerder" class="hide"></div>
   <div id="view-dashboard" class="hide"></div>
   <div id="view-woche" class="hide"></div>
   <div id="view-chat" class="hide"></div>
@@ -324,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="24.10-E";
+const APP_VERSION="24.10-F";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -842,7 +844,6 @@ function renderTelefon(){
      <span class="kpi" style="margin-left:auto">${queue.length} in der Liste</span>
    </div>
    ${d0?dialerCard(d0):`<div class="emptybig"><div class="big">Liste leer${sel?' für '+esc(sel):''} 🎉</div>Alle Anruf-Leads abgearbeitet oder übersprungen.</div>`}
-   ${foerderPanel()}
    ${queue.length>1?`<div style="margin-top:12px;max-width:640px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin-bottom:6px">${fb?(fb==='__none'?'Ohne Bezirk':'Bezirk '+esc(fb))+' – alle '+queue.length+' Kunden':'Als Nächstes – nach Bezirk sortiert ('+(queue.length-1)+' weitere)'}</div><div class="st-list">${(fb?queue:queue.filter(x=>x.id!==d0.id).slice(0,10)).map(x=>`<div class="gl" data-tpick="${x.id}"${x.id===d0.id?' style="border-color:var(--brand);background:var(--brand-bg)"':''}><span class="tg">${esc(x.bezirk||'—')}</span><span class="gn">${x.id===d0.id?'▶ ':''}${esc(x.name||x.org||'—')}</span><span class="ph">${esc(x.org&&x.name!==x.org?x.org:'')}</span><span class="ph tnum">${esc(x.telefon||'')}</span>${isOverdue(x)?'<span class="od">überfällig</span>':''}</div>`).join('')}</div></div>`:''}`;
   host.querySelectorAll('[data-bz]').forEach(b=>b.addEventListener('click',()=>{host.__bez=b.dataset.bz;host.__pick='';renderTelefon();}));
   host.querySelector('#tSel').addEventListener('change',e=>{host.__sel=e.target.value;host.__skip={};host.__pick='';renderTelefon();});
@@ -983,6 +984,138 @@ function wireDialer(host,d){
   }));
 }
 
+/* ---------- Förderungsrechner (eigener Tab) ---------- */
+function fNum(v){const n=parseFloat(String(v).replace(/\./g,'').replace(',','.'));return isNaN(n)?0:n;}
+function fEur(n){return Math.round(n).toLocaleString('de-AT')+' €';}
+function fGruendung(d){ // "gegründet TT.MM.JJJJ" aus den FirmenABC-Notizen
+  const m=((d.notizen||'')+' '+(d.branche||'')).match(/gegründet (\d{2})\.(\d{2})\.(\d{4})/);
+  if(!m)return null;
+  return new Date(+m[3],+m[2]-1,+m[1]);
+}
+function renderFoerder(){
+  const host=document.getElementById('view-foerder');
+  const DS=visibleDeals();
+  const q=(host.__q||'').toLowerCase();
+  const d=host.__fid?DS.find(x=>x.id===host.__fid):null;
+  const treffer=(!d&&q.length>=2)?DS.filter(x=>((x.org||'')+' '+(x.name||'')).toLowerCase().includes(q)).slice(0,12):[];
+  let firmaHtml='';
+  if(d){
+    const gew=fNum(d.gewinn),anl=fNum(d.anlage),gr=fGruendung(d);
+    const grMonate=gr?Math.floor((Date.now()-gr.getTime())/(30.44*86400000)):null;
+    const fakten=[];
+    if(d.kundentyp)fakten.push(d.kundentyp);
+    const br=brancheVon(d);if(br)fakten.push(br);
+    if(d.maGroesse)fakten.push(d.maGroesse+' MA');
+    if(gew)fakten.push('Bilanzgewinn '+fEur(gew)+(d.finanzJahr?' ('+esc(d.finanzJahr)+')':''));
+    if(anl)fakten.push('Anlagevermögen '+fEur(anl));
+    if(gr)fakten.push('gegründet '+gr.toLocaleDateString('de-AT'));
+    if(d.bezirk||d.ort)fakten.push(esc(d.bezirk||d.ort));
+    const fabc=(d.org||d.name)?fabcUrl((d.org||d.name).trim()):'';
+    firmaHtml=`<div class="panel" style="border-color:var(--brand)">
+      <h3>${esc(d.org||d.name)} <button class="mini-btn" id="f-reset" style="float:right">andere Firma suchen</button></h3>
+      <div style="font-size:12.5px;color:var(--ink-2);margin-bottom:8px">${fakten.join(' · ')||'— noch keine Firmendaten erfasst —'}</div>
+      ${(d.briefing)?`<div style="font-size:12px;color:var(--ink-3);margin-bottom:8px">${esc(d.briefing).slice(0,250)}</div>`:''}
+      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px">
+        ${fabc?`<a class="mini-btn" href="${fabc}" target="_blank" rel="noopener" style="text-decoration:none">🔎 FirmenABC</a>`:''}
+        <a class="mini-btn" href="https://www.northdata.com/${encodeURIComponent((d.org||d.name||'')+(d.ort?', '+d.ort:''))}" target="_blank" rel="noopener" style="text-decoration:none">📊 Northdata</a>
+        ${d.website?`<a class="mini-btn" href="${esc(d.website)}" target="_blank" rel="noopener" style="text-decoration:none">🌐 Website</a>`:''}
+        <span class="ph" style="align-self:center">Zahlen fehlen? → Melanie sagt Claude „zahlen: ${esc(d.org||d.name||'')}“</span>
+      </div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin-bottom:7px">Was plant das Unternehmen? (fürs Gespräch einfach fragen)</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-bottom:12px">
+        <div class="fld"><label>Investition 2026 (€)</label><input id="f-inv" inputmode="numeric" placeholder="z. B. 100000" value="${esc(host.__inv||'')}"></div>
+        <div class="fld"><label>davon öko (PV, E-Lkw …) €</label><input id="f-oeko" inputmode="numeric" placeholder="0" value="${esc(host.__oeko||'')}"></div>
+        <div class="fld"><label>Entwicklung/Verbesserung (€)</label><input id="f-fue" inputmode="numeric" placeholder="z. B. 30000" value="${esc(host.__fue||'')}"></div>
+        <div class="fld"><label>Neue Mitarbeiter (Anzahl)</label><input id="f-ma" inputmode="numeric" placeholder="0" value="${esc(host.__ma||'')}"></div>
+        <div class="fld"><label>Ø Brutto neuer MA (€/Monat)</label><input id="f-brutto" inputmode="numeric" placeholder="3000" value="${esc(host.__brutto||'')}"></div>
+        <div class="fld"><label>Lehrlinge (Anzahl)</label><input id="f-lehr" inputmode="numeric" placeholder="0" value="${esc(host.__lehr||'')}"></div>
+      </div>
+      <div id="f-ergebnis"></div>
+      <div style="color:var(--ink-3);font-size:11px;margin-top:10px">Richtwerte Stand Okt. 2026, kein Rechtsanspruch – Umsetzung immer mit Steuerberater. Quellen: EStG (IFB §11, Forschungsprämie §108c), WKO-Lehrstellenförderung, AMS, aws, FFG.</div>
+    </div>`;
+  }
+  host.innerHTML=`
+    <div class="panel"><h3>💶 Förderungsrechner <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— Firma suchen, Pläne eintragen, passende Förderungen mit Euro-Beträgen fürs Gespräch</span></h3>
+      ${d?'':`<input id="f-q" placeholder="Firma oder Name suchen … (mind. 2 Buchstaben)" style="width:100%;max-width:460px;padding:10px 13px;font-size:14px" value="${esc(host.__q||'')}">`}
+      ${treffer.length?`<div class="st-list" style="margin-top:9px;max-width:620px">${treffer.map(x=>`<div class="gl" data-fpick="${x.id}"><span class="gn">${esc(x.org||x.name)}</span><span class="ph">${esc(x.org&&x.name!==x.org?x.name:'')}</span>${x.bezirk?`<span class="tg">${esc(x.bezirk)}</span>`:''}${fNum(x.gewinn)?`<span class="tg" style="background:var(--brand-bg);color:var(--brand-ink)">Zahlen ✓</span>`:''}</div>`).join('')}</div>`:(q.length>=2&&!d?'<div class="empty-col">Keine Firma gefunden – Schreibweise prüfen.</div>':'')}
+    </div>
+    ${firmaHtml}
+    ${foerderPanel()}`;
+  const fq=host.querySelector('#f-q');
+  if(fq){fq.addEventListener('input',()=>{host.__q=fq.value;host.__fid='';renderFoerder();const el=host.querySelector('#f-q');if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}});}
+  host.querySelectorAll('[data-fpick]').forEach(el=>el.addEventListener('click',()=>{host.__fid=el.dataset.fpick;renderFoerder();}));
+  const fr=host.querySelector('#f-reset');
+  if(fr)fr.addEventListener('click',()=>{host.__fid='';host.__q='';renderFoerder();});
+  if(d){
+    ['f-inv','f-oeko','f-fue','f-ma','f-brutto','f-lehr'].forEach(id2=>{
+      const el=host.querySelector('#'+id2);
+      if(el)el.addEventListener('input',()=>{host['__'+id2.slice(2)]=el.value;calcFoerder(host,d);});
+    });
+    calcFoerder(host,d);
+  }
+}
+function calcFoerder(host,d){
+  const box=host.querySelector('#f-ergebnis');if(!box)return;
+  const inv=fNum((host.querySelector('#f-inv')||{}).value),oeko=Math.min(fNum((host.querySelector('#f-oeko')||{}).value),inv);
+  const fue=fNum((host.querySelector('#f-fue')||{}).value);
+  const nMa=fNum((host.querySelector('#f-ma')||{}).value),brutto=fNum((host.querySelector('#f-brutto')||{}).value)||3000;
+  const lehr=fNum((host.querySelector('#f-lehr')||{}).value);
+  const gew=fNum(d.gewinn);
+  const gr=fGruendung(d);
+  const jung=gr?((Date.now()-gr.getTime())<3.05*365.25*86400000):false;
+  const karten=[];
+  const karte=(titel,betrag,erkl,warum,aktiv)=>karten.push(`<div style="border:1.5px solid ${aktiv?'var(--brand)':'var(--line)'};border-radius:10px;padding:10px 13px;margin-bottom:8px;${aktiv?'':'opacity:.55'}">
+    <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><b>${titel}</b>${betrag?`<span style="font-size:16px;font-weight:800;color:var(--brand-ink)" class="tnum">${betrag}</span>`:''}</div>
+    <div style="font-size:12.5px;color:var(--ink-2)">${erkl}</div>
+    <div style="font-size:11.5px;color:var(--ink-3)">${warum}</div></div>`);
+  // 1) IFB – verdoppelt bis 31.12.2026
+  const invCap=Math.min(inv,1000000),oekoCap=Math.min(oeko,invCap);
+  const ifbFb=(invCap-oekoCap)*0.20+oekoCap*0.22;
+  const ifbErsp=ifbFb*0.23;
+  karte('⭐ Investitionsfreibetrag (20 % / öko 22 %) – NUR noch bis 31.12.2026',
+    inv?('≈ '+fEur(ifbErsp)+' Steuerersparnis'):'',
+    inv?('Freibetrag '+fEur(ifbFb)+' zusätzlich zur Abschreibung → spart bei 23 % Körperschaftsteuer ≈ '+fEur(ifbErsp)+'. Gilt für Maschinen, Geräte, E-Fahrzeuge (ab 4 J. Nutzung; keine Gebäude, keine normalen Pkw, nichts Gebrauchtes, max. 1 Mio. €/Jahr).'):'Investitionssumme oben eintragen – dann rechnet sich die Ersparnis von selbst.',
+    gew>0?('Passt: Bilanzgewinn '+fEur(gew)+(d.finanzJahr?' ('+esc(d.finanzJahr)+')':'')+' – der Freibetrag wirkt sofort.'):'Hinweis: Wirkt nur bei steuerlichem Gewinn (laut unseren Daten aktuell keiner erfasst – nachfragen!).',
+    true);
+  // 2) Forschungsprämie
+  karte('Forschungsprämie 14 % (Cash vom Finanzamt, auch ohne Gewinn)',
+    fue?('≈ '+fEur(fue*0.14)+' Gutschrift'):'',
+    fue?('14 % von '+fEur(fue)+' Entwicklungskosten – als Gutschrift, unabhängig vom Gewinn.'):'Entwicklungskosten eintragen (neue Produkte, Software, Verfahren, Rezepturen). Ab 2026 strengere Prüfung bei marktnaher Entwicklung.',
+    'Jede Branche möglich – entscheidend ist, dass etwas Neues entwickelt oder spürbar verbessert wird.',
+    true);
+  // 3) AMS-Eingliederungsbeihilfe
+  const amsMax=nMa*brutto*1.3*0.5*6;
+  karte('AMS-Eingliederungsbeihilfe (neue Mitarbeiter)',
+    nMa?('bis zu ≈ '+fEur(amsMax)):'',
+    nMa?('Richtwert: rund die Hälfte der Lohnkosten für ca. 6 Monate bei '+nMa+' Einstellung(en) à '+fEur(brutto)+' brutto – gilt für Ältere 50+, Langzeitarbeitslose, Wiedereinsteiger; Höhe/Dauer entscheidet das AMS individuell VOR der Einstellung.'):'Anzahl geplanter Einstellungen eintragen.',
+    'Muss VOR Arbeitsbeginn beim AMS beantragt werden – der häufigste Fehler.',
+    true);
+  // 4) Lehrlinge
+  karte('Lehrlings-Basisförderung',
+    lehr?(lehr+' Lehrling'+(lehr>1?'e':'')):'',
+    'Zuschuss in Höhe mehrerer Lehrlingsentschädigungen je Lehrjahr (WKO-Lehrstellenförderung). ACHTUNG: Für Lehrjahre, die ab 1.7.2026 enden, nur noch 75 % – EIN Lehrling pro Betrieb bleibt bei 100 %. Wer Lehrlinge plant: nicht aufschieben.',
+    'Jeder Lehrbetrieb, jede Branche.',
+    true);
+  // 5) NEUFÖG
+  karte('NEUFÖG – Neugründer & Betriebsübernahme',
+    '',
+    'Befreiung von Gründungsgebühren und -abgaben + Lohnnebenkosten-Befreiung für die ersten Mitarbeiter (je 12 Monate, bis 3 Jahre ab Gründung).',
+    gr?(jung?('Passt: gegründet '+gr.toLocaleDateString('de-AT')+' – noch im Förderfenster!'):('Gegründet '+gr.toLocaleDateString('de-AT')+' – Fenster vorbei, nur bei Übernahme/Umgründung relevant.')):'Gründungsdatum unbekannt – auf FirmenABC nachsehen (Knopf oben).',
+    !gr||jung);
+  // 6) aws
+  karte('aws-Garantie & ERP-Kredit (zinsgünstig ab 10.000 €)',
+    '',
+    'Geförderte Kredite und Bank-Haftungen für Investitionen und Betriebsmittel – oft deutlich günstiger als der Hausbank-Rahmen.',
+    'Perfekter Anker für den CENSA-Kredit-Check: bestehende Firmenkredite dagegenhalten.',
+    true);
+  // 7) FFG Innovationsscheck
+  karte('FFG Innovationsscheck: 10.000 € (80 % Zuschuss) – Frist 2.11.2026',
+    '',
+    'Für ein erstes Entwicklungsprojekt gemeinsam mit einer Forschungseinrichtung – der Staat zahlt 8 von 10 Euro.',
+    'Ideal für kleine GmbHs ohne Forschungserfahrung.',
+    fue>0);
+  box.innerHTML=karten.join('');
+}
 /* ---------- CEO / Steuerung ---------- */
 function parseDMY(s){const m=/^(\d{2})\.(\d{2})\.(\d{4})$/.exec((s||'').trim());if(m)return new Date(+m[3],+m[2]-1,+m[1]);if(/^\d{4}-\d{2}-\d{2}/.test(s||''))return new Date(s);return null;}
 function daysUntil(s){const d=parseDMY(s);if(!d)return null;const t=new Date();t.setHours(0,0,0,0);return Math.round((d-t)/86400000);}
@@ -2838,9 +2971,10 @@ function loadDemo(){
 /* ---------- tabs ---------- */
 document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
-  ['steuerung','gp','telefon','pipeline','liste','dashboard','woche','chat'].forEach(t=>document.getElementById('view-'+t).classList.toggle('hide',t!==b.dataset.tab));
+  ['steuerung','gp','telefon','pipeline','liste','foerder','dashboard','woche','chat'].forEach(t=>document.getElementById('view-'+t).classList.toggle('hide',t!==b.dataset.tab));
   if(b.dataset.tab==='chat'){ensureChatUI();updateChatLog();markChatSeen();}
   if(b.dataset.tab==='woche')renderWoche();
+  if(b.dataset.tab==='foerder')renderFoerder();
 }));
 document.getElementById('todoBadge').addEventListener('click',()=>openTodo(true));
 
