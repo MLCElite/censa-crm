@@ -324,7 +324,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="24.10-C";
+const APP_VERSION="24.10-D";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1477,7 +1477,7 @@ function waNotify(person,text){
 function waZugang(mem,pw){ // Zugangsdaten-Nachricht: Passwort landet NUR im WhatsApp-Text, wird nie gespeichert
   const tel=(mem.tel||'').replace(/\D/g,'');
   if(tel.length<8){toast('Keine gültige Handynummer hinterlegt – WhatsApp übersprungen');return;}
-  const txt='Hallo '+mem.name+'! 🎉 Dein CENSA-CRM-Zugang ist bereit.\n\n🔗 Login: https://mlcelite.github.io/censa-crm/\n👤 E-Mail: '+(mem.email||'—')+'\n🔑 Passwort: '+pw+'\n\nBitte ändere das Passwort nach dem ersten Login: auf der Anmeldeseite auf „Passwort vergessen?" klicken, dann bekommst du einen Link per Mail.\nDeine Rolle: '+(mem.rolle||'')+'. Viel Erfolg! 🍀';
+  const txt='Hallo '+mem.name+'!\nDein CENSA-CRM-Zugang ist bereit.\n\nLogin: https://mlcelite.github.io/censa-crm/\nE-Mail: '+(mem.email||'-')+'\nPasswort: '+pw+'\n\nBitte ändere das Passwort nach dem ersten Login: auf der Anmeldeseite auf \'Passwort vergessen?\' klicken, dann bekommst du einen Link per Mail.\nDeine Rolle: '+(mem.rolle||'')+'. Viel Erfolg!';
   const url='https://wa.me/'+tel+'?text='+encodeURIComponent(txt);
   let w=null;try{w=window.open(url,'_blank');}catch(e){}
   if(!w)zeigeWaBanner(mem.name,url); // Popup-Blocker schluckt window.open nach prompt() – dann sichtbarer Knopf
