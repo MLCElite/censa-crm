@@ -324,7 +324,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="24.10-A";
+const APP_VERSION="24.10-B";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1305,12 +1305,25 @@ function wireTeamPanel(host){
     const id2=TM_EDIT||('m'+Math.random().toString(36).slice(2,10));
     const mem={id:id2,name,rolle,email,tel:normTel(host.querySelector('#tmTel').value.trim()),alias:host.querySelector('#tmAlias').value.trim()};
     const war=!!TM_EDIT;
+    // WhatsApp-Info VOR dem Speichern vorbereiten (window.open braucht die Klick-Geste – nach await blockt der Popup-Blocker)
+    if(!war&&mem.tel&&confirm('Zugangs-Info gleich per WhatsApp an '+name+' schicken?\n\nDas Passwort gibst du im nächsten Schritt ein – es kommt nur in die Nachricht und wird NICHT gespeichert.')){
+      const pw=prompt('Passwort für '+name+' (genau wie in Firebase angelegt):','');
+      if(pw&&pw.trim())waZugang(mem,pw.trim());
+    }
     try{
       await teamCol.doc(id2).set(mem);
       TM_EDIT=null;
       toast(war?('Zugang aktualisiert: '+name):('Zugang angelegt: '+name+' – Passwort in Firebase (Authentication → Add user) anlegen!'));
     }catch(e){toast('Speichern fehlgeschlagen'+(e&&e.code?' ('+e.code+')':''));}
   });
+  host.querySelectorAll('[data-waid]').forEach(b=>b.addEventListener('click',()=>{
+    const mm=TEAM.find(x=>x.id===b.dataset.waid);if(!mm)return;
+    if(!mm.email){toast('Zuerst eine E-Mail beim Zugang eintragen');return;}
+    const pw=prompt('Passwort für '+mm.name+' (genau wie in Firebase angelegt – kommt nur in die Nachricht, wird nicht gespeichert):','');
+    if(pw===null)return;
+    if(!pw.trim()){toast('Kein Passwort eingegeben');return;}
+    waZugang(mm,pw.trim());
+  }));
   host.querySelectorAll('[data-edid]').forEach(b=>b.addEventListener('click',()=>{TM_EDIT=b.dataset.edid;renderSteuerung();}));
   const tc=host.querySelector('#tmCancel');
   if(tc)tc.addEventListener('click',()=>{TM_EDIT=null;renderSteuerung();});
@@ -1458,6 +1471,12 @@ function waNotify(person,text){
   const tel=((mm&&mm.tel)||'').replace(/\D/g,'');
   if(tel.length<8){toast('Keine Handynummer bei '+person+' hinterlegt (Team & Zugänge) – WhatsApp übersprungen');return;}
   window.open('https://wa.me/'+tel+'?text='+encodeURIComponent(text),'_blank');
+}
+function waZugang(mem,pw){ // Zugangsdaten-Nachricht: Passwort landet NUR im WhatsApp-Text, wird nie gespeichert
+  const tel=(mem.tel||'').replace(/\D/g,'');
+  if(tel.length<8){toast('Keine gültige Handynummer hinterlegt – WhatsApp übersprungen');return;}
+  const txt='Hallo '+mem.name+'! 🎉 Dein CENSA-CRM-Zugang ist bereit.\n\n🔗 Login: https://mlcelite.github.io/censa-crm/\n👤 E-Mail: '+(mem.email||'—')+'\n🔑 Passwort: '+pw+'\n\nBitte ändere das Passwort nach dem ersten Login: auf der Anmeldeseite auf „Passwort vergessen?" klicken, dann bekommst du einen Link per Mail.\nDeine Rolle: '+(mem.rolle||'')+'. Viel Erfolg! 🍀';
+  window.open('https://wa.me/'+tel+'?text='+encodeURIComponent(txt),'_blank');
 }
 function myAcksOpen(){
   const me=chatName();if(!me)return [];
@@ -1944,7 +1963,7 @@ function teamPanel(){
   const ed=TM_EDIT?TEAM.find(x=>x.id===TM_EDIT):null;
   const rChk=['telefonist','analyst','berater','admin'].map(x=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:pointer"><input type="checkbox" class="tmR" value="${x}"${ed&&hasRole(ed,x)?' checked':(!ed&&x==='telefonist'?' checked':'')} style="width:14px;height:14px;accent-color:var(--brand)">${x.charAt(0).toUpperCase()+x.slice(1)}</label>`).join('');
   return `<div class="panel"><h3>Team &amp; Zugänge <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— jedes Mitglied meldet sich mit E-Mail + Passwort an und sieht nur die eigenen zugeteilten, freigegebenen Leads. Das Passwort legst du in der Firebase-Konsole an (Authentication → Users → Add user, gleiche E-Mail).</span></h3>
-    <div class="st-list">${TEAM.length?TEAM.map(mm=>`<div class="gl" style="cursor:default;flex-wrap:wrap${TM_EDIT===mm.id?';border-color:var(--brand)':''}"><span class="gn">${esc(mm.name)}</span><span class="ph">${esc(mm.rolle)}</span><span class="ph">${esc(mm.email||'— keine E-Mail —')}</span><span class="ph tnum">${esc(mm.tel||'—')}</span>${mm.alias?`<span class="ph">alias: ${esc(mm.alias)}</span>`:''}<button class="mini-btn" data-edid="${esc(mm.id)}">✏️ Bearbeiten</button><button class="mini-btn" data-rmid="${esc(mm.id)}" style="color:var(--bad)">Entfernen</button></div>`).join(''):'<div class="empty-col">Noch keine Zugänge – lege zuerst deinen eigenen Admin-Zugang an (mit deiner Anmelde-E-Mail).</div>'}</div>
+    <div class="st-list">${TEAM.length?TEAM.map(mm=>`<div class="gl" style="cursor:default;flex-wrap:wrap${TM_EDIT===mm.id?';border-color:var(--brand)':''}"><span class="gn">${esc(mm.name)}</span><span class="ph">${esc(mm.rolle)}</span><span class="ph">${esc(mm.email||'— keine E-Mail —')}</span><span class="ph tnum">${esc(mm.tel||'—')}</span>${mm.alias?`<span class="ph">alias: ${esc(mm.alias)}</span>`:''}${mm.tel?`<button class="mini-btn" data-waid="${esc(mm.id)}" title="Zugangsdaten per WhatsApp schicken – das Passwort wird abgefragt und nicht gespeichert">📲 Zugang senden</button>`:''}<button class="mini-btn" data-edid="${esc(mm.id)}">✏️ Bearbeiten</button><button class="mini-btn" data-rmid="${esc(mm.id)}" style="color:var(--bad)">Entfernen</button></div>`).join(''):'<div class="empty-col">Noch keine Zugänge – lege zuerst deinen eigenen Admin-Zugang an (mit deiner Anmelde-E-Mail).</div>'}</div>
     ${ed?`<div style="margin-top:10px;font-size:12.5px;font-weight:700;color:var(--brand-ink)">✏️ Du bearbeitest gerade: ${esc(ed.name)}</div>`:''}
     <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:8px;align-items:center">
       <input id="tmName" placeholder="Name" style="width:150px" value="${esc(ed?ed.name:'')}">
