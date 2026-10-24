@@ -324,7 +324,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="24.10-B";
+const APP_VERSION="24.10-C";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1305,8 +1305,10 @@ function wireTeamPanel(host){
     const id2=TM_EDIT||('m'+Math.random().toString(36).slice(2,10));
     const mem={id:id2,name,rolle,email,tel:normTel(host.querySelector('#tmTel').value.trim()),alias:host.querySelector('#tmAlias').value.trim()};
     const war=!!TM_EDIT;
+    const vorher=war?TEAM.find(x=>x.id===TM_EDIT):null;
+    const telNeu=mem.tel&&(!war||!((vorher&&vorher.tel)||'').trim()); // neu angelegt ODER Handynummer kam gerade dazu
     // WhatsApp-Info VOR dem Speichern vorbereiten (window.open braucht die Klick-Geste – nach await blockt der Popup-Blocker)
-    if(!war&&mem.tel&&confirm('Zugangs-Info gleich per WhatsApp an '+name+' schicken?\n\nDas Passwort gibst du im nächsten Schritt ein – es kommt nur in die Nachricht und wird NICHT gespeichert.')){
+    if(telNeu&&confirm('Zugangs-Info gleich per WhatsApp an '+name+' schicken?\n\nDas Passwort gibst du im nächsten Schritt ein – es kommt nur in die Nachricht und wird NICHT gespeichert.')){
       const pw=prompt('Passwort für '+name+' (genau wie in Firebase angelegt):','');
       if(pw&&pw.trim())waZugang(mem,pw.trim());
     }
@@ -1476,7 +1478,18 @@ function waZugang(mem,pw){ // Zugangsdaten-Nachricht: Passwort landet NUR im Wha
   const tel=(mem.tel||'').replace(/\D/g,'');
   if(tel.length<8){toast('Keine gültige Handynummer hinterlegt – WhatsApp übersprungen');return;}
   const txt='Hallo '+mem.name+'! 🎉 Dein CENSA-CRM-Zugang ist bereit.\n\n🔗 Login: https://mlcelite.github.io/censa-crm/\n👤 E-Mail: '+(mem.email||'—')+'\n🔑 Passwort: '+pw+'\n\nBitte ändere das Passwort nach dem ersten Login: auf der Anmeldeseite auf „Passwort vergessen?" klicken, dann bekommst du einen Link per Mail.\nDeine Rolle: '+(mem.rolle||'')+'. Viel Erfolg! 🍀';
-  window.open('https://wa.me/'+tel+'?text='+encodeURIComponent(txt),'_blank');
+  const url='https://wa.me/'+tel+'?text='+encodeURIComponent(txt);
+  let w=null;try{w=window.open(url,'_blank');}catch(e){}
+  if(!w)zeigeWaBanner(mem.name,url); // Popup-Blocker schluckt window.open nach prompt() – dann sichtbarer Knopf
+}
+function zeigeWaBanner(name,url){
+  const alt=document.getElementById('waBanner');if(alt)alt.remove();
+  const div=document.createElement('div');div.id='waBanner';
+  div.style.cssText='position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:99999;background:var(--surface,#fff);border:2px solid var(--brand,#0C806D);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);padding:12px 16px;display:flex;gap:12px;align-items:center;font-size:13.5px;max-width:92vw';
+  div.innerHTML='<span>📲 Zugangs-Nachricht für <b>'+esc(name)+'</b> ist fertig – jetzt abschicken:</span><a class="btn pri" target="_blank" rel="noopener" href="'+url+'" style="text-decoration:none;white-space:nowrap">WhatsApp öffnen</a><button class="mini-btn" id="waBx" title="Schließen">✕</button>';
+  document.body.appendChild(div);
+  div.querySelector('a').addEventListener('click',()=>setTimeout(()=>div.remove(),500));
+  div.querySelector('#waBx').addEventListener('click',()=>div.remove());
 }
 function myAcksOpen(){
   const me=chatName();if(!me)return [];
