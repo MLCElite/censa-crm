@@ -326,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="24.10-F";
+const APP_VERSION="24.10-G";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -985,6 +985,25 @@ function wireDialer(host,d){
 }
 
 /* ---------- Förderungsrechner (eigener Tab) ---------- */
+/* Kuratiertes CENSA-Förderregister – gepflegt von Claude („förderungen aktualisieren“). Stand: Okt. 2026 */
+const F_VORHABEN=[['investition','Investition'],['digitalisierung','Digitalisierung'],['energie','Energie & Umwelt'],['forschung','Forschung & Entwicklung'],['export','Export'],['personal','Personal & Lehre'],['gruendung','Gründung / Übernahme'],['beratung','Beratung']];
+const FOERDER_DB=[
+ {id:'w-digi',name:'Wien: Digitalisierung (Wirtschaftsagentur)',stelle:'Wirtschaftsagentur Wien',land:'W',vorhaben:['digitalisierung','investition'],satz:0,max:0,frist:'laufende Calls',stand:'Okt. 2026',status:'laeuft',url:'https://wirtschaftsagentur.at/foerderungen/',kurz:'Zuschüsse für Digitalisierungsprojekte Wiener Betriebe – Höhe je nach aktuellem Call (Programmseite prüfen).'},
+ {id:'w-standort',name:'Wien: Standort – Betriebsausbau & Ansiedlung',stelle:'Wirtschaftsagentur Wien',land:'W',vorhaben:['investition'],satz:0,max:0,frist:'bis 31.12.2026 (Rahmenrichtlinie)',stand:'Okt. 2026',status:'laeuft',url:'https://wirtschaftsagentur.at/foerderungen/',kurz:'Zuschuss für Ausbau von Betriebsstätten, v. a. Produktion und F&E in Wien.'},
+ {id:'w-waff',name:'waff: Qualifizierung & Fachkräfte (Wien)',stelle:'waff',land:'W',vorhaben:['personal','beratung'],satz:0,max:0,frist:'laufend',stand:'Okt. 2026',status:'laeuft',url:'https://www.waff.at/',kurz:'Zuschüsse zur Weiterbildung bestehender Mitarbeiter und Personalsuche für Wiener Betriebe.'},
+ {id:'noe-digi4',name:'digi4wirtschaft (NÖ) – Neuauflage ab 1.10.2026',stelle:'Land NÖ + WKNÖ',land:'NÖ',vorhaben:['digitalisierung','investition','beratung'],satz:0,max:0,frist:'ab 1.10.2026, solange Budget (2 Mio. €)',stand:'Okt. 2026',status:'laeuft',url:'https://www.noe.gv.at/noe/Wirtschaft-Tourismus-Technologie/Impulsprogramm_digi4Wirtschaft.html',kurz:'Impulsprogramm für Digitalisierungsprojekte niederösterreichischer KMU – schnell sein, kleiner Topf.'},
+ {id:'noe-wtf',name:'NÖ Wirtschafts- und Tourismusfonds: Investitionen',stelle:'Land NÖ',land:'NÖ',vorhaben:['investition','gruendung'],satz:0,max:0,frist:'laufend',stand:'Okt. 2026',status:'laeuft',url:'https://www.noe.gv.at/noe/Wirtschaft-Tourismus-Technologie/Foerderungen_Wirtschaft.html',kurz:'Zuschüsse/Darlehen für betriebliche Investitionen in NÖ – Höhe je Richtlinie.'},
+ {id:'ffg-basis',name:'FFG Basisprogramm – Forschungsprojekte',stelle:'FFG (Bund)',land:'',vorhaben:['forschung','digitalisierung'],satz:50,max:0,frist:'laufend (bis 31.12.2026)',stand:'Okt. 2026',status:'laeuft',url:'https://www.ffg.at/basisprogramm',kurz:'Mix aus Zuschuss und zinsgünstigem Darlehen, bei KMU bis rund die Hälfte der Projektkosten.'},
+ {id:'ffg-scheck',name:'FFG Innovationsscheck',stelle:'FFG (Bund)',land:'',vorhaben:['forschung','beratung'],satz:80,max:10000,frist:'2.11.2026',stand:'Okt. 2026',status:'laeuft',url:'https://www.ffg.at/innovationsscheck',kurz:'Erstes F&E-Projekt mit einer Forschungseinrichtung: 80 % Zuschuss, bis 10.000 €.'},
+ {id:'kpc-umwelt',name:'Umweltförderung Betriebe (KPC): PV, Wärme, E-Mobilität',stelle:'KPC / Bund',land:'',vorhaben:['energie','investition'],satz:0,max:0,frist:'je Programmschiene',stand:'Okt. 2026',status:'laeuft',url:'https://www.umweltfoerderung.at/betriebe',kurz:'Zuschüsse für Photovoltaik, Heizungstausch, E-Fahrzeuge/Ladeinfrastruktur im Betrieb – Sätze je Schiene.'},
+ {id:'wko-goint',name:'go-international – Exportförderung',stelle:'WKO / Bund',land:'',vorhaben:['export','beratung'],satz:50,max:0,frist:'laufend',stand:'Okt. 2026',status:'laeuft',url:'https://www.go-international.at/',kurz:'Zuschüsse für erste Exportschritte, Messen, Markteintritt – meist 50 % der Kosten.'},
+ {id:'ams-eb',name:'AMS-Eingliederungsbeihilfe',stelle:'AMS',land:'',vorhaben:['personal'],satz:50,max:0,frist:'laufend – VOR Einstellung beantragen',stand:'Okt. 2026',status:'laeuft',url:'https://www.ams.at/unternehmen/service-zur-personalsuche/foerderungen',kurz:'Rund die Hälfte der Lohnkosten für mehrere Monate bei Einstellung von 50+, Langzeitarbeitslosen, Wiedereinsteigern.'},
+ {id:'wko-lehre',name:'Lehrstellenförderung (Basisförderung)',stelle:'WKO-Lehrlingsstelle',land:'',vorhaben:['personal'],satz:0,max:0,frist:'laufend – ab 1.7.2026 nur noch 75 %',stand:'Okt. 2026',status:'laeuft',url:'https://www.wko.at/lehre/foerderungen-lehre',kurz:'Zuschuss in Höhe mehrerer Lehrlingsentschädigungen je Lehrjahr; ein Lehrling pro Betrieb bleibt bei 100 %.'},
+ {id:'aws-erp',name:'aws: ERP-Kredit & Garantien',stelle:'aws (Bund)',land:'',vorhaben:['investition','gruendung'],satz:0,max:0,frist:'laufend',stand:'Okt. 2026',status:'laeuft',url:'https://www.aws.at/',kurz:'Zinsgünstige Kredite ab 10.000 € und Bank-Haftungen – oft besser als der Hausbank-Rahmen (CENSA-Kredit-Check!).'},
+ {id:'neufoeg',name:'NEUFÖG – Neugründungs-Förderung',stelle:'Bund (Finanzamt)',land:'',vorhaben:['gruendung'],satz:0,max:0,frist:'laufend (bis 3 Jahre ab Gründung)',stand:'Okt. 2026',status:'laeuft',url:'https://www.usp.gv.at/',kurz:'Befreiung von Gründungsgebühren + Lohnnebenkosten-Befreiung für die ersten Mitarbeiter (je 12 Monate).'},
+ {id:'kmu-digital',name:'KMU.DIGITAL',stelle:'WKO / Bund',land:'',vorhaben:['digitalisierung','beratung'],satz:0,max:0,frist:'—',stand:'Okt. 2026',status:'ausgeschoepft',url:'https://www.kmudigital.at/',kurz:'Budget derzeit AUSGESCHÖPFT – nicht versprechen! Bei Neuauflage nimmt Claude es wieder herein.'}
+];
+function fLand(d){const p=((d&&(d.plz||d.bezirk))||'').trim();if(/^1\d{3}$/.test(p))return 'W';if(/^[23]\d{3}$/.test(p))return 'NÖ';return '';}
 function fNum(v){const n=parseFloat(String(v).replace(/\./g,'').replace(',','.'));return isNaN(n)?0:n;}
 function fEur(n){return Math.round(n).toLocaleString('de-AT')+' €';}
 function fGruendung(d){ // "gegründet TT.MM.JJJJ" aus den FirmenABC-Notizen
@@ -1030,6 +1049,10 @@ function renderFoerder(){
         <div class="fld"><label>Ø Brutto neuer MA (€/Monat)</label><input id="f-brutto" inputmode="numeric" placeholder="3000" value="${esc(host.__brutto||'')}"></div>
         <div class="fld"><label>Lehrlinge (Anzahl)</label><input id="f-lehr" inputmode="numeric" placeholder="0" value="${esc(host.__lehr||'')}"></div>
       </div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin-bottom:6px">Vorhaben für den Programm-Abgleich <span style="font-weight:500;text-transform:none">(mehrere möglich – was oben Zahlen hat, zählt automatisch mit)</span></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">${F_VORHABEN.map(([k,l])=>`<button type="button" class="bchip${(host.__vh||[]).includes(k)?' on':''}" data-fvh="${k}">${l}</button>`).join('')}</div>
+      <div id="f-progs" style="margin-bottom:14px"></div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin-bottom:7px">Steuer-Hebel &amp; Klassiker (immer prüfen)</div>
       <div id="f-ergebnis"></div>
       <div style="color:var(--ink-3);font-size:11px;margin-top:10px">Richtwerte Stand Okt. 2026, kein Rechtsanspruch – Umsetzung immer mit Steuerberater. Quellen: EStG (IFB §11, Forschungsprämie §108c), WKO-Lehrstellenförderung, AMS, aws, FFG.</div>
     </div>`;
@@ -1051,8 +1074,50 @@ function renderFoerder(){
       const el=host.querySelector('#'+id2);
       if(el)el.addEventListener('input',()=>{host['__'+id2.slice(2)]=el.value;calcFoerder(host,d);});
     });
+    host.querySelectorAll('[data-fvh]').forEach(b=>b.addEventListener('click',()=>{
+      host.__vh=host.__vh||[];
+      const i=host.__vh.indexOf(b.dataset.fvh);
+      if(i>=0)host.__vh.splice(i,1);else host.__vh.push(b.dataset.fvh);
+      b.classList.toggle('on');calcFoerder(host,d);
+    }));
     calcFoerder(host,d);
   }
+}
+function foerderProgs(host,d,inv,oeko,fue,nMa,lehr){
+  const pbox=host.querySelector('#f-progs');if(!pbox)return;
+  const land=fLand(d);
+  const vh=new Set(host.__vh||[]);
+  if(inv)vh.add('investition');if(fue)vh.add('forschung');if(nMa||lehr)vh.add('personal');if(oeko)vh.add('energie');
+  const passt=FOERDER_DB.filter(p=>(!p.land||p.land===land)&&(!vh.size||p.vorhaben.some(x=>vh.has(x))));
+  const merk=d.foerder||[];const merkIds=new Set(merk.map(m=>m.id));
+  const basis=inv||fue;
+  const karte=p=>{
+    const aus=p.status!=='laeuft';
+    const betr=(!aus&&p.satz&&basis)?Math.min(basis*p.satz/100,p.max||Infinity):0;
+    return `<div style="border:1.5px solid ${aus?'var(--line)':'var(--brand)'};border-radius:10px;padding:10px 13px;margin-bottom:8px;${aus?'opacity:.55':''}">
+      <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap"><b>${esc(p.name)}</b><span class="tg">${esc(p.stelle)}</span>${p.land?`<span class="tg">${esc(p.land==='W'?'Wien':p.land)}</span>`:'<span class="tg">bundesweit</span>'}${betr?`<span style="font-size:15px;font-weight:800;color:var(--brand-ink)" class="tnum">bis zu ${fEur(betr)}</span>`:''}</div>
+      <div style="font-size:12.5px;color:var(--ink-2)">${esc(p.kurz)}${p.satz?` <b>Fördersatz ${p.satz} %${p.max?(' · max. '+fEur(p.max)):''}.</b>`:''}${betr?` Bei ${fEur(basis)} förderbaren Kosten → Eigenanteil ≈ ${fEur(Math.max(basis-betr,0))}.`:''}</div>
+      <div style="font-size:11.5px;color:var(--ink-3);display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:3px"><span>Frist: ${esc(p.frist)}</span><span>geprüft: ${esc(p.stand)}</span><a href="${esc(p.url)}" target="_blank" rel="noopener" style="color:var(--brand-ink);font-weight:700;text-decoration:none">Programmseite ↗</a>${(!aus&&!merkIds.has(p.id))?`<button class="mini-btn" data-fmerk="${p.id}">📌 Für diesen Kunden merken</button>`:''}${merkIds.has(p.id)?'<span style="color:var(--brand-ink);font-weight:700">📌 gemerkt</span>':''}</div>
+    </div>`;
+  };
+  const STAENDE=['gemerkt','eingereicht','bewilligt','ausbezahlt','abgelehnt'];
+  const merkHtml=merk.length?`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin:12px 0 6px">📌 Merkliste von ${esc(d.org||d.name||'')} – Antragsstand</div>${merk.map(m=>{const p=FOERDER_DB.find(x=>x.id===m.id);return `<div class="gl" style="cursor:default;flex-wrap:wrap"><span class="gn">${esc(p?p.name:m.id)}</span><select data-fstand="${m.id}" style="width:140px;padding:5px 8px;font-size:12px">${STAENDE.map(s=>`<option${m.stand===s?' selected':''}>${s}</option>`).join('')}</select><span class="ph tnum">${esc(m.ts||'')}</span><button class="mini-btn" data-fdel="${m.id}" style="color:var(--bad)">✕</button></div>`;}).join('')}`:'';
+  pbox.innerHTML=`<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin-bottom:7px">🎯 Passende Programme (${passt.length}) · Region: ${land==='W'?'Wien':(land||'ganz Österreich')}</div>${passt.map(karte).join('')||'<div class="empty-col">Kein Programm zum gewählten Vorhaben – Vorhaben-Knöpfe oben anklicken.</div>'}${merkHtml}`;
+  pbox.querySelectorAll('[data-fmerk]').forEach(b=>b.addEventListener('click',()=>{
+    d.foerder=d.foerder||[];
+    d.foerder.push({id:b.dataset.fmerk,stand:'gemerkt',ts:todayStr().split('-').reverse().join('.')});
+    const p=FOERDER_DB.find(x=>x.id===b.dataset.fmerk);
+    histAdd(d,'Förderung gemerkt: '+(p?p.name:b.dataset.fmerk));
+    dbPersist(d);toast('📌 Gemerkt – Antragsstand unten pflegen');calcFoerder(host,d);
+  }));
+  pbox.querySelectorAll('[data-fstand]').forEach(s=>s.addEventListener('change',()=>{
+    const m=(d.foerder||[]).find(x=>x.id===s.dataset.fstand);
+    if(m){m.stand=s.value;const p=FOERDER_DB.find(x=>x.id===m.id);histAdd(d,'Förderung „'+(p?p.name:m.id)+'“ → '+s.value);dbPersist(d);toast('Status: '+s.value+' ✓');}
+  }));
+  pbox.querySelectorAll('[data-fdel]').forEach(b=>b.addEventListener('click',()=>{
+    d.foerder=(d.foerder||[]).filter(x=>x.id!==b.dataset.fdel);
+    dbPersist(d);calcFoerder(host,d);
+  }));
 }
 function calcFoerder(host,d){
   const box=host.querySelector('#f-ergebnis');if(!box)return;
@@ -1060,6 +1125,7 @@ function calcFoerder(host,d){
   const fue=fNum((host.querySelector('#f-fue')||{}).value);
   const nMa=fNum((host.querySelector('#f-ma')||{}).value),brutto=fNum((host.querySelector('#f-brutto')||{}).value)||3000;
   const lehr=fNum((host.querySelector('#f-lehr')||{}).value);
+  foerderProgs(host,d,inv,oeko,fue,nMa,lehr);
   const gew=fNum(d.gewinn);
   const gr=fGruendung(d);
   const jung=gr?((Date.now()-gr.getTime())<3.05*365.25*86400000):false;
