@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CENSA · Erstanalyse buchen</title>
+<style>
+  :root{--ink:#1a2233;--ink2:#4a5468;--ink3:#858BA0;--brand:#0C806D;--brand2:#0F9A83;--brandbg:#eef6f4;--line:#d9dde6;--bad:#C0392B}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',Arial,sans-serif;background:linear-gradient(170deg,#f4f7f6 0%,#e8f0ee 100%);color:var(--ink);min-height:100vh;font-size:15px;line-height:1.55}
+  .wrap{max-width:560px;margin:0 auto;padding:28px 16px 60px}
+  .logo{text-align:center;margin-bottom:6px;font-size:26px;font-weight:800;letter-spacing:5px;color:var(--brand)}
+  .claim{text-align:center;font-size:12px;color:var(--ink3);margin-bottom:26px}
+  h1{font-size:21px;text-align:center;margin-bottom:6px}
+  .sub{text-align:center;font-size:13.5px;color:var(--ink2);margin-bottom:22px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 10px 30px rgba(26,34,51,.08);padding:20px 18px;margin-bottom:14px}
+  .steplbl{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--brand);margin-bottom:10px}
+  .days{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}
+  .day{flex:0 0 auto;border:1.5px solid var(--line);border-radius:12px;padding:9px 13px;text-align:center;cursor:pointer;background:#fff;min-width:74px}
+  .day.on{border-color:var(--brand);background:var(--brandbg)}
+  .day b{display:block;font-size:15px}
+  .day span{font-size:11px;color:var(--ink3)}
+  .times{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:4px}
+  .tm{border:1.5px solid var(--line);border-radius:10px;padding:10px 4px;text-align:center;cursor:pointer;background:#fff;font-weight:700;font-size:14px}
+  .tm.on{border-color:var(--brand);background:var(--brand);color:#fff}
+  .tm.aus{opacity:.3;cursor:not-allowed;text-decoration:line-through}
+  label{display:block;font-size:11.5px;font-weight:700;color:var(--ink3);text-transform:uppercase;letter-spacing:.4px;margin:12px 0 4px}
+  input,textarea{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:11px 12px;font-size:15px;font-family:inherit;background:#fff}
+  input:focus,textarea:focus{outline:none;border-color:var(--brand)}
+  .gmbh{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap}
+  .gw{flex:1;min-width:70px;border:1.5px solid var(--line);border-radius:10px;padding:11px 6px;text-align:center;font-weight:700;cursor:pointer;background:#fff;font-size:13.5px}
+  .gw.on{border-color:var(--brand);background:var(--brandbg);color:var(--brand)}
+  .btn{width:100%;background:linear-gradient(135deg,var(--brand2),var(--brand));color:#fff;border:none;border-radius:12px;padding:15px;font-size:16.5px;font-weight:800;cursor:pointer;margin-top:16px;font-family:inherit}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .hint{font-size:11.5px;color:var(--ink3);text-align:center;margin-top:10px}
+  .ok{background:#fff;border:2px solid var(--brand);border-radius:16px;padding:30px 22px;text-align:center}
+  .ok .big{font-size:44px;margin-bottom:8px}
+  .ok h2{font-size:19px;margin-bottom:8px}
+  .ok p{font-size:14px;color:var(--ink2)}
+  .err{background:#fdf0ee;border:1.5px solid var(--bad);color:var(--bad);border-radius:10px;padding:10px 13px;font-size:13px;margin-top:10px;display:none}
+  .hide{display:none}
+  .knapp{text-align:center;font-size:12px;color:var(--brand);font-weight:700;margin-bottom:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo">CENSA</div>
+  <div class="claim">Wir übernehmen die Vorsorge. Sie führen die GmbH.</div>
+
+  <div id="form-teil">
+    <h1>Ihre Erstanalyse – 45 Minuten, Ihre Zahlen</h1>
+    <div class="sub">Kostenlos &amp; unverbindlich. Verkauft wird nichts – analysiert wird alles. Danach entscheiden Sie.</div>
+    <div class="knapp">Wir nehmen 10 neue GmbHs pro Monat an.</div>
+
+    <div class="card">
+      <div class="steplbl">1 · Haben Sie eine GmbH?</div>
+      <div class="gmbh">
+        <div class="gw" id="g-ja">Ja, ich habe eine GmbH</div>
+        <div class="gw" id="g-nein">Nein / noch nicht</div>
+      </div>
+      <div id="nein-teil" class="hide" style="margin-top:14px">
+        <label style="margin-top:0">Planen Sie, eine GmbH zu gründen?</label>
+        <div class="gmbh">
+          <div class="gw" id="gr-ja">Ja, das ist geplant</div>
+          <div class="gw" id="gr-nein">Nein</div>
+        </div>
+        <div id="gr-form" class="hide">
+          <label>Ihr Name *</label><input id="gr-name" maxlength="79" placeholder="Vor- und Nachname">
+          <label>Telefon *</label><input id="gr-tel" maxlength="29" placeholder="+43 …">
+          <label>Kurz an uns: Was planen Sie? (optional)</label><textarea id="gr-msg" rows="2" maxlength="499" placeholder="z. B. Gründung im Frühjahr, Branche, aktuelle Situation …"></textarea>
+          <button class="btn" id="gr-send">Info an CENSA schicken</button>
+          <div class="err" id="gr-err"></div>
+          <div class="hint">Wir melden uns, sobald es für Sie relevant wird – kein Spam, versprochen.</div>
+        </div>
+        <div id="gr-folg" class="hide hint" style="text-align:left;background:var(--brandbg);border-radius:10px;padding:12px;font-size:13px;color:var(--ink2)">Alles gut! Folgen Sie uns auf Instagram – dort zeigen wir laufend, was sich für Unternehmer auszahlt. 💚</div>
+      </div>
+    </div>
+
+    <div class="card" id="card-termin">
+      <div class="steplbl">2 · Wunschtermin wählen</div>
+      <div class="days" id="days"></div>
+      <div class="times" id="times"></div>
+    </div>
+
+    <div class="card" id="card-daten">
+      <div class="steplbl">3 · Ihre Daten</div>
+      <label>Ihr Name *</label><input id="f-name" placeholder="Vor- und Nachname" maxlength="79">
+      <label>Firma (GmbH) *</label><input id="f-firma" placeholder="Muster GmbH" maxlength="119">
+      <label>Telefon *</label><input id="f-tel" placeholder="+43 …" maxlength="29">
+      <label>E-Mail *</label><input id="f-email" placeholder="für die Kalender-Einladung" maxlength="119">
+      <label>Wie viele Gesellschafter / Geschäftsführer? *</label>
+      <div class="gmbh"><div class="gw qw" data-q="gf" data-v="1">1</div><div class="gw qw" data-q="gf" data-v="2">2</div><div class="gw qw" data-q="gf" data-v="3 oder mehr">3+</div></div>
+      <label>Wie viele Mitarbeiter? *</label>
+      <div class="gmbh"><div class="gw qw" data-q="ma" data-v="0">0</div><div class="gw qw" data-q="ma" data-v="1-5">1–5</div><div class="gw qw" data-q="ma" data-v="6-20">6–20</div><div class="gw qw" data-q="ma" data-v="21+">21+</div></div>
+      <label>Ungefährer Gewinn dieses Jahr? *</label>
+      <div class="gmbh"><div class="gw qw" data-q="gewinn" data-v="bis 50.000">bis 50 T€</div><div class="gw qw" data-q="gewinn" data-v="50-150.000">50–150 T€</div><div class="gw qw" data-q="gewinn" data-v="150-500.000">150–500 T€</div><div class="gw qw" data-q="gewinn" data-v="ueber 500.000">über 500 T€</div></div>
+      <label>Wo soll der Termin stattfinden? *</label>
+      <div class="gmbh"><div class="gw" id="wo-kunde">🏢 Bei mir in der Firma</div><div class="gw" id="wo-buero">☕ Im CENSA-Büro, 1230 Wien</div></div>
+      <div id="adresse" class="hide">
+        <label>Straße &amp; Hausnummer *</label><input id="f-str" maxlength="119" placeholder="Mustergasse 12/3">
+        <div style="display:flex;gap:10px">
+          <div style="flex:0 0 110px"><label>PLZ *</label><input id="f-plz" maxlength="9" placeholder="1010"></div>
+          <div style="flex:1"><label>Ort *</label><input id="f-stadt" maxlength="59" placeholder="Wien"></div>
+        </div>
+      </div>
+      <label>Worum geht es Ihnen? (optional)</label><textarea id="f-msg" rows="2" maxlength="499" placeholder="z. B. Vorsorge, Gewinnentnahme, Mitarbeiter …"></textarea>
+      <button class="btn" id="buchen" disabled>Termin wählen …</button>
+      <div class="err" id="err"></div>
+      <div class="hint">Mit dem Absenden stimmen Sie zu, dass wir Sie zur Terminbestätigung kontaktieren. Keine Weitergabe an Dritte.</div>
+    </div>
+  </div>
+
+  <div id="ok-teil" class="hide">
+    <div class="ok">
+      <div class="big">✅</div>
+      <h2 id="ok-h2">Ihr Termin ist reserviert!</h2>
+      <p id="ok-txt"></p>
+      <p id="ok-sub" style="margin-top:10px">Wir melden uns kurz zur Bestätigung – danach gehört die Zeit ganz Ihren Zahlen.</p>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+const FIREBASE_CONFIG={apiKey:"AIzaSyBrj8TmlY0bXVsplnwUl1ZBK5OhWqsaQjs",authDomain:"censa-crm.firebaseapp.com",projectId:"censa-crm",storageBucket:"censa-crm.firebasestorage.app",messagingSenderId:"289633541904",appId:"1:289633541904:web:3fbcada3344a6b32c50f95"};
+firebase.initializeApp(FIREBASE_CONFIG);
+const fs=firebase.firestore();
+const pad=n=>String(n).padStart(2,'0');
+const WD=['So','Mo','Di','Mi','Do','Fr','Sa'];
+const SLOT_H=[9,10,11,13,14,15,16]; // Startzeiten (45 Min + Puffer)
+const KAP=3; // so viele PARALLELE Termine sind je Uhrzeit buchbar (mehrere Analysten)
+let selDay=null, selTime=null, gmbh=null, BELEGT={}, ANT={gf:null,ma:null,gewinn:null}, WO=null;
+
+function tage(){
+  const out=[];const d=new Date();d.setHours(0,0,0,0);
+  d.setDate(d.getDate()+1); // mind. 1 Tag Vorlauf
+  while(out.length<12){
+    if(d.getDay()>=1&&d.getDay()<=5)out.push(new Date(d));
+    d.setDate(d.getDate()+1);
+  }
+  return out;
+}
+function key(day,hm){return day.getFullYear()+'-'+pad(day.getMonth()+1)+'-'+pad(day.getDate())+'_'+hm;}
+function fmtD(d){return pad(d.getDate())+'.'+pad(d.getMonth()+1)+'.';}
+
+async function ladeBelegt(){
+  try{const s=await fs.collection('slots').get();s.docs.forEach(x=>{const base=x.id.split('__')[0];BELEGT[base]=(BELEGT[base]||0)+1;});}catch(e){}
+  paint();
+}
+function paint(){
+  const dh=document.getElementById('days');
+  const days=tage();
+  if(!selDay)selDay=days[0];
+  dh.innerHTML=days.map(d=>`<div class="day${key(d,'x')===key(selDay,'x')?' on':''}" data-d="${d.getTime()}"><b>${fmtD(d)}</b><span>${WD[d.getDay()]}</span></div>`).join('');
+  dh.querySelectorAll('.day').forEach(el=>el.addEventListener('click',()=>{selDay=new Date(+el.dataset.d);selTime=null;paint();}));
+  const th=document.getElementById('times');
+  th.innerHTML=SLOT_H.map(h=>{const hm=pad(h)+':00';const aus=(BELEGT[key(selDay,hm)]||0)>=KAP;return `<div class="tm${selTime===hm?' on':''}${aus?' aus':''}" data-t="${hm}">${hm}</div>`;}).join('');
+  th.querySelectorAll('.tm:not(.aus)').forEach(el=>el.addEventListener('click',()=>{selTime=el.dataset.t;paint();}));
+  const b=document.getElementById('buchen');
+  b.disabled=!(gmbh==='ja'&&selDay&&selTime);
+  b.textContent=(gmbh!=='ja')?'Bitte zuerst oben „Ja" wählen':(selTime?('✅ Termin fixieren: '+fmtD(selDay)+' um '+selTime):'Bitte Uhrzeit wählen …');
+}
+document.getElementById('g-ja').addEventListener('click',()=>{gmbh='ja';document.getElementById('g-ja').classList.add('on');document.getElementById('g-nein').classList.remove('on');document.getElementById('nein-teil').classList.add('hide');document.getElementById('card-termin').classList.remove('hide');document.getElementById('card-daten').classList.remove('hide');paint();});
+document.getElementById('g-nein').addEventListener('click',()=>{gmbh='nein';document.getElementById('g-nein').classList.add('on');document.getElementById('g-ja').classList.remove('on');document.getElementById('nein-teil').classList.remove('hide');document.getElementById('card-termin').classList.add('hide');document.getElementById('card-daten').classList.add('hide');});
+// Zusatzfragen (GF / Mitarbeiter / Gewinn)
+document.querySelectorAll('.qw').forEach(el=>el.addEventListener('click',()=>{
+  const q=el.dataset.q;ANT[q]=el.dataset.v;
+  document.querySelectorAll('.qw[data-q="'+q+'"]').forEach(x=>x.classList.toggle('on',x===el));
+  paint();
+}));
+// Terminort
+document.getElementById('wo-kunde').addEventListener('click',()=>{WO='kunde';document.getElementById('wo-kunde').classList.add('on');document.getElementById('wo-buero').classList.remove('on');document.getElementById('adresse').classList.remove('hide');paint();});
+document.getElementById('wo-buero').addEventListener('click',()=>{WO='buero';document.getElementById('wo-buero').classList.add('on');document.getElementById('wo-kunde').classList.remove('on');document.getElementById('adresse').classList.add('hide');paint();});
+// Gründer-Flow (bei „Nein")
+document.getElementById('gr-ja').addEventListener('click',()=>{document.getElementById('gr-ja').classList.add('on');document.getElementById('gr-nein').classList.remove('on');document.getElementById('gr-form').classList.remove('hide');document.getElementById('gr-folg').classList.add('hide');});
+document.getElementById('gr-nein').addEventListener('click',()=>{document.getElementById('gr-nein').classList.add('on');document.getElementById('gr-ja').classList.remove('on');document.getElementById('gr-form').classList.add('hide');document.getElementById('gr-folg').classList.remove('hide');});
+document.getElementById('gr-send').addEventListener('click',async()=>{
+  const err=document.getElementById('gr-err');err.style.display='none';
+  const name=document.getElementById('gr-name').value.trim();
+  const tel=document.getElementById('gr-tel').value.trim();
+  if(name.length<2||tel.length<6){err.textContent='Bitte Name und Telefonnummer ausfüllen.';err.style.display='block';return;}
+  const btn=document.getElementById('gr-send');btn.disabled=true;btn.textContent='Sende …';
+  try{
+    await fs.collection('buchungen').add({typ:'gruender',slot:'',name,firma:'',tel,email:'',msg:document.getElementById('gr-msg').value.trim(),ts:new Date().toISOString()});
+    document.getElementById('form-teil').classList.add('hide');
+    document.getElementById('ok-teil').classList.remove('hide');
+    document.getElementById('ok-h2').textContent='Danke, '+name.split(' ')[0]+'!';
+    document.getElementById('ok-txt').textContent='Ihre Info ist bei uns angekommen.';
+    document.getElementById('ok-sub').textContent='Wir melden uns, sobald es für Ihre Gründung spannend wird – und begleiten Sie von Tag 1 der GmbH an.';
+  }catch(e){btn.disabled=false;btn.textContent='Info an CENSA schicken';err.textContent='Senden fehlgeschlagen – bitte noch einmal versuchen.';err.style.display='block';}
+});
+document.getElementById('buchen').addEventListener('click',async()=>{
+  const err=document.getElementById('err');err.style.display='none';
+  const name=document.getElementById('f-name').value.trim();
+  const firma=document.getElementById('f-firma').value.trim();
+  const tel=document.getElementById('f-tel').value.trim();
+  if(name.length<2||firma.length<2||tel.length<6){err.textContent='Bitte Name, Firma und Telefonnummer ausfüllen.';err.style.display='block';return;}
+  const mail=document.getElementById('f-email').value.trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mail)){err.textContent='Bitte eine gültige E-Mail angeben – darüber bekommen Sie Ihre Kalender-Einladung.';err.style.display='block';return;}
+  if(!ANT.gf||!ANT.ma||!ANT.gewinn){err.textContent='Bitte die drei Fragen zu Gesellschaftern, Mitarbeitern und Gewinn beantworten.';err.style.display='block';return;}
+  if(!WO){err.textContent='Bitte wählen: Termin bei Ihnen oder im CENSA-Büro?';err.style.display='block';return;}
+  const str=document.getElementById('f-str').value.trim(),plz=document.getElementById('f-plz').value.trim(),stadt=document.getElementById('f-stadt').value.trim();
+  if(WO==='kunde'&&(str.length<3||plz.length<4||stadt.length<2)){err.textContent='Bitte die Adresse für den Termin bei Ihnen angeben.';err.style.display='block';return;}
+  const sid=key(selDay,selTime);
+  const btn=document.getElementById('buchen');btn.disabled=true;btn.textContent='Reserviere …';
+  try{
+    const batch=fs.batch();
+    batch.set(fs.collection('slots').doc(sid+'__'+Math.random().toString(36).slice(2,8)),{b:1,ts:new Date().toISOString()});
+    batch.set(fs.collection('buchungen').doc(),{typ:'termin',slot:sid,name,firma,tel,email:mail,msg:document.getElementById('f-msg').value.trim(),gf:ANT.gf,ma:ANT.ma,gewinn:ANT.gewinn,wo:WO,str:WO==='kunde'?str:'',plz:WO==='kunde'?plz:'',stadt:WO==='kunde'?stadt:'',ts:new Date().toISOString()});
+    await batch.commit();
+    document.getElementById('form-teil').classList.add('hide');
+    document.getElementById('ok-teil').classList.remove('hide');
+    document.getElementById('ok-txt').textContent=fmtD(selDay)+selDay.getFullYear()+' um '+selTime+' Uhr · '+firma+(WO==='kunde'?' · bei Ihnen vor Ort':' · im CENSA-Büro, 1230 Wien');
+  }catch(e){
+    btn.disabled=false;btn.textContent='✅ Termin fixieren: '+fmtD(selDay)+' um '+selTime;
+    err.textContent='Verbindung fehlgeschlagen – bitte noch einmal auf den Button klicken.';err.style.display='block';
+  }
+});
+document.getElementById('card-termin').classList.add('hide');
+document.getElementById('card-daten').classList.add('hide');
+ladeBelegt();
+</script>
+</body>
+</html>
