@@ -326,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="24.10-G";
+const APP_VERSION="29.10-A";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -366,6 +366,73 @@ async function dbPersistMany(list){
   }catch(e){toast('Speichern fehlgeschlagen'+(e&&e.code?' ('+e.code+')':''));return false;}
 }
 function setDbState(txt,color){const el=document.getElementById('dbState');if(el){el.innerHTML=txt;el.style.color=color||'';}}
+
+/* ---------- Lead-Briefkasten (29.10.): Sammlung "leadInbox" in Firestore ----------
+   Die Sonntags-Routinen (GmbH-Leads, Recruiting) und Claudes Zahlen-Läufe schreiben
+   neue Leads / Finanzzahlen direkt hinein (Rules: create öffentlich, read/delete nur
+   angemeldet). Öffnet ein Admin das CRM, wird alles automatisch übernommen und der
+   Briefkasten geleert – kein CSV-Import mehr nötig.
+   typ "lead"   -> neuer Lead (Dedupe per Telefon UND Name/Firma gegen den Bestand)
+   typ "zahlen" -> füllt umsatz/gewinn/anlage/finanzJahr bei bestehendem Lead (nur leere Felder) */
+let __inboxDone=false;
+async function inboxImport(){
+  if(__inboxDone||!isAdmin()||MODE!=='db'||!dealsCol)return;
+  __inboxDone=true;
+  const fdb=firebase.firestore();
+  let snap;
+  try{snap=await fdb.collection('leadInbox').limit(400).get();}catch(e){return;} // Rules fehlen noch -> leise aussteigen
+  if(snap.empty)return;
+  const normT=t=>normTel(t||'').replace(/\s+/g,'');
+  const normN=s=>(s||'').toLowerCase().replace(/gesmbh|gmbh|ges\.m\.b\.h\.?|& ?co ?kg|e\.u\./g,'').replace(/[^a-z0-9äöüß]/g,'').slice(0,30);
+  const byTel={},byName={};
+  state.deals.forEach(d=>{const t=normT(d.telefon);if(t)byTel[t]=d;const n=normN(d.org||d.name);if(n)byName[n]=d;});
+  const neu=[],upd=[],del=[];let zahlen=0;
+  snap.forEach(doc=>{
+    const r=doc.data()||{};del.push(doc.id);
+    if(!((r.name||'')+(r.org||'')).trim())return;
+    const tel=normT(r.telefon),nm=normN(r.org||r.name);
+    const ex=(tel&&byTel[tel])||(nm&&byName[nm])||null;
+    if((r.typ||'lead')==='zahlen'){
+      if(!ex)return;
+      let ch=false;
+      [['umsatz','umsatz'],['gewinn','gewinn'],['anlage','anlage'],['finanzJahr','finanzJahr']].forEach(p=>{if(r[p[0]]!=null&&(''+r[p[0]]).trim()&&!(''+(ex[p[1]]||'')).trim()){ex[p[1]]=(''+r[p[0]]).trim();ch=true;}});
+      if(r.notiz&&(ex.notizen||'').indexOf((''+r.notiz).slice(0,40))<0){ex.notizen=(r.notiz+'\n'+(ex.notizen||'')).slice(0,8000);ch=true;}
+      if(ch&&upd.indexOf(ex)<0){upd.push(ex);zahlen++;}
+      return;
+    }
+    if(ex)return; // gibt es schon – Doppelimport verhindern
+    const d=blank();
+    ['name','org','telefon','email','strasse','plz','ort','bezirk','branche','quelle','notizen','umsatz','gewinn','anlage','finanzJahr','website','maGroesse','potenzial','briefing'].forEach(k=>{if(r[k]!=null&&(''+r[k]).trim())d[k]=(''+r[k]).trim();});
+    d.telefon=normTel(d.telefon);
+    d.kundentyp=r.kundentyp==='Privat'?'Privat':'GmbH';
+    if(r.gp===true||r.gp==='1'||r.gp==='ja'||(d.quelle||'')==='Recruiting'){d.gp=true;d.quelle=d.quelle||'Recruiting';}
+    if(!d.bezirk)d.bezirk=bezFromPLZ(d.plz||d.ort||'');
+    neu.push(d);
+    const t2=normT(d.telefon);if(t2)byTel[t2]=d;
+    const n2=normN(d.org||d.name);if(n2)byName[n2]=d;
+  });
+  if(neu.length||upd.length){
+    if(!(await dbPersistMany(neu.concat(upd)))){__inboxDone=false;return;}
+    neu.forEach(d=>state.deals.push(d));
+  }
+  try{
+    for(let i=0;i<del.length;i+=450){
+      const b=fdb.batch();
+      del.slice(i,i+450).forEach(id=>b.delete(fdb.collection('leadInbox').doc(id)));
+      await b.commit();
+    }
+  }catch(e){}
+  if(neu.length||zahlen){
+    const gp=neu.filter(d=>d.gp).length,kd=neu.length-gp;
+    const teile=[];
+    if(kd)teile.push(kd+' neue'+(kd===1?'r':'')+' Lead'+(kd===1?'':'s'));
+    if(gp)teile.push(gp+' GP-Kandidat'+(gp===1?'':'en'));
+    if(zahlen)teile.push(zahlen+'× Finanzzahlen ergänzt');
+    chatSys('📥 Lead-Briefkasten automatisch übernommen: '+teile.join(' · ')+' – kein CSV-Import nötig.');
+    toast('📥 Briefkasten: '+teile.join(' · '));
+    render();
+  }
+}
 
 let TEAM=[], teamCol=null, ME=null, AUTH_USER=null;
 function hasRole(mm,r){return ((mm&&mm.rolle)||'').split(',').map(x=>x.trim().toLowerCase()).includes(r);}
@@ -424,10 +491,11 @@ function applyRoleUI(){
     if(b.dataset.tab==='steuerung')b.classList.toggle('hide',!admin);
     if(b.dataset.tab==='dashboard')b.classList.toggle('hide',!admin);
     if(b.dataset.tab==='gp')b.classList.toggle('hide',!admin);
+    if(b.dataset.tab==='foerder')b.classList.toggle('hide',!admin); // Förderungsrechner vorerst nur für Admins (29.10.)
   });
   if(!admin){
     const cur=document.querySelector('.tabs button.on');
-    if(cur&&(cur.dataset.tab==='steuerung'||cur.dataset.tab==='dashboard')){
+    if(cur&&(cur.dataset.tab==='steuerung'||cur.dataset.tab==='dashboard'||cur.dataset.tab==='gp'||cur.dataset.tab==='foerder')){
       const tb=document.querySelector('.tabs button[data-tab="telefon"]');if(tb)tb.click();
     }
   }
@@ -1013,6 +1081,7 @@ function fGruendung(d){ // "gegründet TT.MM.JJJJ" aus den FirmenABC-Notizen
 }
 function renderFoerder(){
   const host=document.getElementById('view-foerder');
+  if(!isAdmin()){host.innerHTML='';return;}
   const DS=visibleDeals();
   const q=(host.__q||'').toLowerCase();
   const d=host.__fid?DS.find(x=>x.id===host.__fid):null;
@@ -1940,8 +2009,56 @@ async function gcalSync(start,wk,person){
   WOCHE.filter(e=>e.gcal&&e.wk===wk&&nameEq(e.name,person)&&!seen.has(e._id)).forEach(e=>batch.delete(wocheCol.doc(e._id)));
   WOCHE=WOCHE.filter(e=>!(e.gcal&&e.wk===wk&&nameEq(e.name,person)&&!seen.has(e._id)));
   try{await batch.commit();}catch(e){toast('Speichern fehlgeschlagen');return;}
-  toast('Google Kalender: '+n+' Termin'+(n===1?'':'e')+' übernommen');
+  let nl=0;try{nl=await gcalLeadImport(tok,person);}catch(e){}
+  toast('Google Kalender: '+n+' Termin'+(n===1?'':'e')+' übernommen'+(nl?(' · '+(nl===1?'1 neuer Lead':nl+' neue Leads')+' angelegt'):''));
   renderWoche();
+}
+/* NORM (29.10.): Trägt ein Mitarbeiter einen Termin im Google-Kalender ein (Name, Uhrzeit, Ort),
+   legt der Google-Sync automatisch einen Lead an. Kürzel steuert die Art: "AG: Firma" -> Analysetermin,
+   "BG: Firma" -> Beratungstermin. OHNE Kürzel zählt ein Termin nur dann, wenn ein Ort eingetragen ist
+   (dann als AG). Privates (Urlaub, Arzt …), MGT/EG/KG/TG und CRM-eigene Einladungen werden übersprungen.
+   Zeitfenster: 7 Tage zurück bis 60 Tage voraus, Dedupe per Kalender-Event-ID und Kundenname. */
+let __gcalLeadLast=0;
+async function gcalLeadImport(tok,person){
+  if(MODE!=='db'||!dealsCol)return 0;
+  if(Date.now()-__gcalLeadLast<600000)return 0;
+  __gcalLeadLast=Date.now();
+  const von=new Date(Date.now()-7*86400000),bis=new Date(Date.now()+60*86400000);
+  const u='https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=250'+
+    '&timeMin='+encodeURIComponent(von.toISOString())+'&timeMax='+encodeURIComponent(bis.toISOString());
+  const r=await fetch(u,{headers:{Authorization:'Bearer '+tok}});
+  if(!r.ok)return 0;
+  const items=(await r.json()).items||[];
+  const privat=/\b(privat|urlaub|frei|arzt|zahnarzt|friseur|geburtstag|feiertag|essen|mittag|training|schule|kinder|team|meeting|büro|buero|jour)\b/i;
+  const norm=s=>(s||'').toLowerCase().replace(/gesmbh|gmbh|ges\.m\.b\.h\.?|& ?co ?kg|e\.u\./g,'').replace(/[^a-z0-9äöüß]/g,'').slice(0,30);
+  const neu=[];
+  items.forEach(ev=>{
+    if(!ev||ev.status==='cancelled'||!(ev.start&&ev.start.dateTime))return;
+    const t=(ev.summary||'').trim();
+    if(!t||/^(Analyse|Beratung):/i.test(t))return;
+    const pa=gcalArt(t);let art=pa.art,kunde=pa.rest;
+    if(art==='PRIVAT'){if(!(ev.location||'').trim()||privat.test(t))return;art='AG';kunde=t;}
+    if(art!=='AG'&&art!=='BG')return;
+    kunde=(kunde||'').trim();
+    const key=norm(kunde);
+    if(!key||kunde.length<3)return;
+    if(state.deals.some(d=>d.gcalId===ev.id||(norm(d.name)===key)||(norm(d.org)===key))||neu.some(d=>d.gcalId===ev.id||norm(d.name)===key))return;
+    const dt=new Date(ev.start.dateTime);
+    const ts=calPad(dt.getDate())+'.'+calPad(dt.getMonth()+1)+'.'+dt.getFullYear()+' '+calPad(dt.getHours())+':'+calPad(dt.getMinutes());
+    const loc=(ev.location||'').trim();
+    const d=blank();
+    d.name=kunde;d.gcalId=ev.id;d.quelle='Google Kalender';
+    if(/gesmbh|gmbh|ges\.m\.b\.h/i.test(kunde)){d.kundentyp='GmbH';d.org=kunde;}
+    if(loc){if(loc.length<=60)d.ort=loc;const pm=/\b([1-9]\d{3})\b/.exec(loc);if(pm){d.plz=pm[1];d.bezirk=bezFromPLZ(pm[1]);}}
+    if(art==='BG'){d.datumBG=ts;d.berater=person;}else{d.datumAG=ts;d.analyst=person;}
+    terminStage(d);
+    d.notizen=todayStr().split('-').reverse().join('.')+' Aus dem Google-Kalender von '+person+' übernommen ('+art+' '+ts+(loc?' · '+loc:'')+')';
+    neu.push(d);
+  });
+  if(!neu.length)return 0;
+  if(!(await dbPersistMany(neu)))return 0;
+  neu.forEach(d=>{state.deals.push(d);chatSys('📅 Neuer Lead aus dem Google-Kalender von '+person+': '+(d.name||'')+' – '+(d.datumBG?('Beratung '+d.datumBG):('Analyse '+d.datumAG)),d);});
+  return neu.length;
 }
 /* ---------- Wochenplan-Druck im IVP-Formular-Format (eine A4-Seite je Mitarbeiter) ---------- */
 function wpPrintDoc(names,start,wk){
@@ -2129,7 +2246,11 @@ function renderGP(){
   const host=document.getElementById('view-gp');if(!host)return;
   if(!isAdmin()){host.innerHTML='';return;}
   const gps=state.deals.filter(d=>d.gp);
-  if(!gps.length){host.innerHTML='<div class="emptybig"><div class="big">Keine potenziellen Geschäftspartner</div>Markiere einen Lead im Formular als „Potenzieller Geschäftspartner" oder importiere eine Recruiting-Liste – hier erscheinen alle Kandidaten.</div>';return;}
+  if(!gps.length){
+    host.innerHTML='<div class="filters"><button class="btn" data-udoc="recruiting">📖 Recruiting-Leitfaden (7 Zielgruppen)</button></div><div class="emptybig"><div class="big">Keine potenziellen Geschäftspartner</div>Markiere einen Lead im Formular als „Potenzieller Geschäftspartner" oder importiere eine Recruiting-Liste – hier erscheinen alle Kandidaten.</div>';
+    host.querySelectorAll('[data-udoc]').forEach(b=>b.addEventListener('click',()=>udoc(b.dataset.udoc)));
+    return;
+  }
   const q=(host.__q||'').toLowerCase(),fb=host.__bez||'',fs=host.__st||'';
   const bez=[...new Set(gps.map(d=>d.bezirk).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
   const rows=gps.filter(d=>{
@@ -2153,6 +2274,7 @@ function renderGP(){
       <select id="gBez"><option value="">Alle Bezirke</option>${bez.map(x=>`<option${fb===x?' selected':''}>${esc(x)}</option>`).join('')}</select>
       <select id="gSt"><option value="">Alle Status</option><option value="open"${fs==='open'?' selected':''}>Offen</option><option value="won"${fs==='won'?' selected':''}>Gewonnen</option><option value="lost"${fs==='lost'?' selected':''}>Verloren</option></select>
       <span class="kpi" style="margin-left:auto">${rows.length} Kandidaten</span>
+      <button class="btn" data-udoc="recruiting" title="Wie du jede der 7 Zielgruppen ansprichst – mit fertigen Telefon-Openern und Einwand-Antworten">📖 Recruiting-Leitfaden</button>
       <button class="btn" id="gDelImp" style="border-color:var(--bad);color:var(--bad)" title="Löscht NUR die importierten Recruiting-Kandidaten – Kunden-Listen und manuell markierte GPs bleiben unberührt">🗑 Recruiting-Import löschen</button>
     </div>
     <div class="tablewrap"><table><thead><tr><th>Name</th><th>Firma</th><th>Telefon</th><th>Bezirk</th><th>Phase</th><th>Anrufe</th><th>Info</th></tr></thead><tbody>
@@ -2162,6 +2284,7 @@ function renderGP(){
   host.querySelector('#gBez').addEventListener('change',e=>{host.__bez=e.target.value;renderGP();});
   host.querySelector('#gSt').addEventListener('change',e=>{host.__st=e.target.value;renderGP();});
   host.querySelectorAll('tbody tr').forEach(tr=>tr.addEventListener('click',()=>openModal(tr.dataset.id)));
+  host.querySelectorAll('[data-udoc]').forEach(b=>b.addEventListener('click',()=>udoc(b.dataset.udoc)));
   const gd=host.querySelector('#gDelImp');
   if(gd)gd.addEventListener('click',async()=>{
     const imp=state.deals.filter(d=>d.gp&&(d.quelle||'')==='Recruiting');
@@ -2248,7 +2371,7 @@ function unterlagenPanel(){
   </div>`;
 }
 function udoc(type){
-  const css='body{font-family:Segoe UI,Arial,sans-serif;color:#1a2233;margin:0;font-size:13px;line-height:1.55}.pg{width:186mm;margin:0 auto;padding:10mm 0}.kopf{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #0C806D;padding-bottom:4mm;margin-bottom:5mm}.lg{font-size:20px;font-weight:800;letter-spacing:2px;color:#0C806D}.lg small{display:block;font-size:8.5px;color:#858BA0;letter-spacing:.3px}.tt{text-align:right}.tt b{font-size:16px}.tt span{display:block;font-size:9.5px;color:#858BA0}.sec{margin-bottom:5mm;page-break-inside:avoid}.sec h3{font-size:13.5px;color:#0C806D;margin:0 0 1.5mm}.sag{background:#eef6f4;border-radius:6px;padding:2.5mm 3.5mm;font-style:italic;margin:1.5mm 0}.ln{border-bottom:1px solid #d9dde6;height:7mm}.hint{font-size:10.5px;color:#858BA0}ul{margin:1mm 0 1mm 5mm;padding:0}li{margin-bottom:1mm}@page{size:A4;margin:10mm}';
+  const css='body{font-family:Segoe UI,Arial,sans-serif;color:#1a2233;margin:0;font-size:13px;line-height:1.55}.pg{width:186mm;margin:0 auto;padding:10mm 0}.kopf{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #0C806D;padding-bottom:4mm;margin-bottom:5mm}.lg{font-size:20px;font-weight:800;letter-spacing:2px;color:#0C806D}.lg small{display:block;font-size:8.5px;color:#858BA0;letter-spacing:.3px}.tt{text-align:right}.tt b{font-size:16px}.tt span{display:block;font-size:9.5px;color:#858BA0}.sec{margin-bottom:5mm;page-break-inside:avoid}.sec h3{font-size:13.5px;color:#0C806D;margin:0 0 1.5mm}.sag{background:#eef6f4;border-radius:6px;padding:2.5mm 3.5mm;font-style:italic;margin:1.5mm 0}.ln{border-bottom:1px solid #d9dde6;height:7mm}.hint{font-size:10.5px;color:#858BA0}ul{margin:1mm 0 1mm 5mm;padding:0}li{margin-bottom:1mm}.zg{border:1.5px solid #d9dde6;border-radius:8px;padding:3mm 4mm;margin-bottom:3mm;page-break-inside:avoid}.zg h4{color:#0C806D;font-size:12.5px;margin:0 0 1mm}.mt{font-size:10px;color:#565d73;margin-bottom:1.5mm}table{width:100%;border-collapse:collapse;font-size:11px;margin:1.5mm 0}th,td{border:1px solid #d9dde6;padding:1.5mm 2.5mm;text-align:left;vertical-align:top}th{background:#eef6f4;color:#0C806D}.warn{background:#FEF3C7;color:#B45309;border-radius:6px;padding:2.5mm 3.5mm;margin:2mm 0;font-size:11px}@page{size:A4;margin:10mm}';
   let body='';
   if(type==='ziel'){
     body=`<div class="sec"><h3>Rahmen</h3>1:30 Stunden · bewusst NICHT im Büro (Kaffeehaus, neutraler Ort) · Handys weg · du moderierst, das Team redet.</div>
@@ -2257,6 +2380,51 @@ function udoc(type){
     <div class="sec"><h3>3 · Team-Inventur (20 Min)</h3><ul><li>Wen haben wir? Wer ist aktiv, wer nur auf dem Papier? (Aktivitäts-Statistik im CRM live zeigen)</li><li>Wer braucht was: Leads, Training, Begleitung, Druck oder Rückenwind?</li><li>Lücken: Welche Rolle fehlt uns? (→ Recruiting)</li></ul><div class="hint">Detail-Liste je GP folgt (Excel) – wird hier ergänzt.</div></div>
     <div class="sec"><h3>4 · Vereinbarung (20 Min)</h3><ul><li>Wer liefert was bis wann – schriftlich festhalten, laut vorlesen, jeder bestätigt.</li><li>Wochenziele kommen in den Teamwochenplan (Plan-Spalte!).</li><li>Folgetermin SOFORT fixieren. Positiv enden: „Stufe 6 ist kein Traum – es ist Mathematik."</li></ul></div>
     <div class="sec"><h3>Notizen</h3><div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div><div class="ln"></div></div>`;
+  }else if(type==='recruiting'){
+    body=`<div class="sec"><h3>Grundhaltung: Du bietest keinen Job an – du zeigst eine Möglichkeit</h3><ul>
+      <li><b>Gespräch unter Unternehmern</b> – nie als Bewerbung führen. Du hast etwas aufgebaut, das wächst, und wählst aus, wer mitwächst.</li>
+      <li><b>Fragen statt pitchen:</b> „Wie läuft dein Markt gerade?" · „Wo willst du in drei Jahren stehen?" · „Was müsste passieren, damit du dort ankommst?"</li>
+      <li><b>Knappheit statt Bitte:</b> „Ich nehme heuer noch zwei Partner ins Team – und ich schaue mir genau an, wer passt."</li>
+      <li><b>Beweis statt Behauptung:</b> CRM, Online-Buchung, Lead-Maschine, Bootcamp live zeigen – das hat kein Einzelkämpfer.</li>
+      <li><b>Ein nächster Schritt:</b> Jedes Gespräch endet mit genau einem Termin: dem Kennenlern-Kaffee. Nie am Telefon „alles erklären".</li></ul></div>
+    <div class="sec"><h3>Der 5-Stufen-Prozess (für alle Zielgruppen gleich)</h3><ul>
+      <li><b>1 · Erstkontakt</b> (Telefon auf Geschäftsnummer, Brief oder persönlich) – 2 Minuten, ein Aufhänger aus SEINER Welt, einziges Ziel: Kaffee-Termin.</li>
+      <li><b>2 · Kennenlern-Kaffee (45 Min)</b> – 80 % Fragen zu seiner Situation, 20 % deine Story. Ende: „Ich glaube, das könnte passen – schau dir an, wie wir arbeiten."</li>
+      <li><b>3 · Schnuppern</b> – Teammeeting oder Bootcamp besuchen, einen Analysetermin begleiten. Er soll das System SEHEN, nicht nur davon hören.</li>
+      <li><b>4 · Erwartungshaltungsgespräch</b> – Ziele, Zeiteinsatz, Einkommensweg (EH-Modell NUR als Beispielrechnung), gegenseitige Zusagen schriftlich.</li>
+      <li><b>5 · Start &amp; Ausbildung</b> – Gewerbe-Weg klären (Vermögensberater bringen ihn mit!), Bootcamp, erster eigener Termin innerhalb von 14 Tagen.</li></ul></div>
+    <div class="zg"><h4>1 · Vermögensberater &amp; Versicherungsmakler (Kernzielgruppe)</h4><div class="mt">Schmerz: Einzelkämpfer – kein Backoffice, keine Leads · Hebel: System &amp; Struktur · Das Wort ist „Kooperation", nie „Einstieg"</div>
+      <div class="sag">„Grüß Gott, Herr X – Cevik, Gebietsleitung IVP. Ich bau in Wien gerade ein Team aus, das Firmenkunden über ein eigenes System bekommt – Online-Buchung, CRM, Leads inklusive. Ich such zwei erfahrene Berater, die ihren Bestand behalten und das System mitnutzen wollen. 30 Minuten Kaffee – schauen wir, ob das für Sie Sinn ergibt?"</div>
+      <div><b>Einwand „Ich brauch keine Struktur":</b> „Genau deshalb rede ich mit Ihnen – Sie bleiben selbstständig. Die Frage ist nur: Wer macht bei Ihnen Terminierung, Leads und Backoffice? Bei uns machen das System und Team – Sie beraten und verdienen."</div></div>
+    <div class="zg"><h4>2 · Immobilienmakler</h4><div class="mt">Schmerz: Markt zäh, Provisionen eingebrochen · Hebel: Zusatzertrag aus dem BESTEHENDEN Kundenstamm – kein Jobwechsel</div>
+      <div class="sag">„Sie begleiten Ihre Kunden beim Kauf – und bei Finanzierung und Absicherung verdient dann die Bank. Mit einer Zusatzberechtigung, bei der wir Sie komplett begleiten, bleibt das künftig bei Ihnen. Darf ich Ihnen in 30 Minuten zeigen, wie zwei Makler bei uns das aufgebaut haben?"</div>
+      <div><b>Einwand „Keine Zeit für ein zweites Geschäft":</b> „Es ist kein zweites Geschäft – dieselben Kunden, dasselbe Gespräch, nur ein Produkt mehr. Die Abwicklung übernimmt unser Team."</div></div>
+    <div class="zg"><h4>3 · Handelsvertreter &amp; Warenvertrieb</h4><div class="mt">Schmerz: austauschbares Produkt, gedeckelte Provision, jeden Jänner bei null · Hebel: unkündbarer eigener Bestand + Teamaufbau · sportlich ansprechen</div>
+      <div class="sag">„Sie verkaufen seit Jahren erfolgreich – aber jeden Jänner fangen Sie wieder bei null an, richtig? Ich zeig Ihnen ein Modell, bei dem jeder Abschluss liegen bleibt und weiterzahlt. 30 Minuten, dann wissen Sie, ob's was für Sie ist."</div>
+      <div><b>Einwand „Finanzprodukte kann ich nicht":</b> „Verkaufen kann man nicht lernen – das haben Sie. Das Fachliche ist ein Kurs plus unsere Ausbildung, und am Anfang sitzt immer ein erfahrener Berater mit im Termin."</div></div>
+    <div class="zg"><h4>4 · Pharmareferenten</h4><div class="mt">Schmerz: Branche baut ab, Gebietsreformen · Hebel: ihr Ärzte-Netzwerk ist Gold – Ärzte sind Top-Vorsorgekunden · Statusmenschen: Perspektive &amp; Unabhängigkeit ansprechen</div>
+      <div class="sag">„Sie führen seit Jahren Gespräche mit Ärzten auf Augenhöhe – genau diese Klientel hat den größten Beratungsbedarf bei Vorsorge und Firmenstruktur, und fast niemand bedient sie gut. Hätten Sie Interesse, Ihr Netzwerk einmal für sich selbst arbeiten zu lassen statt für den Konzern?"</div>
+      <div><b>Einwand „Ich hab einen sicheren Job":</b> „Deshalb ist jetzt der beste Zeitpunkt – Sie schauen es sich in Ruhe NEBEN dem Job an. Wer wartet, bis die Gebietsreform kommt, verhandelt aus der schwächeren Position."</div></div>
+    <div class="zg"><h4>5 · Spitzensportler (rund ums Karriereende)</h4><div class="mt">Schmerz: Karriereende mit 30–35, Einkommen &amp; Identität brechen weg · Hebel: zweite Karriere mit Wettkampfcharakter – unser EH-System IST eine Liga-Tabelle · Ansprache NUR über Management/Verein/eigenes Gewerbe</div>
+      <div class="sag">„Was Sie im Sport gelernt haben – jeden Tag trainieren, an Zahlen messen lassen, als Team gewinnen – ist exakt das, was in unserem Geschäft die Besten ausmacht. Ich zeig Ihnen, wie Ex-Sportler bei uns ihre zweite Karriere aufbauen – mit Tabelle, Trainer und ohne Einkommensdeckel. Ein Kaffee?"</div>
+      <div><b>Einwand „Finanz ist nicht meine Welt":</b> „War Profisport am Anfang auch nicht – Sie haben trainiert. Genau so läuft es hier: Ausbildung, Trainingsplan, Trainer. Bei uns zählt Einsatz, nicht Herkunft."</div></div>
+    <div class="zg"><h4>6 · Unternehmer im Umbruch</h4><div class="mt">Schmerz: Betriebsaufgabe/Nachfolge – Erfahrung da, Perspektive weg · Hebel: Neustart ohne Investition · WÜRDE zuerst: den Umbruch NIE ansprechen, er erzählt selbst</div>
+      <div class="sag">„Sie kennen als Unternehmer beide Seiten – Aufbau und Verantwortung. Genau solche Leute such ich: Wir beraten Firmenkunden bei Vorsorge und Kosten, und wer selbst Unternehmer war, redet mit einem GF auf Augenhöhe wie kein Angestellter. Hätten Sie Lust, das bei einem Kaffee anzuschauen?"</div></div>
+    <div class="zg"><h4>7 · Personalleasing-Firmen – KOOPERATION, kein Recruiting!</h4><div class="mt">Ziel: Partnerschaft auf GF-Ebene · Hebel: Mitarbeiterbindung per § 3-Vorsorge („300 € steuerfrei statt Lohnerhöhung") gegen Türöffner zu ihren Kundenfirmen</div>
+      <div class="sag">„Ihre Branche kämpft um jede Arbeitskraft. Wir helfen Betrieben, Mitarbeiter mit steuerfreier Vorsorge zu binden – das kostet Sie nichts und macht Ihr Angebot für Bewerber attraktiver. Darf ich Ihnen das Modell zeigen? Im Gegenzug ist vielleicht auch für Ihre Kundenbetriebe etwas dabei."</div></div>
+    <div class="sec"><h3>Die fünf Standard-Einwände (Muster: zustimmen → „genau deshalb" → Nutzen → Terminfrage)</h3>
+    <table><tr><th style="width:32%">Einwand</th><th>Deine Antwort</th></tr>
+    <tr><td>„Strukturvertrieb? Will ich nicht."</td><td>„Verstehe ich – es gibt dort viel Schrott. Genau deshalb zeig ich Ihnen zuerst unser System und unsere Zahlen, bevor wir über Zusammenarbeit reden. Urteilen Sie danach."</td></tr>
+    <tr><td>„Was verdient man da?"</td><td>„Ehrlich: kein Fixum, kein Deckel. Ich zeig Ihnen beim Kaffee eine echte Beispielrechnung aus dem Team – Sie entscheiden, ob das zu Ihren Zielen passt." (Nie Zahlen versprechen!)</td></tr>
+    <tr><td>„Ich hab keine Zeit."</td><td>„Niemand hat Zeit – deshalb starten die meisten nebenberuflich mit 8–10 Stunden pro Woche und entscheiden nach drei Monaten anhand der eigenen Zahlen."</td></tr>
+    <tr><td>„Schicken Sie mir Unterlagen."</td><td>„Mach ich – aber Papier beantwortet Ihre Fragen nicht. 30 Minuten Kaffee, danach haben Sie alles Schriftliche dazu. Dienstag oder Donnerstag?"</td></tr>
+    <tr><td>„Ich muss mit meiner Frau/meinem Mann reden."</td><td>„Sehr gut – das heißt, es ist ernst. Bringen Sie sie/ihn einfach mit, die wichtigsten Fragen kommen sowieso von zu Hause."</td></tr></table></div>
+    <div class="sec"><h3>Schlagzahl &amp; Arbeitsweise</h3><ul>
+      <li>Die Sonntags-Routine liefert ~30 Kandidaten mit Zielgruppen-Label in der Branche-Spalte – hier im GP-Tab filtern, priorisierte zuerst.</li>
+      <li><b>10 Erstkontakte/Woche = 3 Kaffees = 1 Erwartungshaltungsgespräch.</b> Recruiting ist ein Zahlenspiel wie Vertrieb.</li>
+      <li>Jeden Kontakt im CRM dokumentieren, Wiedervorlage setzen – ein „Nein" heute ist ein „Ja" nach dem nächsten schlechten Quartal.</li>
+      <li>Dein stärkstes Werkzeug ist Vorsprung: Zeig im Kaffee CRM, Online-Buchung, Content-Maschine. Kein Mitbewerber zeigt einem Kandidaten so ein System.</li></ul></div>
+    <div class="warn"><b>Spielregeln:</b> Erstkontakt nur Telefon (Geschäftsnummer), Brief, LinkedIn manuell oder persönlich – Kalt-E-Mail/SMS/WhatsApp sind verboten (§ 174 TKG). Interne Recherche-Infos zur Priorisierung sind im Gespräch TABU, auch Andeutungen. Keine Einkommensversprechen – immer „Beispielrechnung", „kann", „abhängig vom Einsatz". Sportler nur über geschäftliche Wege (Management, Verein, eigenes Gewerbe) ansprechen. Kandidatendaten gelten wie Kundendaten (vertraulich).</div>`;
   }else{
     body=`<div class="sec"><h3>Rahmen</h3>45–60 Minuten · alle 3 Monate · auf Augenhöhe, KEIN Kritikgespräch · 70 % hört zu: du. Datum und Vereinbarungen danach im CRM festhalten.</div>
     <div class="sec"><h3>1 · Einstieg</h3><div class="sag">„Das ist unser Quartalsgespräch – kein Zeugnis. Es geht darum, was DU brauchst und was ICH von dir brauche, damit du dein Ziel erreichst."</div></div>
@@ -2269,8 +2437,8 @@ function udoc(type){
   }
   const w=window.open('','_blank');
   if(!w){toast('Popup blockiert – bitte Popups erlauben');return;}
-  const titel=type==='ziel'?'Zielvereinbarungsgespräch':'Erwartungshaltungsgespräch';
-  const sub=type==='ziel'?'Team-Leitfaden · 1:30 h · nicht im Büro':'Leitfaden je GP · 45–60 Min · alle 3 Monate';
+  const titel=type==='ziel'?'Zielvereinbarungsgespräch':type==='recruiting'?'Recruiting-Leitfaden Zielgruppen':'Erwartungshaltungsgespräch';
+  const sub=type==='ziel'?'Team-Leitfaden · 1:30 h · nicht im Büro':type==='recruiting'?'Geschäftspartner gewinnen · intern · Stand Oktober 2026':'Leitfaden je GP · 45–60 Min · alle 3 Monate';
   w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+titel+'</title><style>'+css+'</style></head><body><div class="pg"><div class="kopf"><div class="lg">CENSA<small>Wir übernehmen die Vorsorge. Sie führen die GmbH.</small></div><div class="tt"><b>'+titel+'</b><span>'+sub+'</span></div></div>'+body+'</div><script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script></body></html>');
   w.document.close();
 }
@@ -3137,6 +3305,7 @@ lsLoad();render();
         if(isAdmin())renderSteuerung();
       },err=>{});
       setTimeout(ehgAutoRemind,5000);
+      setTimeout(inboxImport,4000); // Lead-Briefkasten (Routinen/Zahlen-Läufe) automatisch übernehmen
       buchCol=fs.collection('buchungen');
       buchUnsub=buchCol.orderBy('ts','desc').limit(80).onSnapshot(snap=>{
         BUCH=snap.docs.map(s=>{const x=Object.assign({},s.data());x._id=s.id;return x;});
