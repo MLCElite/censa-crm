@@ -326,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="29.10-A";
+const APP_VERSION="29.10-B";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -395,14 +395,14 @@ async function inboxImport(){
     if((r.typ||'lead')==='zahlen'){
       if(!ex)return;
       let ch=false;
-      [['umsatz','umsatz'],['gewinn','gewinn'],['anlage','anlage'],['finanzJahr','finanzJahr']].forEach(p=>{if(r[p[0]]!=null&&(''+r[p[0]]).trim()&&!(''+(ex[p[1]]||'')).trim()){ex[p[1]]=(''+r[p[0]]).trim();ch=true;}});
+      [['umsatz','umsatz'],['gewinn','gewinn'],['anlage','anlage'],['sachanlage','sachanlage'],['finanzanlage','finanzanlage'],['finanzJahr','finanzJahr']].forEach(p=>{if(r[p[0]]!=null&&(''+r[p[0]]).trim()&&!(''+(ex[p[1]]||'')).trim()){ex[p[1]]=(''+r[p[0]]).trim();ch=true;}});
       if(r.notiz&&(ex.notizen||'').indexOf((''+r.notiz).slice(0,40))<0){ex.notizen=(r.notiz+'\n'+(ex.notizen||'')).slice(0,8000);ch=true;}
       if(ch&&upd.indexOf(ex)<0){upd.push(ex);zahlen++;}
       return;
     }
     if(ex)return; // gibt es schon – Doppelimport verhindern
     const d=blank();
-    ['name','org','telefon','email','strasse','plz','ort','bezirk','branche','quelle','notizen','umsatz','gewinn','anlage','finanzJahr','website','maGroesse','potenzial','briefing'].forEach(k=>{if(r[k]!=null&&(''+r[k]).trim())d[k]=(''+r[k]).trim();});
+    ['name','org','telefon','email','strasse','plz','ort','bezirk','branche','quelle','notizen','umsatz','gewinn','anlage','sachanlage','finanzanlage','finanzJahr','website','maGroesse','potenzial','briefing'].forEach(k=>{if(r[k]!=null&&(''+r[k]).trim())d[k]=(''+r[k]).trim();});
     d.telefon=normTel(d.telefon);
     d.kundentyp=r.kundentyp==='Privat'?'Privat':'GmbH';
     if(r.gp===true||r.gp==='1'||r.gp==='ja'||(d.quelle||'')==='Recruiting'){d.gp=true;d.quelle=d.quelle||'Recruiting';}
@@ -432,6 +432,16 @@ async function inboxImport(){
     toast('📥 Briefkasten: '+teile.join(' · '));
     render();
   }
+}
+
+async function slotsCleanup(){ // einmalig pro Browser: Diagnose-Slot vom Rules-Test 29.10. entfernen
+  try{
+    if(!isAdmin()||MODE!=='db'||localStorage.getItem('slots2020clean'))return;
+    const fdb=firebase.firestore();
+    const s=await fdb.collection('slots').where('ts','==','2020-01-01T00:00').get();
+    if(s.size){const b=fdb.batch();s.forEach(doc=>b.delete(doc.ref));await b.commit();}
+    localStorage.setItem('slots2020clean','1');
+  }catch(e){}
 }
 
 let TEAM=[], teamCol=null, ME=null, AUTH_USER=null;
@@ -926,6 +936,8 @@ function finBlock(d){
     rows.push(['Umsatz',fmt(d.umsatz)||'—',false]);
     rows.push(['Jahresgewinn',fmt(d.gewinn)||'—',parseFloat(d.gewinn)<0]);
     rows.push(['Anlagevermögen',fmt(d.anlage)||'—',false]);
+    if(fmt(d.sachanlage))rows.push(['davon Sachanlagen',fmt(d.sachanlage),false]);
+    if(fmt(d.finanzanlage))rows.push(['davon Finanzanlagen',fmt(d.finanzanlage),false]);
   }
   if(d.maGroesse)rows.push(['Mitarbeiter',d.maGroesse,false]);
   if(d.finanzJahr)rows.push(['Jahresabschluss',d.finanzJahr,false]);
@@ -1308,7 +1320,7 @@ async function mergeDeals(ids){
   const score=d=>(d.calls||[]).length*3+(d.hist||[]).length*2+(d.uebergabe?20:0)+(d.status==='won'?100:d.status==='open'?50:0)+Object.values(d).filter(v=>v&&typeof v==='string').length;
   ds.sort((a,b)=>score(b)-score(a));
   const base=ds[0],rest=ds.slice(1);
-  const FILL=['org','telefon','email','strasse','plz','ort','bezirk','branche','telefonist','analyst','berater','datumAG','datumBG','eh','wiedervorlage','briefing','potenzial','umsatz','gewinn','anlage','finanzJahr','website','maGroesse','quelle'];
+  const FILL=['org','telefon','email','strasse','plz','ort','bezirk','branche','telefonist','analyst','berater','datumAG','datumBG','eh','wiedervorlage','briefing','potenzial','umsatz','gewinn','anlage','sachanlage','finanzanlage','finanzJahr','website','maGroesse','quelle'];
   rest.forEach(o=>{
     FILL.forEach(f=>{if(o[f]&&!base[f])base[f]=o[f];});
     if(o.notizen&&!(base.notizen||'').includes(o.notizen))base.notizen=((base.notizen?base.notizen+' | ':'')+o.notizen).slice(0,1500);
@@ -1921,6 +1933,49 @@ function gcalToken(){
       }catch(e){rej(e);}
     },rej);
   });
+}
+/* ---------- Google Drive (Analyse-Abgabe): eigener Scope, eigenes Token ---------- */
+let __drvTok=null,__drvExp=0,__drvFolder=null;
+function driveToken(){
+  return new Promise((res,rej)=>{
+    if(__drvTok&&Date.now()<__drvExp-60000)return res(__drvTok);
+    gisLoad().then(()=>{
+      try{
+        const tc=google.accounts.oauth2.initTokenClient({
+          client_id:GCAL_CLIENT_ID,
+          scope:'https://www.googleapis.com/auth/drive.file',
+          callback:r=>{
+            if(r&&r.access_token){__drvTok=r.access_token;__drvExp=Date.now()+((r.expires_in||3300)*1000);res(__drvTok);}
+            else rej(new Error('Keine Google-Freigabe erhalten'));
+          },
+          error_callback:e=>rej(new Error(e&&(e.type==='popup_closed'||e.type==='popup_failed_to_open')?'Google-Fenster geschlossen oder blockiert – bitte Popups erlauben':'Google-Anmeldung fehlgeschlagen'))
+        });
+        tc.requestAccessToken({prompt:''});
+      }catch(e){rej(e);}
+    },rej);
+  });
+}
+async function driveFolder(tok){
+  if(__drvFolder)return __drvFolder;
+  const q=encodeURIComponent("name='CENSA Analysen' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+  let r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id)',{headers:{Authorization:'Bearer '+tok}});
+  let j=await r.json();
+  if(j.files&&j.files.length){__drvFolder=j.files[0].id;return __drvFolder;}
+  r=await fetch('https://www.googleapis.com/drive/v3/files',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({name:'CENSA Analysen',mimeType:'application/vnd.google-apps.folder'})});
+  j=await r.json();
+  if(!j.id)throw new Error('Drive-Ordner konnte nicht angelegt werden');
+  __drvFolder=j.id;return __drvFolder;
+}
+async function driveUpload(tok,blob,name){
+  const folder=await driveFolder(tok);
+  const fd=new FormData();
+  fd.append('metadata',new Blob([JSON.stringify({name:name,parents:[folder]})],{type:'application/json'}));
+  fd.append('file',blob);
+  const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink',{method:'POST',headers:{Authorization:'Bearer '+tok},body:fd});
+  const j=await r.json();
+  if(!j.id)throw new Error('Upload fehlgeschlagen'+(j.error&&j.error.message?': '+j.error.message:''));
+  try{await fetch('https://www.googleapis.com/drive/v3/files/'+j.id+'/permissions',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({role:'reader',type:'anyone'})});}catch(e){}
+  return {id:j.id,url:j.webViewLink||('https://drive.google.com/file/d/'+j.id+'/view'),name:name};
 }
 async function gcalInsert(title,dt,durMin,desc,loc,attendees){
   if(!GCAL_CLIENT_ID)return false;
@@ -2547,7 +2602,7 @@ function wireEmpty(host){host.querySelectorAll('[data-act]').forEach(b=>b.addEve
 
 /* ---------- modal ---------- */
 let editId=null;
-function blank(){return {id:uid(),name:'',org:'',kundentyp:'Privat',quelle:'',telefon:'',email:'',strasse:'',plz:'',ort:'',bezirk:'',branche:'',analyst:'',berater:'',telefonist:'',telHist:[],telBeteiligt:false,gp:false,geprueft:true,briefing:'',potenzial:'',ehS:[],ehA:[],umsatz:'',gewinn:'',anlage:'',finanzJahr:'',website:'',maGroesse:'',stage:'Neuer Lead',status:'open',lostReason:'',lostDate:'',lostBy:'',datumAG:'',datumBG:'',eh:'',notizen:'',wiedervorlage:'',calls:[]};}
+function blank(){return {id:uid(),name:'',org:'',kundentyp:'Privat',quelle:'',telefon:'',email:'',strasse:'',plz:'',ort:'',bezirk:'',branche:'',analyst:'',berater:'',telefonist:'',telHist:[],telBeteiligt:false,gp:false,geprueft:true,briefing:'',potenzial:'',ehS:[],ehA:[],umsatz:'',gewinn:'',anlage:'',sachanlage:'',finanzanlage:'',finanzJahr:'',website:'',maGroesse:'',stage:'Neuer Lead',status:'open',lostReason:'',lostDate:'',lostBy:'',datumAG:'',datumBG:'',eh:'',notizen:'',wiedervorlage:'',calls:[]};}
 function bezFromPLZ(v){const m=/\b(1\d{2}0)\b/.exec((v||'')+'');if(!m)return '';const n=parseInt(m[1].slice(1,3),10);return n>=1&&n<=23?('Wien '+n):'';}
 function normTel(t){t=(t||'').trim();if(!t)return t;if(/[A-Za-z:]/.test(t))return t;const d=t.replace(/[^\d+]/g,'');if(d.startsWith('+43'))return '+43 '+d.slice(3);if(d.startsWith('0043'))return '+43 '+d.slice(4);if(d.startsWith('0')&&d.length>=9)return '+43 '+d.slice(1);return t;}
 function lostByFromStage(s){if(A_STAGES.includes(s))return 'Analyst';if(B_STAGES.includes(s))return 'Berater';return 'Telefonist';}
@@ -2633,6 +2688,8 @@ function openModal(id){
           <input id="m-umsatz" type="number" placeholder="Umsatz €" value="${esc(d.umsatz||'')}">
           <input id="m-gewinn" type="number" placeholder="Gewinn €" value="${esc(d.gewinn||'')}">
           <input id="m-anlage" type="number" placeholder="Anlagevermögen €" value="${esc(d.anlage||'')}">
+          <input id="m-sach" type="number" placeholder="davon Sachanlagen €" value="${esc(d.sachanlage||'')}">
+          <input id="m-finanz" type="number" placeholder="davon Finanzanlagen €" value="${esc(d.finanzanlage||'')}">
         </div>
         <div style="display:flex;gap:7px;margin-top:7px;flex-wrap:wrap;align-items:center">
           <a class="mini-btn" id="m-fin-nd" href="#" target="_blank" rel="noopener">Firmen-Check: Northdata</a>
@@ -2666,6 +2723,21 @@ function openModal(id){
       <div class="fld full"><label>Briefing für den Analysten <span style="font-weight:500;color:var(--ink-3)">— Branche, jung/alt, Alleinentscheider, was wurde besprochen</span></label><textarea id="m-brief" rows="2">${esc(d.briefing||'')}</textarea></div>
       <div class="fld full"><label>Notizen</label><textarea id="m-notiz" rows="3">${esc(d.notizen)}</textarea></div>
     </div>
+    ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--brand);border-radius:12px" id="m-analysesec">
+      <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">📤 Analyse abgeben <span style="font-weight:500;color:var(--ink-2);font-size:12px">– PDF/Fotos + Sprachnotiz landen direkt hier beim Kunden (statt in WhatsApp)</span></div>
+      ${(d.analyse&&d.analyse.length)?`<div style="font-size:12.5px;margin:6px 0;display:flex;flex-direction:column;gap:3px">${d.analyse.map(a=>`<div>📎 <a href="${esc(a.url)}" target="_blank" rel="noopener" style="color:var(--brand-ink);font-weight:700">${esc(a.name)}</a> <span style="color:var(--ink-3)">· ${esc(a.von||'')}${a.ts?' · '+esc(new Date(a.ts).toLocaleDateString('de-AT')):''}</span></div>`).join('')}</div>`:''}
+      <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:6px">
+        <input type="file" id="an-file" accept="application/pdf,image/*" multiple style="display:none">
+        <button type="button" class="btn" id="an-pick">📄 PDF / Foto wählen</button>
+        <button type="button" class="btn" id="an-rec">🎙️ Sprachnotiz aufnehmen</button>
+        <span id="an-state" style="font-size:12px;color:var(--ink-2)"></span>
+      </div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:7px">
+        <input id="an-note" placeholder="Kurznotiz zur Übergabe (optional)" style="flex:1;min-width:170px;padding:8px 10px;font-size:12.5px">
+        <button type="button" class="btn pri" id="an-send">📤 Abgeben</button>
+      </div>
+      <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Dateien werden über deinen Google-Zugang im Ordner „CENSA Analysen" gespeichert – beim ersten Mal fragt Google einmal um Erlaubnis.</div>
+    </div>`:''}
     <div class="ehsec">
       <div class="ehhead">EH-Rechner <span class="ehtag">IVP-Einheitentabelle</span></div>
       <label class="chk2"><input type="checkbox" id="eh-telb" ${d.telBeteiligt?'checked':''}> Telefonist beteiligt (Analyst 25 % statt 50 %)</label>
@@ -2726,6 +2798,7 @@ function openModal(id){
     const potEl=m.querySelector('#m-pot');if(potEl)d.potenzial=potEl.value;
     d.briefing=m.querySelector('#m-brief').value;
     d.umsatz=m.querySelector('#m-umsatz').value;d.gewinn=m.querySelector('#m-gewinn').value;d.anlage=m.querySelector('#m-anlage').value;
+    const saEl=m.querySelector('#m-sach');if(saEl)d.sachanlage=saEl.value;const faEl=m.querySelector('#m-finanz');if(faEl)d.finanzanlage=faEl.value;
     const sc=sp.querySelector('.stg.on');d.stage=sc?sc.dataset.s:d.stage;
     d.wiedervorlage=m.querySelector('#m-wv').value;d.notizen=m.querySelector('#m-notiz').value;
     const dag=m.querySelector('#m-dag'),dbg=m.querySelector('#m-dbg');
@@ -2736,6 +2809,56 @@ function openModal(id){
     if((d.wiedervorlage||'')!==before.wv&&d.wiedervorlage)chatSys('🔁 Wiedervorlage: '+nm+' – '+d.wiedervorlage.split('-').reverse().join('.'),d);};
   const persist=()=>{histDiff();if(isNew&&!state.deals.includes(d))state.deals.unshift(d);dbPersist(d);render();};
   const callMeta=()=>{const dur=m.querySelector('#m-dur'),no=m.querySelector('#m-cnote');const o={};if(dur&&dur.value)o.dur=parseFloat(dur.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
+  const anSec=m.querySelector('#m-analysesec');
+  if(anSec){
+    const fIn=anSec.querySelector('#an-file'),anSt=anSec.querySelector('#an-state');
+    let recBlob=null,rec=null,recChunks=[];
+    const anTxt=()=>{const n=(fIn.files||[]).length;const t=[];if(n)t.push(n+(n===1?' Datei gewählt':' Dateien gewählt'));if(recBlob)t.push('Sprachnotiz ✓');anSt.textContent=t.join(' · ');};
+    anSec.querySelector('#an-pick').addEventListener('click',()=>fIn.click());
+    fIn.addEventListener('change',anTxt);
+    anSec.querySelector('#an-rec').addEventListener('click',async e2=>{
+      const b=e2.currentTarget;
+      if(rec&&rec.state==='recording'){rec.stop();return;}
+      try{
+        const ms=await navigator.mediaDevices.getUserMedia({audio:true});
+        recChunks=[];rec=new MediaRecorder(ms);
+        rec.ondataavailable=ev=>{if(ev.data&&ev.data.size)recChunks.push(ev.data);};
+        rec.onstop=()=>{recBlob=new Blob(recChunks,{type:rec.mimeType||'audio/webm'});ms.getTracks().forEach(t=>t.stop());b.textContent='🎙️ Neu aufnehmen';anTxt();};
+        rec.start();b.textContent='⏹️ Aufnahme stoppen';anSt.textContent='🔴 Aufnahme läuft …';
+      }catch(err){toast('Mikrofon nicht verfügbar oder nicht erlaubt');}
+    });
+    anSec.querySelector('#an-send').addEventListener('click',async e2=>{
+      const b=e2.currentTarget;
+      if(rec&&rec.state==='recording'){rec.stop();await new Promise(r=>setTimeout(r,400));}
+      const files=Array.from(fIn.files||[]);
+      const note=anSec.querySelector('#an-note').value.trim();
+      if(!files.length&&!recBlob&&!note){toast('Bitte PDF/Foto wählen, Sprachnotiz aufnehmen oder Notiz schreiben');return;}
+      b.disabled=true;b.textContent='⏳ Speichert …';
+      try{
+        const who=chatName()||'—';
+        const tag=todayStr().split('-').reverse().join('.');
+        const kurz=(d.name||d.org||'Kunde').slice(0,40);
+        const neu=[];
+        if(files.length||recBlob){
+          const tok=await driveToken();
+          for(const f of files){neu.push(Object.assign(await driveUpload(tok,f,kurz+' – '+f.name),{von:who,ts:new Date().toISOString()}));}
+          if(recBlob){const ext=(recBlob.type||'').includes('mp4')?'m4a':'webm';neu.push(Object.assign(await driveUpload(tok,recBlob,kurz+' – Sprachnotiz '+tag+'.'+ext),{von:who,ts:new Date().toISOString()}));}
+        }
+        collect();
+        d.analyse=(d.analyse||[]).concat(neu);
+        if(STAGES.indexOf(d.stage)<STAGES.indexOf('Analyse & Doku'))d.stage='Analyse & Doku';
+        if(note)d.notizen=(tag+' Analyse-Übergabe ('+who+'): '+note+'\n'+(d.notizen||'')).slice(0,8000);
+        chatSys('📤 Analyse abgegeben: '+(d.name||d.org||'—')+' von '+who+(neu.length?' · '+neu.length+(neu.length===1?' Datei':' Dateien')+' gespeichert':'')+(note?' – '+note:''),d);
+        histAdd(d,'Analyse abgegeben'+(neu.length?' ('+neu.map(x=>x.name).join(', ').slice(0,120)+')':''));
+        persist();
+        toast('✅ Analyse beim Kunden gespeichert'+(neu.length?' – Dateien im Google-Ordner „CENSA Analysen"':''));
+        closeModal();
+      }catch(err){
+        toast('❌ '+(err&&err.message?err.message:'Speichern fehlgeschlagen – bitte noch einmal versuchen'));
+        b.disabled=false;b.textContent='📤 Abgeben';
+      }
+    });
+  }
   const fb=m.querySelector('#m-frei');
   if(fb)fb.addEventListener('click',()=>{collect();d.geprueft=true;persist();closeModal();toast('Freigegeben – jetzt in der Liste dem Telefonisten zuteilen');});
   const agx=m.querySelector('#cal-ag-x');
@@ -3130,7 +3253,7 @@ async function importCSV(text){
     const pp=(d.telefon||'').replace(/\D/g,'');
     const ex=pp.length>=8?phoneIdx[pp]:null;
     if(ex){
-      ['telefonist','bezirk','ort','org','umsatz','gewinn','anlage','finanzJahr','website','maGroesse','briefing','email','strasse','plz','analyst','berater'].forEach(f=>{if(d[f]&&!ex[f])ex[f]=d[f];});
+      ['telefonist','bezirk','ort','org','umsatz','gewinn','anlage','sachanlage','finanzanlage','finanzJahr','website','maGroesse','briefing','email','strasse','plz','analyst','berater'].forEach(f=>{if(d[f]&&!ex[f])ex[f]=d[f];});
       if(d.wiedervorlage&&!ex.wiedervorlage)ex.wiedervorlage=d.wiedervorlage;
       if(d.notizen&&!(ex.notizen||'').includes(d.notizen))ex.notizen=(ex.notizen?ex.notizen+' | ':'')+'[Setter] '+d.notizen;
       touched.push(ex);merged++;continue;
@@ -3305,7 +3428,8 @@ lsLoad();render();
         if(isAdmin())renderSteuerung();
       },err=>{});
       setTimeout(ehgAutoRemind,5000);
-      setTimeout(inboxImport,4000); // Lead-Briefkasten (Routinen/Zahlen-Läufe) automatisch übernehmen
+      setTimeout(inboxImport,4000);
+  setTimeout(slotsCleanup,7000); // Lead-Briefkasten (Routinen/Zahlen-Läufe) automatisch übernehmen
       buchCol=fs.collection('buchungen');
       buchUnsub=buchCol.orderBy('ts','desc').limit(80).onSnapshot(snap=>{
         BUCH=snap.docs.map(s=>{const x=Object.assign({},s.data());x._id=s.id;return x;});
