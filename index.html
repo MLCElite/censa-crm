@@ -326,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="30.10-C";
+const APP_VERSION="30.10-D";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -387,19 +387,25 @@ async function inboxImport(){
   const byTel={},byName={};
   state.deals.forEach(d=>{const t=normT(d.telefon);if(t)byTel[t]=d;const n=normN(d.org||d.name);if(n)byName[n]=d;});
   const neu=[],upd=[],del=[];let zahlen=0;
-  snap.forEach(doc=>{
-    const r=doc.data()||{};del.push(doc.id);
-    if(!((r.name||'')+(r.org||'')).trim())return;
+  // Leads zuerst, Zahlen danach – sonst verfällt ein Zahlen-Doc, dessen Lead im selben Durchgang ankommt
+  const docs=[];snap.forEach(doc=>docs.push(doc));
+  docs.sort((a,b)=>((((a.data()||{}).typ)==='zahlen')?1:0)-((((b.data()||{}).typ)==='zahlen')?1:0));
+  docs.forEach(doc=>{
+    const r=doc.data()||{};
+    if(!((r.name||'')+(r.org||'')).trim()){del.push(doc.id);return;}
     const tel=normT(r.telefon),nm=normN(r.org||r.name);
     const ex=(tel&&byTel[tel])||(nm&&byName[nm])||null;
     if((r.typ||'lead')==='zahlen'){
-      if(!ex)return;
+      if(!ex)return; // Lead (noch) nicht im CRM – Doc liegen lassen für den nächsten Durchgang
+      del.push(doc.id);
       let ch=false;
       [['umsatz','umsatz'],['gewinn','gewinn'],['anlage','anlage'],['sachanlage','sachanlage'],['finanzanlage','finanzanlage'],['finanzJahr','finanzJahr']].forEach(p=>{if(r[p[0]]!=null&&(''+r[p[0]]).trim()&&!(''+(ex[p[1]]||'')).trim()){ex[p[1]]=(''+r[p[0]]).trim();ch=true;}});
       if(r.notiz&&(ex.notizen||'').indexOf((''+r.notiz).slice(0,40))<0){ex.notizen=(r.notiz+'\n'+(ex.notizen||'')).slice(0,8000);ch=true;}
-      if(ch&&upd.indexOf(ex)<0){upd.push(ex);zahlen++;}
+      if(ch&&upd.indexOf(ex)<0&&neu.indexOf(ex)<0){upd.push(ex);zahlen++;}
+      else if(ch&&neu.indexOf(ex)>=0)zahlen++;
       return;
     }
+    del.push(doc.id);
     if(ex)return; // gibt es schon – Doppelimport verhindern
     const d=blank();
     ['name','org','telefon','email','strasse','plz','ort','bezirk','branche','quelle','notizen','umsatz','gewinn','anlage','sachanlage','finanzanlage','finanzJahr','website','maGroesse','potenzial','briefing'].forEach(k=>{if(r[k]!=null&&(''+r[k]).trim())d[k]=(''+r[k]).trim();});
