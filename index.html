@@ -326,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="29.10-B";
+const APP_VERSION="30.10-A";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1416,7 +1416,25 @@ function renderSteuerung(){
   const bzMap={};
   bzPool.forEach(d=>{const b=(d.bezirk||'').trim()||'— ohne Bezirk —';const g=(bzMap[b]=bzMap[b]||{bz:b,frei:0,alle:0,wer:{}});g.alle++;const t=canonName(d.telefonist||'')||(d.telefonist||'').trim();if(!t)g.frei++;else g.wer[t]=(g.wer[t]||0)+1;});
   const bzList=Object.values(bzMap).sort((a,b)=>b.frei-a.frei||b.alle-a.alle||a.bz.localeCompare(b.bz,'de',{numeric:true}));
-  const dRow=(d,role,names)=>`<div class="gl" style="cursor:default;flex-wrap:wrap"><span class="gn" style="cursor:pointer" data-open="${d.id}">${esc(d.name||d.org||'—')}</span><span class="ph tnum">${esc((role==='analyst'?d.datumAG:d.datumBG)||d.wiedervorlage||'— Termin fehlt —')}</span><select data-dsel="${d.id}" style="width:150px;padding:5px 8px;font-size:12px"><option value="">wählen…</option>${names.map(n=>`<option>${esc(n)}</option>`).join('')}</select><button class="mini-btn" data-dispo="${d.id}" data-role="${role}">Zuordnen</button></div>`;
+  const dMeta=(d,role)=>{ // NEU (Termin kam in den letzten 24 h bzw. frisch ohne Verlauf) + DRINGEND (überfällig/heute/morgen) für die Dispo
+    const dt=parseTermin(role==='analyst'?d.datumAG:d.datumBG);
+    let urg=null;
+    if(dt){
+      const h0=new Date();h0.setHours(0,0,0,0);
+      if(dt.getTime()<Date.now())urg='ÜBERFÄLLIG';
+      else if(dt.getTime()<h0.getTime()+86400000)urg='HEUTE';
+      else if(dt.getTime()<h0.getTime()+2*86400000)urg='MORGEN';
+    }
+    const hTs=(d.hist||[]).filter(x=>/termin/i.test(x.txt||'')).map(x=>x.ts||'').sort().pop();
+    const neu=hTs?(Date.now()-new Date(hTs).getTime()<86400000):!(d.hist||[]).length;
+    return {dt:dt?dt.getTime():Infinity,urg,neu};
+  };
+  const dispoSort=(list,role)=>list.map(d=>({d,m:dMeta(d,role)})).sort((a,b)=>{
+    const r=x=>x.m.urg?0:(x.m.neu?1:2);
+    return r(a)-r(b)||a.m.dt-b.m.dt;
+  });
+  const dRow=(x,role,names)=>{const d=x.d,mm=x.m,rot=!!(mm.urg||mm.neu);
+    return `<div class="gl" style="cursor:default;flex-wrap:wrap${rot?';border:1.5px solid var(--bad);background:var(--bad-bg,rgba(220,60,60,.08))':''}">${mm.urg?`<span class="tg" style="background:var(--bad);color:#fff;font-weight:800">🔴 ${mm.urg}</span>`:(mm.neu?`<span class="tg" style="background:var(--bad);color:#fff;font-weight:800">🆕 NEU</span>`:'')}<span class="gn" style="cursor:pointer" data-open="${d.id}">${esc(d.name||d.org||'—')}</span><span class="ph tnum"${mm.urg?' style="color:var(--bad);font-weight:800"':''}>${esc((role==='analyst'?d.datumAG:d.datumBG)||d.wiedervorlage||'— Termin fehlt —')}</span><select data-dsel="${d.id}" style="width:150px;padding:5px 8px;font-size:12px"><option value="">wählen…</option>${names.map(n=>`<option>${esc(n)}</option>`).join('')}</select><button class="mini-btn" data-dispo="${d.id}" data-role="${role}">Zuordnen</button></div>`;};
   const t0=todayStr();
   const proto={};
   state.deals.forEach(d=>(d.calls||[]).forEach(c=>{
@@ -1448,8 +1466,8 @@ function renderSteuerung(){
       <button class="btn" id="btnDup">🔍 Duplikat-Check</button>
     </div>
     <div class="panel" style="border-color:var(--brand)"><h3>📋 Tages-Dispo – Termine zuordnen <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— am Tagesende neue Termine dem passenden Mitarbeiter zuweisen; die Person sieht es sofort in ihrer Liste und im Chat</span></h3>
-      ${dispoA.length?`<div class="ehgt" style="margin:2px 0 6px">Analysen ohne Analyst (${dispoA.length})</div><div class="st-list">${dispoA.map(d=>dRow(d,'analyst',anNames)).join('')}</div>`:''}
-      ${handover.length?`<div class="ehgt" style="margin:12px 0 6px">Beratungen – übergabereif, ohne Berater (${handover.length})</div><div class="st-list">${handover.map(d=>dRow(d,'berater',beNames)).join('')}</div>`:''}
+      ${dispoA.length?`<div class="ehgt" style="margin:2px 0 6px">Analysen ohne Analyst (${dispoA.length})</div><div class="st-list">${dispoSort(dispoA,'analyst').map(x=>dRow(x,'analyst',anNames)).join('')}</div>`:''}
+      ${handover.length?`<div class="ehgt" style="margin:12px 0 6px">Beratungen – übergabereif, ohne Berater (${handover.length})</div><div class="st-list">${dispoSort(handover,'berater').map(x=>dRow(x,'berater',beNames)).join('')}</div>`:''}
       ${(!dispoA.length&&!handover.length)?'<div class="empty-col">Nichts zuzuordnen – alles verteilt 👍</div>':''}
     </div>
     <div class="panel"><h3>🗺️ Bezirks-Zuteilung – Telefonisten <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— ganzer Bezirk mit einem Klick an einen Telefonisten; Zuteilen gibt neue Kunden (📥 Posteingang) automatisch frei</span></h3>
