@@ -326,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="30.10-D";
+const APP_VERSION="30.10-E";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -373,7 +373,8 @@ function setDbState(txt,color){const el=document.getElementById('dbState');if(el
    angemeldet). Öffnet ein Admin das CRM, wird alles automatisch übernommen und der
    Briefkasten geleert – kein CSV-Import mehr nötig.
    typ "lead"   -> neuer Lead (Dedupe per Telefon UND Name/Firma gegen den Bestand)
-   typ "zahlen" -> füllt umsatz/gewinn/anlage/finanzJahr bei bestehendem Lead (nur leere Felder) */
+   typ "zahlen" -> füllt umsatz/gewinn/anlage/finanzJahr bei bestehendem Lead (nur leere Felder)
+   typ "gp"     -> verschiebt bestehenden Lead in den GP-Tab (gp=true, quelle=Recruiting; branche=Zielgruppen-Label) */
 let __inboxDone=false;
 async function inboxImport(){
   if(__inboxDone||!isAdmin()||MODE!=='db'||!dealsCol)return;
@@ -386,10 +387,11 @@ async function inboxImport(){
   const normN=s=>(s||'').toLowerCase().replace(/gesmbh|gmbh|ges\.m\.b\.h\.?|& ?co ?kg|e\.u\./g,'').replace(/[^a-z0-9äöüß]/g,'').slice(0,30);
   const byTel={},byName={};
   state.deals.forEach(d=>{const t=normT(d.telefon);if(t)byTel[t]=d;const n=normN(d.org||d.name);if(n)byName[n]=d;});
-  const neu=[],upd=[],del=[];let zahlen=0;
-  // Leads zuerst, Zahlen danach – sonst verfällt ein Zahlen-Doc, dessen Lead im selben Durchgang ankommt
+  const neu=[],upd=[],del=[];let zahlen=0,gpUmzug=0;
+  // Leads zuerst, Zahlen/GP-Umzüge danach – sonst verfällt ein Doc, dessen Lead im selben Durchgang ankommt
+  const nachher=t=>(t==='zahlen'||t==='gp')?1:0;
   const docs=[];snap.forEach(doc=>docs.push(doc));
-  docs.sort((a,b)=>((((a.data()||{}).typ)==='zahlen')?1:0)-((((b.data()||{}).typ)==='zahlen')?1:0));
+  docs.sort((a,b)=>nachher(((a.data()||{}).typ))-nachher(((b.data()||{}).typ)));
   docs.forEach(doc=>{
     const r=doc.data()||{};
     if(!((r.name||'')+(r.org||'')).trim()){del.push(doc.id);return;}
@@ -403,6 +405,17 @@ async function inboxImport(){
       if(r.notiz&&(ex.notizen||'').indexOf((''+r.notiz).slice(0,40))<0){ex.notizen=(r.notiz+'\n'+(ex.notizen||'')).slice(0,8000);ch=true;}
       if(ch&&upd.indexOf(ex)<0&&neu.indexOf(ex)<0){upd.push(ex);zahlen++;}
       else if(ch&&neu.indexOf(ex)>=0)zahlen++;
+      return;
+    }
+    if(r.typ==='gp'){ // GP-Umzug: Lead aus den Kundenlisten in den GP-Tab verschieben
+      if(!ex)return; // Lead (noch) nicht im CRM – Doc liegen lassen für den nächsten Durchgang
+      del.push(doc.id);
+      if(!ex.gp||(ex.quelle||'')!=='Recruiting'){
+        ex.gp=true;ex.quelle='Recruiting';
+        if(r.branche&&(''+r.branche).trim())ex.branche=(''+r.branche).trim();
+        if(upd.indexOf(ex)<0&&neu.indexOf(ex)<0)upd.push(ex);
+        gpUmzug++;
+      }
       return;
     }
     del.push(doc.id);
@@ -428,11 +441,12 @@ async function inboxImport(){
       await b.commit();
     }
   }catch(e){}
-  if(neu.length||zahlen){
+  if(neu.length||zahlen||gpUmzug){
     const gp=neu.filter(d=>d.gp).length,kd=neu.length-gp;
     const teile=[];
     if(kd)teile.push(kd+' neue'+(kd===1?'r':'')+' Lead'+(kd===1?'':'s'));
     if(gp)teile.push(gp+' GP-Kandidat'+(gp===1?'':'en'));
+    if(gpUmzug)teile.push(gpUmzug+' Lead'+(gpUmzug===1?'':'s')+' in den GP-Tab verschoben');
     if(zahlen)teile.push(zahlen+'× Finanzzahlen ergänzt');
     chatSys('📥 Lead-Briefkasten automatisch übernommen: '+teile.join(' · ')+' – kein CSV-Import nötig.');
     toast('📥 Briefkasten: '+teile.join(' · '));
