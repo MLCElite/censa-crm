@@ -326,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="30.10-A";
+const APP_VERSION="30.10-B";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -908,6 +908,12 @@ function renderTelefon(){
   queue.sort((a,b)=>{const oa=isOverdue(a)?0:1,ob=isOverdue(b)?0:1;if(oa!==ob)return oa-ob;const c=(a.bezirk||'9999').localeCompare((b.bezirk||'9999'),undefined,{numeric:true});if(c)return c;const da=parseDMY(a.wiedervorlage),db=parseDMY(b.wiedervorlage);return (da?da.getTime():8.64e15)-(db?db.getTime():8.64e15);});
   const t=todayStr();let dials=0,termine=0;
   DS.forEach(d=>{if(sel&&canonName(d.telefonist||'')!==sel)return;(d.calls||[]).forEach(c=>{if((c.ts||'').slice(0,10)===t){if(c.outcome==='angerufen')dials++;else if(c.outcome==='termin')termine++;}});});
+  // Heute nicht abgehoben: bleiben sichtbar, falls der Kunde zurückruft (letzter Anruf heute = n.a.)
+  const naToday=DS.filter(d=>d.status==='open'&&(!sel||canonName(d.telefonist||'')===sel)).map(d=>{
+    const cs=(d.calls||[]).filter(c=>(c.ts||'').slice(0,10)===t);
+    const last=cs[cs.length-1];
+    return (last&&last.outcome==='nichterreicht')?{d,ts:last.ts,anz:(d.calls||[]).filter(c=>c.outcome==='nichterreicht').length}:null;
+  }).filter(Boolean).sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));
   const d0=(host.__pick&&queue.find(x=>x.id===host.__pick))||queue[0];
   host.innerHTML=`
    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px;align-items:center">
@@ -922,10 +928,12 @@ function renderTelefon(){
      <span class="kpi" style="margin-left:auto">${queue.length} in der Liste</span>
    </div>
    ${d0?dialerCard(d0):`<div class="emptybig"><div class="big">Liste leer${sel?' für '+esc(sel):''} 🎉</div>Alle Anruf-Leads abgearbeitet oder übersprungen.</div>`}
-   ${queue.length>1?`<div style="margin-top:12px;max-width:640px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin-bottom:6px">${fb?(fb==='__none'?'Ohne Bezirk':'Bezirk '+esc(fb))+' – alle '+queue.length+' Kunden':'Als Nächstes – nach Bezirk sortiert ('+(queue.length-1)+' weitere)'}</div><div class="st-list">${(fb?queue:queue.filter(x=>x.id!==d0.id).slice(0,10)).map(x=>`<div class="gl" data-tpick="${x.id}"${x.id===d0.id?' style="border-color:var(--brand);background:var(--brand-bg)"':''}><span class="tg">${esc(x.bezirk||'—')}</span><span class="gn">${x.id===d0.id?'▶ ':''}${esc(x.name||x.org||'—')}</span><span class="ph">${esc(x.org&&x.name!==x.org?x.org:'')}</span><span class="ph tnum">${esc(x.telefon||'')}</span>${isOverdue(x)?'<span class="od">überfällig</span>':''}</div>`).join('')}</div></div>`:''}`;
+   ${queue.length>1?`<div style="margin-top:12px;max-width:640px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin-bottom:6px">${fb?(fb==='__none'?'Ohne Bezirk':'Bezirk '+esc(fb))+' – alle '+queue.length+' Kunden':'Als Nächstes – nach Bezirk sortiert ('+(queue.length-1)+' weitere)'}</div><div class="st-list">${(fb?queue:queue.filter(x=>x.id!==d0.id).slice(0,10)).map(x=>`<div class="gl" data-tpick="${x.id}"${x.id===d0.id?' style="border-color:var(--brand);background:var(--brand-bg)"':''}><span class="tg">${esc(x.bezirk||'—')}</span><span class="gn">${x.id===d0.id?'▶ ':''}${esc(x.name||x.org||'—')}</span><span class="ph">${esc(x.org&&x.name!==x.org?x.org:'')}</span><span class="ph tnum">${esc(x.telefon||'')}</span>${isOverdue(x)?'<span class="od">überfällig</span>':''}</div>`).join('')}</div></div>`:''}
+   ${naToday.length?`<div style="margin-top:14px;max-width:640px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--warn);margin-bottom:6px">📵 Heute nicht abgehoben (${naToday.length}) – bleiben hier, falls der Kunde zurückruft</div><div class="st-list">${naToday.map(x=>`<div class="gl" data-napick="${x.d.id}" style="border-left:3px solid var(--warn)"><span class="ph tnum" style="font-weight:800">${x.ts?new Date(x.ts).toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'}):'—'}</span><span class="gn">${esc(x.d.name||x.d.org||'—')}</span><span class="ph">${esc(x.d.org&&x.d.name!==x.d.org?x.d.org:'')}</span><span class="ph tnum">${esc(x.d.telefon||'')}</span><span class="tg od">n.a. ${x.anz}×</span></div>`).join('')}</div></div>`:''}`;
   host.querySelectorAll('[data-bz]').forEach(b=>b.addEventListener('click',()=>{host.__bez=b.dataset.bz;host.__pick='';renderTelefon();}));
   host.querySelector('#tSel').addEventListener('change',e=>{host.__sel=e.target.value;host.__skip={};host.__pick='';renderTelefon();});
   host.querySelectorAll('[data-tpick]').forEach(el=>el.addEventListener('click',()=>{host.__pick=el.dataset.tpick;renderTelefon();}));
+  host.querySelectorAll('[data-napick]').forEach(el=>el.addEventListener('click',()=>{const id=el.dataset.napick;delete host.__skip[id];host.__bez='';host.__pick=id;renderTelefon();}));
   if(d0)wireDialer(host,d0);
 }
 function finBlock(d){
@@ -1059,7 +1067,7 @@ function wireDialer(host,d){
       chatSys('📅 Neuer Analysetermin: '+(d.name||d.org||'—')+' · Zuordnung über die Tages-Dispo',d);dbPersist(d);render();openModal(d.id);toast('Termin! Datum (AG) im Lead eintragen – zugeordnet wird über die Dispo');return;
     }
     if(o==='rueckruf'){d.stage='In Bearbeitung';dbPersist(d);render();openModal(d.id);toast('Rückruf – Wiedervorlage-Datum eintragen');return;}
-    if(o==='nichterreicht'){if(d.stage==='Neuer Lead')d.stage='In Bearbeitung';naStamp(d);host.__skip[d.id]=1;dbPersist(d);render();toast('n.a. mit Datum vermerkt – nächster Lead');return;}
+    if(o==='nichterreicht'){if(d.stage==='Neuer Lead')d.stage='In Bearbeitung';naStamp(d);host.__skip[d.id]=1;dbPersist(d);render();toast('n.a. vermerkt – Kunde bleibt unten in „📵 Heute nicht abgehoben" für den Rückruf');return;}
     if(o==='keininteresse'){d.status='lost';d.lostReason='Kein Interesse';d.lostDate=todayStr();d.lostBy='Telefonist';d.wiedervorlage=new Date(Date.now()+61*86400000).toISOString().slice(0,10);dbPersist(d);render();toast('Kein Interesse – Reaktivierung in 2 Monaten');return;}
   }));
 }
