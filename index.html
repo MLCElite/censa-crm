@@ -326,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="30.10-E";
+const APP_VERSION="30.10-F";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2786,12 +2786,14 @@ function openModal(id){
       <div class="fld full"><label>Briefing für den Analysten <span style="font-weight:500;color:var(--ink-3)">— Branche, jung/alt, Alleinentscheider, was wurde besprochen</span></label><textarea id="m-brief" rows="2">${esc(d.briefing||'')}</textarea></div>
       <div class="fld full"><label>Notizen</label><textarea id="m-notiz" rows="3">${esc(d.notizen)}</textarea></div>
     </div>
-    ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--brand);border-radius:12px" id="m-analysesec">
+    <div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--brand);border-radius:12px" id="m-analysesec">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">📤 Analyse abgeben <span style="font-weight:500;color:var(--ink-2);font-size:12px">– PDF/Fotos + Sprachnotiz landen direkt hier beim Kunden (statt in WhatsApp)</span></div>
       ${(d.analyse&&d.analyse.length)?`<div style="font-size:12.5px;margin:6px 0;display:flex;flex-direction:column;gap:3px">${d.analyse.map(a=>`<div>📎 <a href="${esc(a.url)}" target="_blank" rel="noopener" style="color:var(--brand-ink);font-weight:700">${esc(a.name)}</a> <span style="color:var(--ink-3)">· ${esc(a.von||'')}${a.ts?' · '+esc(new Date(a.ts).toLocaleDateString('de-AT')):''}</span></div>`).join('')}</div>`:''}
       <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:6px">
         <input type="file" id="an-file" accept="application/pdf,image/*" multiple style="display:none">
+        <input type="file" id="an-scan" accept="image/*" capture="environment" style="display:none">
         <button type="button" class="btn" id="an-pick">📄 PDF / Foto wählen</button>
+        <button type="button" class="btn" id="an-scanbtn" title="Öffnet am Handy direkt die Kamera – jede Seite einzeln abfotografieren, die Scans sammeln sich">📷 Scannen</button>
         <button type="button" class="btn" id="an-rec">🎙️ Sprachnotiz aufnehmen</button>
         <span id="an-state" style="font-size:12px;color:var(--ink-2)"></span>
       </div>
@@ -2799,8 +2801,8 @@ function openModal(id){
         <input id="an-note" placeholder="Kurznotiz zur Übergabe (optional)" style="flex:1;min-width:170px;padding:8px 10px;font-size:12.5px">
         <button type="button" class="btn pri" id="an-send">📤 Abgeben</button>
       </div>
-      <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Dateien werden über deinen Google-Zugang im Ordner „CENSA Analysen" gespeichert – beim ersten Mal fragt Google einmal um Erlaubnis.</div>
-    </div>`:''}
+      <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Dateien werden über deinen Google-Zugang im Ordner „CENSA Analysen" gespeichert – beim ersten Mal fragt Google einmal um Erlaubnis.${isNew?' · 💾 Beim Abgeben wird der neue Kunde automatisch mit angelegt.':''}</div>
+    </div>
     <div class="ehsec">
       <div class="ehhead">EH-Rechner <span class="ehtag">IVP-Einheitentabelle</span></div>
       <label class="chk2"><input type="checkbox" id="eh-telb" ${d.telBeteiligt?'checked':''}> Telefonist beteiligt (Analyst 25 % statt 50 %)</label>
@@ -2874,11 +2876,19 @@ function openModal(id){
   const callMeta=()=>{const dur=m.querySelector('#m-dur'),no=m.querySelector('#m-cnote');const o={};if(dur&&dur.value)o.dur=parseFloat(dur.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
   const anSec=m.querySelector('#m-analysesec');
   if(anSec){
-    const fIn=anSec.querySelector('#an-file'),anSt=anSec.querySelector('#an-state');
+    const fIn=anSec.querySelector('#an-file'),scIn=anSec.querySelector('#an-scan'),anSt=anSec.querySelector('#an-state');
     let recBlob=null,rec=null,recChunks=[];
-    const anTxt=()=>{const n=(fIn.files||[]).length;const t=[];if(n)t.push(n+(n===1?' Datei gewählt':' Dateien gewählt'));if(recBlob)t.push('Sprachnotiz ✓');anSt.textContent=t.join(' · ');};
+    const selFiles=[];let scanN=0; // Dateien sammeln sich über mehrere Auswahlen/Scans hinweg
+    const anTxt=()=>{const n=selFiles.length;const t=[];if(n)t.push(n+(n===1?' Datei gewählt':' Dateien gewählt'));if(recBlob)t.push('Sprachnotiz ✓');anSt.textContent=t.join(' · ');};
+    const grab=(inp,scan)=>{Array.from(inp.files||[]).forEach(f=>{
+      if(scan){scanN++;const ext=((f.name||'').split('.').pop()||'jpg').toLowerCase();
+        try{f=new File([f],'Scan '+todayStr().split('-').reverse().join('.')+' Nr.'+scanN+'.'+ext,{type:f.type});}catch(_){}}
+      selFiles.push(f);});
+      inp.value='';anTxt();};
     anSec.querySelector('#an-pick').addEventListener('click',()=>fIn.click());
-    fIn.addEventListener('change',anTxt);
+    anSec.querySelector('#an-scanbtn').addEventListener('click',()=>scIn.click());
+    fIn.addEventListener('change',()=>grab(fIn,false));
+    scIn.addEventListener('change',()=>grab(scIn,true));
     anSec.querySelector('#an-rec').addEventListener('click',async e2=>{
       const b=e2.currentTarget;
       if(rec&&rec.state==='recording'){rec.stop();return;}
@@ -2893,9 +2903,11 @@ function openModal(id){
     anSec.querySelector('#an-send').addEventListener('click',async e2=>{
       const b=e2.currentTarget;
       if(rec&&rec.state==='recording'){rec.stop();await new Promise(r=>setTimeout(r,400));}
-      const files=Array.from(fIn.files||[]);
+      const files=selFiles.slice();
       const note=anSec.querySelector('#an-note').value.trim();
-      if(!files.length&&!recBlob&&!note){toast('Bitte PDF/Foto wählen, Sprachnotiz aufnehmen oder Notiz schreiben');return;}
+      if(!files.length&&!recBlob&&!note){toast('Bitte PDF/Foto wählen, scannen, Sprachnotiz aufnehmen oder Notiz schreiben');return;}
+      collect(); // bei neuen Kunden: Formularstand übernehmen, BEVOR Dateiname/Anlage daraus gebaut wird
+      if(!((d.name||'')+(d.org||'')).trim()){toast('Bitte zuerst Name oder Firma eintragen – dann abgeben');return;}
       b.disabled=true;b.textContent='⏳ Speichert …';
       try{
         const who=chatName()||'—';
@@ -2914,7 +2926,7 @@ function openModal(id){
         chatSys('📤 Analyse abgegeben: '+(d.name||d.org||'—')+' von '+who+(neu.length?' · '+neu.length+(neu.length===1?' Datei':' Dateien')+' gespeichert':'')+(note?' – '+note:''),d);
         histAdd(d,'Analyse abgegeben'+(neu.length?' ('+neu.map(x=>x.name).join(', ').slice(0,120)+')':''));
         persist();
-        toast('✅ Analyse beim Kunden gespeichert'+(neu.length?' – Dateien im Google-Ordner „CENSA Analysen"':''));
+        toast((isNew?'✅ Neuer Kunde angelegt + Analyse gespeichert':'✅ Analyse beim Kunden gespeichert')+(neu.length?' – Dateien im Google-Ordner „CENSA Analysen"':''));
         closeModal();
       }catch(err){
         toast('❌ '+(err&&err.message?err.message:'Speichern fehlgeschlagen – bitte noch einmal versuchen'));
