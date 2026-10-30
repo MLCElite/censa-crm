@@ -326,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="30.10-B";
+const APP_VERSION="30.10-C";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -576,10 +576,21 @@ function ehAbschluss(d){return (d.ehA||[]).reduce((s,it)=>s+calcEH(it),0);}
 function fmtEH(x){return x.toFixed(1).replace('.',',');}
 
 /* ---------- render ---------- */
+/* Tempo: es wird NUR die sichtbare Ansicht gebaut. Alle anderen merken sich per
+   „dirty", dass sie beim nächsten Tab-Wechsel frisch gerendert werden müssen. */
+const RENDERERS={pipeline:renderPipeline,liste:renderListe,dashboard:renderDashboard,steuerung:renderSteuerung,telefon:renderTelefon,gp:renderGP};
+const __dirty={};
+function activeTab(){const b=document.querySelector('.tabs button.on');return b?b.dataset.tab:'';}
+function renderTab(t){if(RENDERERS[t]&&__dirty[t]!==false){RENDERERS[t]();__dirty[t]=false;}}
+function markDirty(t){__dirty[t]=true;if(activeTab()===t)renderTab(t);}
 function render(){
   document.getElementById('kpiDials').textContent=dialsToday();
-  renderPipeline();renderListe();renderDashboard();renderSteuerung();renderTelefon();renderGP();save();
+  Object.keys(RENDERERS).forEach(k=>__dirty[k]=true);
+  renderTab(activeTab());
+  save();
 }
+let __rT=null; // Live-Sync-Ereignisse buendeln (eine Neuzeichnung statt vieler)
+function scheduleRender(){if(__rT)return;__rT=setTimeout(()=>{__rT=null;applyRoleUI();render();},150);}
 function badge(t){return t==='GmbH'?'<span class="tg gmbh">GmbH</span>':'<span class="tg privat">Privat</span>';}
 
 function renderPipeline(){
@@ -612,12 +623,13 @@ function renderPipeline(){
   </div>`+'<div class="board">'+cols.map(col=>{
     const list=pool.filter(col.test);
     list.sort((a,b)=>{const oa=isOverdue(a)?0:1,ob=isOverdue(b)?0:1;if(oa!==ob)return oa-ob;const da=parseDMY(a.wiedervorlage),db=parseDMY(b.wiedervorlage);return (da?da.getTime():8.64e15)-(db?db.getTime():8.64e15);});
-    const cards=list.length?list.map(d=>leadCard(d)).join(''):'<div class="empty-col">—</div>';
+    const MAXC=60,vis=list.slice(0,MAXC); // Tempo: max. 60 Karten je Spalte
+    const cards=list.length?(vis.map(d=>leadCard(d)).join('')+(list.length>MAXC?`<div class="empty-col">… ${list.length-MAXC} weitere – bitte Suche oder Filter nutzen</div>`:'')):'<div class="empty-col">—</div>';
     return `<div class="col ${col.cls}"><div class="col-h"><span class="dot"></span><span class="t">${esc(col.title)}</span><span class="c tnum">${list.length}</span></div><div class="col-b">${cards}</div></div>`;
   }).join('')+'</div>';
-  host.querySelectorAll('.lead').forEach(el=>el.addEventListener('click',()=>openModal(el.dataset.id)));
+  if(!host.__wired){host.__wired=true;host.addEventListener('click',e=>{const el=e.target.closest('.lead');if(el)openModal(el.dataset.id);});} // EIN Sammel-Hörer statt eines pro Karte
   const ps=host.querySelector('#pSearch');
-  ps.addEventListener('input',e=>{host.__q=e.target.value;const pos=e.target.selectionStart;renderPipeline();const np=host.querySelector('#pSearch');np.focus();np.setSelectionRange(pos,pos);});
+  ps.addEventListener('input',e=>{host.__q=e.target.value;clearTimeout(host.__qT);host.__qT=setTimeout(()=>{const pos=e.target.selectionStart;renderPipeline();const np=host.querySelector('#pSearch');if(np){np.focus();np.setSelectionRange(pos,pos);}},160);});
   host.querySelector('#pTelf').addEventListener('change',e=>{host.__telf=e.target.value;renderPipeline();});
   host.querySelector('#pAn').addEventListener('change',e=>{host.__an=e.target.value;renderPipeline();});
   host.querySelector('#pBe').addEventListener('change',e=>{host.__be=e.target.value;renderPipeline();});
@@ -686,6 +698,7 @@ function renderListe(){
   const analysten=[...new Set(DS.map(d=>d.analyst).filter(Boolean))].sort();
   const berater=[...new Set(DS.map(d=>d.berater).filter(Boolean))].sort();
   const stCls=d=>d.status==='won'?'style="color:var(--good);font-weight:700"':d.status==='lost'?'style="color:var(--bad)"':'';
+  const MAXD=host.__max||200;const show=rows.slice(0,MAXD); // Tempo: nur die ersten Zeilen bauen, Rest auf Knopfdruck
   host.innerHTML=`<div class="filters">
     <input id="fSearch" placeholder="Suche Name, Tel, Ort…" value="${esc(host.__q||'')}">
     <select id="fBez"><option value="">Alle Bezirke</option>${bezirke.map(x=>`<option${fb===x?' selected':''}>${esc(x)}</option>`).join('')}</select>
@@ -706,9 +719,10 @@ function renderListe(){
   <div class="tablewrap"><table><thead><tr>
     ${['name','kundentyp','telefon','bezirk','ort','quelle','stage','telefonist','analyst','berater'].map(c=>`<th data-c="${c}">${({name:'Name',kundentyp:'Typ',telefon:'Telefon',bezirk:'Bezirk',ort:'Ort',quelle:'Quelle',stage:'Phase',telefonist:'Telefonist',analyst:'Analyst',berater:'Berater'})[c]}</th>`).join('')}
   </tr></thead><tbody>
-    ${rows.map(d=>`<tr data-id="${d.id}"${host.__openId===d.id?' style="background:var(--brand-bg)"':''}><td><b>${esc(d.name||d.org||'—')}</b></td><td>${badge(d.kundentyp)}</td><td class="tnum">${esc(d.telefon)}</td><td>${esc(d.bezirk||'')}</td><td>${esc(d.ort)}</td><td>${esc(d.quelle)}</td><td ${stCls(d)}>${d.status==='won'?'Gewonnen':d.status==='lost'?'Verloren':esc(d.stage)}</td><td>${esc(d.telefonist||'')}</td><td>${esc(d.analyst)}</td><td>${esc(d.berater)}</td></tr>${host.__openId===d.id?listeDetailHtml(d):''}`).join('')}
-  </tbody></table></div>`;
-  host.querySelector('#fSearch').addEventListener('input',e=>{host.__q=e.target.value;renderListe();});
+    ${show.map(d=>`<tr data-id="${d.id}"${host.__openId===d.id?' style="background:var(--brand-bg)"':''}><td><b>${esc(d.name||d.org||'—')}</b></td><td>${badge(d.kundentyp)}</td><td class="tnum">${esc(d.telefon)}</td><td>${esc(d.bezirk||'')}</td><td>${esc(d.ort)}</td><td>${esc(d.quelle)}</td><td ${stCls(d)}>${d.status==='won'?'Gewonnen':d.status==='lost'?'Verloren':esc(d.stage)}</td><td>${esc(d.telefonist||'')}</td><td>${esc(d.analyst)}</td><td>${esc(d.berater)}</td></tr>${host.__openId===d.id?listeDetailHtml(d):''}`).join('')}
+  </tbody></table></div>
+  ${rows.length>show.length?`<div style="padding:10px 0"><button class="btn" id="fMore">➕ ${Math.min(500,rows.length-show.length)} weitere anzeigen (${rows.length-show.length} noch nicht geladen)</button></div>`:''}`;
+  host.querySelector('#fSearch').addEventListener('input',e=>{host.__q=e.target.value;host.__max=200;clearTimeout(host.__qT);host.__qT=setTimeout(()=>{const pos=e.target.selectionStart;renderListe();const np=host.querySelector('#fSearch');if(np){np.focus();np.setSelectionRange(pos,pos);}},160);});
   host.querySelector('#fBez').addEventListener('change',e=>{host.__bez=e.target.value;renderListe();});
   host.querySelector('#fTelf').addEventListener('change',e=>{host.__telf=e.target.value;renderListe();});
   host.querySelector('#fAn').addEventListener('change',e=>{host.__an=e.target.value;renderListe();});
@@ -738,10 +752,13 @@ function renderListe(){
   host.querySelector('#fTyp').addEventListener('change',e=>{host.__typ=e.target.value;renderListe();});
   host.querySelector('#fQuelle').addEventListener('change',e=>{host.__quelle=e.target.value;renderListe();});
   host.querySelectorAll('th').forEach(th=>th.addEventListener('click',()=>{const c=th.dataset.c;if(sortCol===c)sortDir*=-1;else{sortCol=c;sortDir=1;}renderListe();}));
-  host.querySelectorAll('tbody tr[data-id]').forEach(tr=>tr.addEventListener('click',()=>{
+  if(!host.__wired){host.__wired=true;host.addEventListener('click',e=>{ // EIN Sammel-Hörer statt eines pro Zeile
+    if(e.target.closest('#fMore')){host.__max=(host.__max||200)+500;renderListe();return;}
+    if(e.target.closest('.detrow')||e.target.closest('.filters')||e.target.closest('th'))return;
+    const tr=e.target.closest('tbody tr[data-id]');if(!tr)return;
     host.__openId=(host.__openId===tr.dataset.id?null:tr.dataset.id);
     renderListe();
-  }));
+  });}
   const det=host.querySelector('.detrow');
   if(det&&host.__openId){
     const d=state.deals.find(x=>x.id===host.__openId);
@@ -3355,6 +3372,7 @@ function loadDemo(){
 document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
   ['steuerung','gp','telefon','pipeline','liste','foerder','dashboard','woche','chat'].forEach(t=>document.getElementById('view-'+t).classList.toggle('hide',t!==b.dataset.tab));
+  renderTab(b.dataset.tab);
   if(b.dataset.tab==='chat'){ensureChatUI();updateChatLog();markChatSeen();}
   if(b.dataset.tab==='woche')renderWoche();
   if(b.dataset.tab==='foerder')renderFoerder();
@@ -3429,7 +3447,7 @@ lsLoad();render();
         MODE='db';
         state.deals=snap.docs.map(s=>{const b=Object.assign(blank(),s.data());b.id=s.id;return b;});
         setDbState('🟢 CENSA-DB · '+state.deals.length,'var(--good)');
-        applyRoleUI();render();
+        scheduleRender();
       },err=>{setDbState('🟠 Live-Sync unterbrochen – neu laden hilft','var(--warn)');});
       unsubTeam=teamCol.limit(200).onSnapshot(snap=>{
         TEAM=snap.docs.map(s=>{const m=Object.assign({},s.data()||{});m.id=s.id;return m;});
@@ -3447,11 +3465,11 @@ lsLoad();render();
       logActivity();
       actUnsub=actCol.orderBy('ts','desc').limit(1500).onSnapshot(snap=>{
         ACT=snap.docs.map(s=>s.data());
-        if(isAdmin())renderSteuerung();
+        if(isAdmin())markDirty('steuerung');
       },err=>{});
       metaUnsub=fs.collection('meta').doc('stats').onSnapshot(s=>{
         STATS_SINCE=(s.exists&&(s.data()||{}).since)||'';
-        if(isAdmin())renderSteuerung();
+        if(isAdmin())markDirty('steuerung');
       },err=>{});
       setTimeout(ehgAutoRemind,5000);
       setTimeout(inboxImport,4000);
@@ -3459,7 +3477,7 @@ lsLoad();render();
       buchCol=fs.collection('buchungen');
       buchUnsub=buchCol.orderBy('ts','desc').limit(80).onSnapshot(snap=>{
         BUCH=snap.docs.map(s=>{const x=Object.assign({},s.data());x._id=s.id;return x;});
-        if(isAdmin())renderSteuerung();
+        if(isAdmin())markDirty('steuerung');
       },err=>{});
     }catch(e){
       setDbState('🔴 '+((e&&e.code)||'Fehler')+' – kein Datenzugriff','var(--bad)');
