@@ -326,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="30.10-J";
+const APP_VERSION="30.10-K";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -3012,7 +3012,8 @@ function openModal(id){
         histAdd(d,'Analyse abgegeben'+(neu.length?' ('+neu.map(x=>x.name).join(', ').slice(0,120)+')':''));
         persist();
         toast((isNew?'✅ Neuer Kunde angelegt + Analyse gespeichert':'✅ Analyse beim Kunden gespeichert')+(neu.length?' – Dateien im Google-Ordner „CENSA Analysen"':''));
-        closeModal();
+        openModal(d.id); // Fenster bleibt offen und zeigt sofort die neuen Anlagen (Melanies Ansage 31.10.)
+        const sec2=document.getElementById('m-analysesec');if(sec2)sec2.scrollIntoView({block:'center'});
       }catch(err){
         toast('❌ '+(err&&err.message?err.message:'Speichern fehlgeschlagen – bitte noch einmal versuchen'));
         b.disabled=false;b.textContent='📤 Abgeben';
