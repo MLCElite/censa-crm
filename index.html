@@ -326,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="30.10-P";
+const APP_VERSION="30.10-Q";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1512,6 +1512,7 @@ function renderSteuerung(){
       <div class="mc bad"><div class="l">Überfällig</div><div class="v tnum">${overdue}</div></div>
     </div>
     ${buchPanel()}
+    ${adrPanel()}
     <div style="display:flex;gap:9px;flex-wrap:wrap;margin:0 0 16px">
       <button class="btn pri" id="btnCeo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M3 3v18h18M7 14l4-4 3 3 5-6"/></svg>CEO-Wochenupdate</button>
       <button class="btn" id="btnReports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Wochenbericht je Berater</button>
@@ -2513,6 +2514,19 @@ function dayDiff(isoA,isoB){const a=new Date(isoA),b=new Date(isoB);if(isNaN(a)|
 function ehgSlots(){
   const base=wkStart(1);
   return [[1,'10:00'],[2,'14:00'],[3,'16:00']].map(([off,z])=>{const d=new Date(base.getTime()+off*86400000);return fmtDM(d)+' '+z;});
+}
+function adrPanel(){ // 📍 Adress-Abdeckung (Melanies Regel 31.10.: Lead ohne Adresse ist fatal)
+  if(!state.deals.length)return '';
+  const gps=state.deals.filter(d=>d.gp||(d.quelle||'')==='Recruiting');
+  const kunden=state.deals.filter(d=>!gps.includes(d));
+  const untern=kunden.filter(d=>d.kundentyp!=='Privat');
+  const privat=kunden.filter(d=>d.kundentyp==='Privat');
+  const z=l=>({g:l.length,ohne:l.filter(adrFehlt).length});
+  const pct=o=>o.g?Math.round((o.g-o.ohne)*100/o.g):0;
+  const row=(label,o)=>`<div class="gl" style="cursor:default;flex-wrap:wrap"><span class="gn">${label}</span><span class="ph tnum">${o.g} gesamt</span><span class="tg" style="background:var(--good);color:#fff">✓ ${o.g-o.ohne} mit Adresse (${pct(o)} %)</span>${o.ohne?`<span class="tg od">📍 ${o.ohne} ohne Adresse</span>`:'<span class="tg" style="background:var(--good);color:#fff">komplett ✔</span>'}</div>`;
+  return `<div class="panel"><h3>📍 Adress-Abdeckung <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— „Ein Lead ohne Adresse ist fatal": hier siehst du den Fortschritt live</span></h3>
+    <div class="st-list">${row('Unternehmer (GmbH & Firmen)',z(untern))}${row('Privatkunden',z(privat))}${row('GP / Recruiting',z(gps))}${row('GESAMT',z(state.deals))}</div>
+    <div style="font-size:11px;color:var(--ink-3);margin-top:6px">Automatischer Nachschub: Der tägliche FirmenABC-Lauf ergänzt ~20 Unternehmer-Adressen/Tag (Kapitalgesellschaften); das rote 📍-Badge in Liste, Telefon und Dispo erinnert ans händische Nachtragen beim nächsten Kontakt.</div></div>`;
 }
 function buchPanel(){
   const offen=BUCH.filter(b=>!b.done);
