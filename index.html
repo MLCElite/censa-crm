@@ -326,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="30.10-K";
+const APP_VERSION="30.10-L";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2041,7 +2041,7 @@ async function driveFolder(tok){
   __drvFolder=j.id;return __drvFolder;
 }
 const __drvLeadF={};
-async function driveLeadFolder(tok,kunde){ // je Kunde ein Unterordner in „CENSA Analysen" – teilbar als Ganzes
+async function driveLeadFolder(tok,kunde,deal){ // je Kunde ein Unterordner in „CENSA Analysen" – teilbar als Ganzes
   const nm=(kunde||'Kunde').slice(0,60);
   if(__drvLeadF[nm])return __drvLeadF[nm];
   const root=await driveFolder(tok);
@@ -2055,6 +2055,14 @@ async function driveLeadFolder(tok,kunde){ // je Kunde ein Unterordner in „CEN
     if(!j.id)throw new Error('Kunden-Ordner konnte nicht angelegt werden'+((j.error&&j.error.message)?' – Google sagt: '+j.error.message.slice(0,140):''));
     id=j.id;
     try{await fetch('https://www.googleapis.com/drive/v3/files/'+id+'/permissions',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({role:'reader',type:'anyone'})});}catch(e){}
+  }
+  // Berechtigungen (Melanies Ansage 31.10.): Team-Rolle 'assistenz' darf Dateien EINFÜGEN (writer),
+  // Analyst + Berater des Kunden SEHEN den Ordner automatisch (reader). Writer gewinnt bei Doppel-Rolle.
+  const pm={};
+  TEAM.filter(m=>hasRole(m,'assistenz')&&/\S@\S/.test(m.email||'')).forEach(m=>pm[m.email.trim().toLowerCase()]='writer');
+  [deal&&deal.analyst,deal&&deal.berater].forEach(n2=>{const e=(n2?teamMail(n2):'').trim().toLowerCase();if(/\S@\S/.test(e)&&!pm[e])pm[e]='reader';});
+  for(const e of Object.keys(pm)){
+    try{await fetch('https://www.googleapis.com/drive/v3/files/'+id+'/permissions?sendNotificationEmail=false',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({role:pm[e],type:'user',emailAddress:e})});}catch(e2){}
   }
   __drvLeadF[nm]={id:id,url:'https://drive.google.com/drive/folders/'+id};
   return __drvLeadF[nm];
@@ -2458,7 +2466,7 @@ let TM_EDIT=null;
 function teamPanel(){
   if(MODE!=='db')return `<div class="panel"><h3>Team &amp; Zugänge</h3><div class="empty-col">Zugänge sind aktiv, sobald das CRM online mit Datenbank läuft.</div></div>`;
   const ed=TM_EDIT?TEAM.find(x=>x.id===TM_EDIT):null;
-  const rChk=['telefonist','analyst','berater','admin'].map(x=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:pointer"><input type="checkbox" class="tmR" value="${x}"${ed&&hasRole(ed,x)?' checked':(!ed&&x==='telefonist'?' checked':'')} style="width:14px;height:14px;accent-color:var(--brand)">${x.charAt(0).toUpperCase()+x.slice(1)}</label>`).join('');
+  const rChk=['telefonist','analyst','berater','assistenz','admin'].map(x=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:pointer"><input type="checkbox" class="tmR" value="${x}"${ed&&hasRole(ed,x)?' checked':(!ed&&x==='telefonist'?' checked':'')} style="width:14px;height:14px;accent-color:var(--brand)">${x.charAt(0).toUpperCase()+x.slice(1)}</label>`).join('');
   return `<div class="panel"><h3>Team &amp; Zugänge <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— jedes Mitglied meldet sich mit E-Mail + Passwort an und sieht nur die eigenen zugeteilten, freigegebenen Leads. Das Passwort legst du in der Firebase-Konsole an (Authentication → Users → Add user, gleiche E-Mail).</span></h3>
     <div class="st-list">${TEAM.length?TEAM.map(mm=>`<div class="gl" style="cursor:default;flex-wrap:wrap${TM_EDIT===mm.id?';border-color:var(--brand)':''}"><span class="gn">${esc(mm.name)}</span><span class="ph">${esc(mm.rolle)}</span><span class="ph">${esc(mm.email||'— keine E-Mail —')}</span><span class="ph tnum">${esc(mm.tel||'—')}</span>${mm.alias?`<span class="ph">alias: ${esc(mm.alias)}</span>`:''}${mm.tel?`<button class="mini-btn" data-waid="${esc(mm.id)}" title="Zugangsdaten per WhatsApp schicken – das Passwort wird abgefragt und nicht gespeichert">📲 Zugang senden</button>`:''}<button class="mini-btn" data-edid="${esc(mm.id)}">✏️ Bearbeiten</button><button class="mini-btn" data-rmid="${esc(mm.id)}" style="color:var(--bad)">Entfernen</button></div>`).join(''):'<div class="empty-col">Noch keine Zugänge – lege zuerst deinen eigenen Admin-Zugang an (mit deiner Anmelde-E-Mail).</div>'}</div>
     ${ed?`<div style="margin-top:10px;font-size:12.5px;font-weight:700;color:var(--brand-ink)">✏️ Du bearbeitest gerade: ${esc(ed.name)}</div>`:''}
@@ -2881,7 +2889,7 @@ function openModal(id){
         <input id="an-note" placeholder="Kurznotiz zur Übergabe (optional)" style="flex:1;min-width:170px;padding:8px 10px;font-size:12.5px">
         <button type="button" class="btn pri" id="an-send">📤 Abgeben</button>
       </div>
-      <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Dateien werden über deinen Google-Zugang im Ordner „CENSA Analysen" gespeichert – beim ersten Mal fragt Google einmal um Erlaubnis.${isNew?' · 💾 Beim Abgeben wird der neue Kunde automatisch mit angelegt.':''}</div>
+      <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Dateien werden über deinen Google-Zugang im Kunden-Ordner unter „CENSA Analysen" gespeichert – beim ersten Mal fragt Google einmal um Erlaubnis. Team-Mitglieder mit Rolle „Assistenz" können Berechnungen direkt in den Ordner legen; Analyst &amp; Berater sehen ihn automatisch in ihrem Drive unter „Für mich freigegeben".${isNew?' · 💾 Beim Abgeben wird der neue Kunde automatisch mit angelegt.':''}</div>
     </div>
     ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px" id="m-akte">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:6px">📖 Kunden-Akte <span style="font-weight:500;color:var(--ink-2);font-size:12px">– was bisher passiert ist (${(d.hist||[]).length+(d.calls||[]).length} Einträge, neueste zuerst)</span></div>
@@ -3000,7 +3008,7 @@ function openModal(id){
         const neu=[];
         if(files.length||recBlob){
           const tok=await driveToken();
-          const lf=await driveLeadFolder(tok,kurz); // je Kunde ein eigener, teilbarer Ordner
+          const lf=await driveLeadFolder(tok,kurz,d); // je Kunde ein eigener, teilbarer Ordner (Assistenz=schreiben, Analyst/Berater=lesen)
           for(const f of files){neu.push(Object.assign(await driveUpload(tok,f,kurz+' – '+f.name,lf.id),{von:who,ts:new Date().toISOString(),ordner:lf.url}));}
           if(recBlob){const ext=(recBlob.type||'').includes('mp4')?'m4a':'webm';neu.push(Object.assign(await driveUpload(tok,recBlob,kurz+' – Sprachnotiz '+tag+'.'+ext,lf.id),{von:who,ts:new Date().toISOString(),ordner:lf.url}));}
         }
