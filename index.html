@@ -326,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="30.10-G";
+const APP_VERSION="30.10-H";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1763,6 +1763,11 @@ async function chatAck(id){
   if(msg&&!(msg.ackBy||[]).includes(n)){msg.ackBy=[...(msg.ackBy||[]),n];updateTodoBadge();updateChatLog();}
   const my=personNames(n);
   const isMe=x=>my.includes((x||'').trim().toLowerCase());
+  // Kunden-Akte: Annahme einer Termin-Zuordnung dokumentieren
+  if(msg&&(msg.art==='analyse-zuord'||msg.art==='beratung-zuord')&&msg.dealId&&isMe(msg.ackWer)){
+    const da=state.deals.find(x=>x.id===msg.dealId);
+    if(da){histAdd(da,'Zuordnung ANGENOMMEN ('+(msg.art==='beratung-zuord'?'Berater':'Analyst')+')');dbPersist(da);}
+  }
   if(msg&&msg.art==='beratung-zuord'&&msg.dealId&&isMe(msg.ackWer)){
     const dd=state.deals.find(x=>x.id===msg.dealId);
     if(dd&&dd.status==='open'&&isMe(dd.berater)&&dd.stage==='Beratungstermin vereinbart'){
@@ -2851,6 +2856,14 @@ function openModal(id){
       </div>
       <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Dateien werden über deinen Google-Zugang im Ordner „CENSA Analysen" gespeichert – beim ersten Mal fragt Google einmal um Erlaubnis.${isNew?' · 💾 Beim Abgeben wird der neue Kunde automatisch mit angelegt.':''}</div>
     </div>
+    ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px" id="m-akte">
+      <div style="font-weight:800;font-size:13.5px;margin-bottom:6px">📖 Kunden-Akte <span style="font-weight:500;color:var(--ink-2);font-size:12px">– was bisher passiert ist (${(d.hist||[]).length+(d.calls||[]).length} Einträge, neueste zuerst)</span></div>
+      <div style="max-height:260px;overflow-y:auto;font-size:12px;line-height:1.75;color:var(--ink-2)">${(()=>{
+        const ic=t=>t.indexOf('☎')===0?'':(/ANGENOMMEN/.test(t)?'✅ ':/ABGELEHNT|ABGESAGT/.test(t)?'🚫 ':/Analyse abgegeben/.test(t)?'📤 ':/Übergabe/.test(t)?'📋 ':/Termin|Wiedervorlage/.test(t)?'📅 ':/Phase|Status/.test(t)?'🔁 ':/Zuordnung|Dispo|Telefonist|Analyst|Berater|Zuteilung|Aufteilen/.test(t)?'👤 ':/Förderung/.test(t)?'🎯 ':/Buchung|Website|Gründer/.test(t)?'🌐 ':/E-Mail|Briefing/.test(t)?'✉️ ':/Duplikat/.test(t)?'🔗 ':'📝 ');
+        const ev=[...(d.hist||[]).map(h=>({ts:h.ts,von:h.von,txt:h.txt})),...(d.calls||[]).map(c=>({ts:c.ts,von:c.von||d.telefonist||'',txt:'☎ Anruf: '+(c.outcome||'')+(c.dur?' ('+c.dur+' Min.)':'')+(c.note?' – '+c.note:'')}))].sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));
+        return ev.length?ev.map(e2=>{const t=e2.ts?new Date(e2.ts):null;const z=t?(String(t.getDate()).padStart(2,'0')+'.'+String(t.getMonth()+1).padStart(2,'0')+'.'+String(t.getFullYear()).slice(2)+' '+t.toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'})):'';return '<div style="padding:2px 0;border-bottom:1px dashed var(--line)"><span class="tnum" style="color:var(--ink-3)">'+z+'</span> · <b>'+esc(e2.von||'?')+'</b> · '+ic(e2.txt)+esc(e2.txt)+'</div>';}).join(''):'Noch nichts dokumentiert – jeder Anruf, jeder Termin, jeder Statuswechsel und jede Abgabe landet ab sofort automatisch hier.';
+      })()}</div>
+    </div>`:''}
     <div class="ehsec">
       <div class="ehhead">EH-Rechner <span class="ehtag">IVP-Einheitentabelle</span></div>
       <label class="chk2"><input type="checkbox" id="eh-telb" ${d.telBeteiligt?'checked':''}> Telefonist beteiligt (Analyst 25 % statt 50 %)</label>
@@ -2868,10 +2881,6 @@ function openModal(id){
       <div class="ehgrp"><div class="ehgt">Abschluss (Berater)</div><div id="eh-list-a"></div><div class="ehadd" id="eh-add-a"></div></div>
       <div class="ehtot" id="eh-tot"></div>
     </div>
-    ${!isNew?`<details style="margin:2px 0 12px"><summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--ink-2)">🕘 Verlauf – wer hat was geändert (${(d.hist||[]).length+(d.calls||[]).length})</summary><div style="max-height:230px;overflow-y:auto;font-size:11.5px;line-height:1.65;color:var(--ink-2);padding:8px 2px">${(()=>{
-      const ev=[...(d.hist||[]).map(h=>({ts:h.ts,von:h.von,txt:h.txt})),...(d.calls||[]).map(c=>({ts:c.ts,von:c.von||d.telefonist||'',txt:'☎ Anruf: '+(c.outcome||'')+(c.dur?' ('+c.dur+' Min.)':'')+(c.note?' – '+c.note:'')}))].sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));
-      return ev.length?ev.map(e2=>{const t=e2.ts?new Date(e2.ts):null;const z=t?(String(t.getDate()).padStart(2,'0')+'.'+String(t.getMonth()+1).padStart(2,'0')+'. '+t.toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'})):'';return '<div>'+z+' · <b>'+esc(e2.von||'?')+'</b> · '+esc(e2.txt)+'</div>';}).join(''):'Noch keine Änderungen erfasst.';
-    })()}</div></details>`:''}
     <div class="modal-foot">
       <button class="btn pri" id="m-save">Speichern</button>
       ${!isNew?`<button class="btn" id="m-ueb" ${d.uebergabe?'style="color:var(--good)"':''}>📋 Übergabe${d.uebergabe?' ✓':''}</button>`:''}
