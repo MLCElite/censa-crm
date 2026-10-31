@@ -326,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="30.10-L";
+const APP_VERSION="30.10-M";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2891,10 +2891,24 @@ function openModal(id){
       </div>
       <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Dateien werden über deinen Google-Zugang im Kunden-Ordner unter „CENSA Analysen" gespeichert – beim ersten Mal fragt Google einmal um Erlaubnis. Team-Mitglieder mit Rolle „Assistenz" können Berechnungen direkt in den Ordner legen; Analyst &amp; Berater sehen ihn automatisch in ihrem Drive unter „Für mich freigegeben".${isNew?' · 💾 Beim Abgeben wird der neue Kunde automatisch mit angelegt.':''}</div>
     </div>
+    ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid ${d.auswertung&&d.auswertung.status==='offen'?'var(--bad)':'var(--line)'};border-radius:12px" id="m-auswsec">
+      <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">🧮 Fall-Auswertung <span style="font-weight:500;color:var(--ink-2);font-size:12px">– die Assistenz wertet aus; Analyst &amp; Berater bekommen die Info automatisch als Aufgabe</span></div>
+      ${d.auswertung?(d.auswertung.status==='fertig'
+        ?`<div style="color:var(--good);font-weight:700;font-size:12.5px;margin:4px 0">✅ Fertig ausgewertet von ${esc(d.auswertung.von||'—')} am ${d.auswertung.ts?esc(new Date(d.auswertung.ts).toLocaleDateString('de-AT')):''} – alles liegt im Kunden-Ordner 📂</div>`
+        :`<div style="color:var(--bad);font-weight:700;font-size:12.5px;margin:4px 0">📩 Offen – es fehlt: ${esc(d.auswertung.fehlt||'')} <span style="color:var(--ink-3);font-weight:500">(gemeldet von ${esc(d.auswertung.von||'—')})</span></div>`):'<div style="font-size:12px;color:var(--ink-3);margin:2px 0">Noch keine Auswertung gemeldet.</div>'}
+      ${(isAdmin()||(ME&&hasRole(ME,'assistenz')))?`
+      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:6px">
+        <button type="button" class="btn pri" id="aw-fertig">✅ Fall fertig ausgewertet</button>
+      </div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:7px">
+        <input id="aw-text" placeholder="Was fehlt? z. B. Lohnzettel 09/26, Polizze …" style="flex:1;min-width:170px;padding:8px 10px;font-size:12.5px">
+        <button type="button" class="btn" id="aw-fehlt" style="border-color:var(--bad);color:var(--bad)">📩 Fehlt / einholen</button>
+      </div>`:''}
+    </div>`:''}
     ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px" id="m-akte">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:6px">📖 Kunden-Akte <span style="font-weight:500;color:var(--ink-2);font-size:12px">– was bisher passiert ist (${(d.hist||[]).length+(d.calls||[]).length} Einträge, neueste zuerst)</span></div>
       <div style="max-height:260px;overflow-y:auto;font-size:12px;line-height:1.75;color:var(--ink-2)">${(()=>{
-        const ic=t=>t.indexOf('☎')===0?'':(/ANGENOMMEN/.test(t)?'✅ ':/ABGELEHNT|ABGESAGT/.test(t)?'🚫 ':/Analyse abgegeben/.test(t)?'📤 ':/Übergabe/.test(t)?'📋 ':/Termin|Wiedervorlage/.test(t)?'📅 ':/Phase|Status/.test(t)?'🔁 ':/Zuordnung|Dispo|Telefonist|Analyst|Berater|Zuteilung|Aufteilen/.test(t)?'👤 ':/Förderung/.test(t)?'🎯 ':/Buchung|Website|Gründer/.test(t)?'🌐 ':/E-Mail|Briefing/.test(t)?'✉️ ':/Duplikat/.test(t)?'🔗 ':'📝 ');
+        const ic=t=>t.indexOf('☎')===0?'':(/ausgewertet/.test(t)?'🧮 ':/fehlen|einholen/i.test(t)?'📩 ':/ANGENOMMEN/.test(t)?'✅ ':/ABGELEHNT|ABGESAGT/.test(t)?'🚫 ':/Analyse abgegeben/.test(t)?'📤 ':/Übergabe/.test(t)?'📋 ':/Termin|Wiedervorlage/.test(t)?'📅 ':/Phase|Status/.test(t)?'🔁 ':/Zuordnung|Dispo|Telefonist|Analyst|Berater|Zuteilung|Aufteilen/.test(t)?'👤 ':/Förderung/.test(t)?'🎯 ':/Buchung|Website|Gründer/.test(t)?'🌐 ':/E-Mail|Briefing/.test(t)?'✉️ ':/Duplikat/.test(t)?'🔗 ':'📝 ');
         const ev=[...(d.hist||[]).map(h=>({ts:h.ts,von:h.von,txt:h.txt})),...(d.calls||[]).map(c=>({ts:c.ts,von:c.von||d.telefonist||'',txt:'☎ Anruf: '+(c.outcome||'')+(c.dur?' ('+c.dur+' Min.)':'')+(c.note?' – '+c.note:'')}))].sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));
         return ev.length?ev.map(e2=>{const t=e2.ts?new Date(e2.ts):null;const z=t?(String(t.getDate()).padStart(2,'0')+'.'+String(t.getMonth()+1).padStart(2,'0')+'.'+String(t.getFullYear()).slice(2)+' '+t.toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'})):'';return '<div style="padding:2px 0;border-bottom:1px dashed var(--line)"><span class="tnum" style="color:var(--ink-3)">'+z+'</span> · <b>'+esc(e2.von||'?')+'</b> · '+ic(e2.txt)+esc(e2.txt)+'</div>';}).join(''):'Noch nichts dokumentiert – jeder Anruf, jeder Termin, jeder Statuswechsel und jede Abgabe landet ab sofort automatisch hier.';
       })()}</div>
@@ -3028,6 +3042,31 @@ function openModal(id){
       }
     });
   }
+  const awF=m.querySelector('#aw-fertig');
+  if(awF)awF.addEventListener('click',()=>{
+    collect();
+    const who=chatName()||'—',nm=d.name||d.org||'—';
+    d.auswertung={status:'fertig',von:who,ts:new Date().toISOString()};
+    histAdd(d,'Fall fertig ausgewertet (Assistenz: '+who+')');
+    const ziele=[...new Set([d.analyst,d.berater].map(x=>(x||'').trim()).filter(Boolean))];
+    if(ziele.length)ziele.forEach(z=>chatSys('🧮 Fall fertig ausgewertet: '+nm+' – Berechnungen & Unterlagen liegen im Kunden-Ordner (📂 im Lead). Bitte ansehen!',d,z));
+    else chatSys('🧮 Fall fertig ausgewertet: '+nm+' – ACHTUNG: noch kein Analyst/Berater zugeordnet.',d,'__admin__');
+    persist();openModal(d.id);
+    toast('✅ Info als Aufgabe bei: '+(ziele.join(' & ')||'Melanie (niemand zugeordnet)'));
+  });
+  const awX=m.querySelector('#aw-fehlt');
+  if(awX)awX.addEventListener('click',()=>{
+    const t=(m.querySelector('#aw-text').value||'').trim();
+    if(t.length<3){toast('Bitte kurz eintragen, WAS fehlt – sonst weiß niemand, was einzuholen ist');return;}
+    collect();
+    const who=chatName()||'—',nm=d.name||d.org||'—';
+    d.auswertung={status:'offen',fehlt:t.slice(0,300),von:who,ts:new Date().toISOString()};
+    histAdd(d,'Unterlagen fehlen / einholen (Assistenz: '+who+'): '+t.slice(0,200));
+    const ziel=(d.analyst||'').trim()||(d.berater||'').trim()||'__admin__';
+    chatSys('📩 Unterlagen einholen bei '+nm+': '+t.slice(0,200)+' – gemeldet von '+who+'. Bitte beim Kunden nachfassen!',d,ziel);
+    persist();openModal(d.id);
+    toast('📩 Einhol-Aufgabe liegt bei '+(ziel==='__admin__'?'Melanie (niemand zugeordnet)':ziel));
+  });
   const fb=m.querySelector('#m-frei');
   if(fb)fb.addEventListener('click',()=>{collect();d.geprueft=true;persist();closeModal();toast('Freigegeben – jetzt in der Liste dem Telefonisten zuteilen');});
   const agx=m.querySelector('#cal-ag-x');
