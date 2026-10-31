@@ -326,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="30.10-O";
+const APP_VERSION="30.10-P";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -407,7 +407,8 @@ async function inboxImport(){
       if(!ex)return; // Lead (noch) nicht im CRM – Doc liegen lassen für den nächsten Durchgang
       del.push(doc.id);
       let ch=false;
-      [['umsatz','umsatz'],['gewinn','gewinn'],['anlage','anlage'],['sachanlage','sachanlage'],['finanzanlage','finanzanlage'],['finanzJahr','finanzJahr']].forEach(p=>{if(r[p[0]]!=null&&(''+r[p[0]]).trim()&&!(''+(ex[p[1]]||'')).trim()){ex[p[1]]=(''+r[p[0]]).trim();ch=true;}});
+      [['umsatz','umsatz'],['gewinn','gewinn'],['anlage','anlage'],['sachanlage','sachanlage'],['finanzanlage','finanzanlage'],['finanzJahr','finanzJahr'],['strasse','strasse'],['plz','plz'],['ort','ort']].forEach(p=>{if(r[p[0]]!=null&&(''+r[p[0]]).trim()&&!(''+(ex[p[1]]||'')).trim()){ex[p[1]]=(''+r[p[0]]).trim();ch=true;}});
+      if((ex.plz||'').trim()&&!(ex.bezirk||'').trim()){const b2=bezFromPLZ(ex.plz);if(b2){ex.bezirk=b2;ch=true;}}
       if(r.notiz&&(ex.notizen||'').indexOf((''+r.notiz).slice(0,40))<0){ex.notizen=(r.notiz+'\n'+(ex.notizen||'')).slice(0,8000);ch=true;}
       if(ch&&upd.indexOf(ex)<0&&neu.indexOf(ex)<0){upd.push(ex);zahlen++;}
       else if(ch&&neu.indexOf(ex)>=0)zahlen++;
@@ -678,7 +679,7 @@ function listeDetailHtml(d){
       ${d.telefon?`<a href="tel:${esc((d.telefon||'').replace(/[^+\d]/g,''))}" class="dv" style="color:var(--brand-ink);font-weight:700">☎ ${esc(d.telefon)}</a>`:'<span class="dv">☎ —</span>'}
       <span class="dv">✉ ${esc(d.email||'—')}</span>
       <span class="dv">📍 ${esc([d.strasse,d.plz,d.ort].filter(Boolean).join(', ')||'—')}${d.bezirk?' · '+esc(d.bezirk):''}</span>
-      <span class="dv">${badge(d.kundentyp)} ${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''} ${eh>0?`<span class="tg" style="background:var(--brand-bg);color:var(--brand-ink)">${eh.toFixed(0)} EH</span>`:''} ${naInfo(d)}</span>
+      <span class="dv">${badge(d.kundentyp)} ${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''} ${eh>0?`<span class="tg" style="background:var(--brand-bg);color:var(--brand-ink)">${eh.toFixed(0)} EH</span>`:''} ${naInfo(d)} ${adrBadge(d)}</span>
     </div>
     <div class="dcol">
       <div class="dl">Zuteilung (sofort gespeichert)</div>
@@ -1042,7 +1043,7 @@ function dialerCard(d){
   return `<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:22px 24px;max-width:640px">
     <div style="font-size:23px;font-weight:800;letter-spacing:-.4px">${esc(d.name||d.org||'—')}</div>
     ${d.org&&d.name!==d.org?`<div style="font-size:13px;color:var(--ink-2)">${esc(d.org)}</div>`:''}
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${badge(d.kundentyp)}${(d.gp&&isAdmin())?'<span class="tg gpb">GP?</span>':''}${d.bezirk?`<span class="tg">${esc(d.bezirk)}</span>`:''}${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''}${isOverdue(d)?'<span class="tg od">überfällig</span>':''}${naInfo(d)}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${badge(d.kundentyp)}${(d.gp&&isAdmin())?'<span class="tg gpb">GP?</span>':''}${d.bezirk?`<span class="tg">${esc(d.bezirk)}</span>`:''}${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''}${isOverdue(d)?'<span class="tg od">überfällig</span>':''}${naInfo(d)}${adrBadge(d)}</div>
     <div style="display:flex;align-items:center;gap:13px;margin:16px 0;padding:14px 16px;background:var(--surface-2);border:1px solid var(--line);border-radius:12px">
       <div id="t-telnum" title="Doppelklick = Nummer kopieren" style="font-size:21px;font-weight:800;flex:1;cursor:copy;user-select:all" class="tnum">${esc(d.telefon||'— keine Nummer —')}</div>
       ${d.telefon?`<a class="btn pri" id="t-call" href="tel:${esc(tel)}" style="font-size:15px;padding:11px 20px">☎ Anrufen</a>`:''}
@@ -1485,7 +1486,7 @@ function renderSteuerung(){
     return r(a)-r(b)||a.m.dt-b.m.dt;
   });
   const dRow=(x,role,names)=>{const d=x.d,mm=x.m,rot=!!(mm.urg||mm.neu);
-    return `<div class="gl" style="cursor:default;flex-wrap:wrap${rot?';border:1.5px solid var(--bad);background:var(--bad-bg,rgba(220,60,60,.08))':''}">${mm.urg?`<span class="tg" style="background:var(--bad);color:#fff;font-weight:800">🔴 ${mm.urg}</span>`:(mm.neu?`<span class="tg" style="background:var(--bad);color:#fff;font-weight:800">🆕 NEU</span>`:'')}<span class="gn" style="cursor:pointer" data-open="${d.id}">${esc(d.name||d.org||'—')}</span><span class="ph tnum"${mm.urg?' style="color:var(--bad);font-weight:800"':''}>${esc((role==='analyst'?d.datumAG:d.datumBG)||d.wiedervorlage||'— Termin fehlt —')}</span><select data-dsel="${d.id}" style="width:150px;padding:5px 8px;font-size:12px"><option value="">wählen…</option>${names.map(n=>`<option>${esc(n)}</option>`).join('')}</select><button class="mini-btn" data-dispo="${d.id}" data-role="${role}">Zuordnen</button></div>`;};
+    return `<div class="gl" style="cursor:default;flex-wrap:wrap${rot?';border:1.5px solid var(--bad);background:var(--bad-bg,rgba(220,60,60,.08))':''}">${mm.urg?`<span class="tg" style="background:var(--bad);color:#fff;font-weight:800">🔴 ${mm.urg}</span>`:(mm.neu?`<span class="tg" style="background:var(--bad);color:#fff;font-weight:800">🆕 NEU</span>`:'')}<span class="gn" style="cursor:pointer" data-open="${d.id}">${esc(d.name||d.org||'—')}</span>${adrBadge(d)}<span class="ph tnum"${mm.urg?' style="color:var(--bad);font-weight:800"':''}>${esc((role==='analyst'?d.datumAG:d.datumBG)||d.wiedervorlage||'— Termin fehlt —')}</span><select data-dsel="${d.id}" style="width:150px;padding:5px 8px;font-size:12px"><option value="">wählen…</option>${names.map(n=>`<option>${esc(n)}</option>`).join('')}</select><button class="mini-btn" data-dispo="${d.id}" data-role="${role}">Zuordnen</button></div>`;};
   const t0=todayStr();
   const proto={};
   state.deals.forEach(d=>(d.calls||[]).forEach(c=>{
@@ -2955,6 +2956,9 @@ function histAdd(d,txt){
   if(d.hist.length>80)d.hist=d.hist.slice(-80);
 }
 function naInfo(d){const na=(d.calls||[]).filter(c=>c.outcome==='nichterreicht');return na.length?`<span class="tg od">n.a. ${na.length}× · zuletzt ${fmtD(na[na.length-1].ts)}</span>`:'';}
+// Lead ohne Adresse ist fatal (Melanies Regel 31.10.) – Badge überall, wo gearbeitet wird
+function adrFehlt(d){return !((d.strasse||'').trim()&&((d.plz||'')+(d.ort||'')).trim());}
+function adrBadge(d){return adrFehlt(d)?'<span class="tg od" title="Straße + PLZ/Ort bitte beim nächsten Kontakt erfragen und eintragen!">📍 Adresse fehlt</span>':'';}
 function openModal(id){
   const d=id?state.deals.find(x=>x.id===id):blank();
   if(id&&!d){toast('Lead nicht gefunden oder für dich nicht sichtbar');return;}
