@@ -46,7 +46,7 @@
     <div class="hint">Bitte bei JEDEM Termin wählen. Zugeteilt wird fair im Anschluss – du bekommst die fixe Einladung per Kalender.</div>
   </div>
   <div id="ok"><div class="big">✅</div><h2>Danke!</h2><p>Deine Auswahl ist angekommen. Die Zuteilung kommt in Kürze als Kalender-Einladung – nur für Termine, die dir fix zugeteilt wurden.</p></div>
-  <div id="leer"><div style="font-size:40px">🌙</div><h2>Keine offene Runde</h2><p>Diese Verteilungsrunde ist schon abgeschlossen oder der Link ist nicht mehr gültig.</p></div>
+  <div id="leer"><div style="font-size:40px">🌙</div><h2 id="leer-h">Keine offene Runde</h2><p id="leer-p">Diese Verteilungsrunde ist schon abgeschlossen oder der Link ist nicht mehr gültig.</p></div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
@@ -60,17 +60,28 @@ const RID=(Q.get('r')||'').replace(/[^\w-]/g,'').slice(0,40);
 const TOK=(Q.get('p')||'').replace(/[^\w-]/g,'').slice(0,40);
 const WAHL={}; let TERMINE=[],NAME='',ROLLE='';
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-function zeigLeer(){document.getElementById('formteil').style.display='none';document.getElementById('leer').style.display='block';}
+function zeigLeer(h,p){
+  document.getElementById('formteil').style.display='none';
+  document.getElementById('leer').style.display='block';
+  if(h)document.getElementById('leer-h').textContent=h;
+  if(p)document.getElementById('leer-p').textContent=p;
+}
+function zeigFehler(e){
+  const c=(e&&e.code)||'';
+  if(c==='resource-exhausted')zeigLeer('Kurz überlastet ⏳','Das Tageslimit unserer Datenbank ist erreicht. Bitte versuch es morgen Vormittag noch einmal – dein Link bleibt gültig.');
+  else if(c==='permission-denied')zeigLeer('Freigabe fehlt noch 🔒','Die Seite ist noch nicht freigeschaltet. Bitte kurz bei Melanie melden (Stichwort: Firestore-Regeln für die Abend-Verteilung).');
+  else zeigLeer('Gerade nicht erreichbar','Bitte später noch einmal versuchen – dein Link bleibt gültig.');
+}
 function pruef(){document.getElementById('senden').disabled=!(TERMINE.length&&TERMINE.every(t=>WAHL[t.tid]==='ja'||WAHL[t.tid]==='nein'));}
 async function lade(){
   if(!RID||!TOK){zeigLeer();return;}
   let doc;
-  try{doc=await fs.collection('dispoRunden').doc(RID).get();}catch(e){zeigLeer();return;}
-  if(!doc.exists){zeigLeer();return;}
+  try{doc=await fs.collection('dispoRunden').doc(RID).get();}catch(e){zeigFehler(e);return;}
+  if(!doc.exists){zeigLeer('Link nicht (mehr) gültig','Diese Runde gibt es nicht mehr – bitte den neuesten Link aus der Nachricht verwenden.');return;}
   const r=doc.data()||{};
-  if(r.offen===false){zeigLeer();return;}
+  if(r.offen===false){zeigLeer('Runde abgeschlossen ✔','Diese Verteilung ist schon erledigt. Wenn dir ein Termin zugeteilt wurde, hast du die Kalender-Einladung bekommen.');return;}
   const me=(r.pers||{})[TOK];
-  if(!me){zeigLeer();return;}
+  if(!me){zeigLeer('Link nicht (mehr) gültig','Bitte den persönlichen Link aus deiner Nachricht verwenden.');return;}
   NAME=me.name||'';
   const rollen=me.rollen||[me.rolle].filter(Boolean);
   TERMINE=(r.termine||[]).filter(t=>rollen.includes(t.rolle));
