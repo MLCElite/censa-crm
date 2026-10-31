@@ -326,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="30.10-H";
+const APP_VERSION="30.10-I";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2032,7 +2032,12 @@ async function driveFolder(tok){
   if(j.files&&j.files.length){__drvFolder=j.files[0].id;return __drvFolder;}
   r=await fetch('https://www.googleapis.com/drive/v3/files',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({name:'CENSA Analysen',mimeType:'application/vnd.google-apps.folder'})});
   j=await r.json();
-  if(!j.id)throw new Error('Drive-Ordner konnte nicht angelegt werden');
+  if(!j.id){
+    const em=((j.error&&j.error.message)||'')+' '+((j.error&&j.error.status)||'');
+    if(r.status===403&&/has not been used|is disabled|accessNotConfigured|SERVICE_DISABLED|PERMISSION_DENIED/i.test(em))
+      throw new Error('Google Drive ist für CENSA noch nicht freigeschaltet (einmalige Aktivierung durch Melanie in der Google-Konsole nötig). Deine Notiz wurde NICHT gespeichert – bitte später noch einmal abgeben.');
+    throw new Error('Drive-Ordner konnte nicht angelegt werden'+((j.error&&j.error.message)?' – Google sagt: '+j.error.message.slice(0,140):''));
+  }
   __drvFolder=j.id;return __drvFolder;
 }
 async function driveUpload(tok,blob,name){
