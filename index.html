@@ -326,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="30.10-N";
+const APP_VERSION="30.10-O";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -366,6 +366,12 @@ async function dbPersistMany(list){
   }catch(e){toast('Speichern fehlgeschlagen'+(e&&e.code?' ('+e.code+')':''));return false;}
 }
 function setDbState(txt,color){const el=document.getElementById('dbState');if(el){el.innerHTML=txt;el.style.color=color||'';}}
+// Cache-first-Start (31.10.): Erstanzeige aus dem Geräte-Cache (schnell, 0 Server-Lesevorgänge);
+// nur beim allerersten Öffnen auf einem Gerät einmal vom Server. Danach hält onSnapshot aktuell.
+async function ladeStart(col,n){
+  try{const c=await col.limit(n).get({source:'cache'});if(c&&!c.empty)return c;}catch(e){}
+  return await col.limit(n).get();
+}
 
 /* ---------- Lead-Briefkasten (29.10.): Sammlung "leadInbox" in Firestore ----------
    Die Sonntags-Routinen (GmbH-Leads, Recruiting) und Claudes Zahlen-Läufe schreiben
@@ -3749,9 +3755,9 @@ lsLoad();render();
     setDbState('🔐 Lade Daten…','var(--warn)');
     try{
       try{await fs.enablePersistence({synchronizeTabs:true});}catch(e){}
-      const t0=await teamCol.limit(200).get();
+      const t0=await ladeStart(teamCol,200);
       TEAM=t0.docs.map(s=>{const m=Object.assign({},s.data()||{});m.id=s.id;return m;});
-      const s0=await dealsCol.limit(10000).get();
+      const s0=await ladeStart(dealsCol,10000);
       MODE='db';
       state.deals=s0.docs.map(s=>{const b=Object.assign(blank(),s.data());b.id=s.id;return b;});
       matchMe();
