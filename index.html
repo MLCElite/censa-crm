@@ -326,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="30.10-I";
+const APP_VERSION="30.10-J";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2040,8 +2040,27 @@ async function driveFolder(tok){
   }
   __drvFolder=j.id;return __drvFolder;
 }
-async function driveUpload(tok,blob,name){
-  const folder=await driveFolder(tok);
+const __drvLeadF={};
+async function driveLeadFolder(tok,kunde){ // je Kunde ein Unterordner in „CENSA Analysen" – teilbar als Ganzes
+  const nm=(kunde||'Kunde').slice(0,60);
+  if(__drvLeadF[nm])return __drvLeadF[nm];
+  const root=await driveFolder(tok);
+  const q=encodeURIComponent("name='"+nm.replace(/'/g,"\\'")+"' and '"+root+"' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false");
+  let r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id)',{headers:{Authorization:'Bearer '+tok}});
+  let j=await r.json();
+  let id=(j.files&&j.files.length)?j.files[0].id:null;
+  if(!id){
+    r=await fetch('https://www.googleapis.com/drive/v3/files',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({name:nm,mimeType:'application/vnd.google-apps.folder',parents:[root]})});
+    j=await r.json();
+    if(!j.id)throw new Error('Kunden-Ordner konnte nicht angelegt werden'+((j.error&&j.error.message)?' – Google sagt: '+j.error.message.slice(0,140):''));
+    id=j.id;
+    try{await fetch('https://www.googleapis.com/drive/v3/files/'+id+'/permissions',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({role:'reader',type:'anyone'})});}catch(e){}
+  }
+  __drvLeadF[nm]={id:id,url:'https://drive.google.com/drive/folders/'+id};
+  return __drvLeadF[nm];
+}
+async function driveUpload(tok,blob,name,folderId){
+  const folder=folderId||await driveFolder(tok);
   const fd=new FormData();
   fd.append('metadata',new Blob([JSON.stringify({name:name,parents:[folder]})],{type:'application/json'}));
   fd.append('file',blob);
@@ -2846,7 +2865,10 @@ function openModal(id){
     </div>
     <div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--brand);border-radius:12px" id="m-analysesec">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">📤 Analyse abgeben <span style="font-weight:500;color:var(--ink-2);font-size:12px">– PDF/Fotos + Sprachnotiz landen direkt hier beim Kunden (statt in WhatsApp)</span></div>
-      ${(d.analyse&&d.analyse.length)?`<div style="font-size:12.5px;margin:6px 0;display:flex;flex-direction:column;gap:3px">${d.analyse.map(a=>`<div>📎 <a href="${esc(a.url)}" target="_blank" rel="noopener" style="color:var(--brand-ink);font-weight:700">${esc(a.name)}</a> <span style="color:var(--ink-3)">· ${esc(a.von||'')}${a.ts?' · '+esc(new Date(a.ts).toLocaleDateString('de-AT')):''}</span></div>`).join('')}</div>`:''}
+      ${(d.analyse&&d.analyse.length)?`<div style="font-size:12.5px;margin:6px 0;display:flex;flex-direction:column;gap:3px">${(()=>{
+        const ords=[];(d.analyse||[]).forEach(a=>{if(a.ordner&&!ords.some(o=>o.url===a.ordner))ords.push({url:a.ordner,von:a.von||''});});
+        return ords.map(o=>`<div>📂 <a href="${esc(o.url)}" target="_blank" rel="noopener" style="color:var(--brand-ink);font-weight:800">Kunden-Ordner im Drive${o.von?' von '+esc(o.von):''}</a> <span style="color:var(--ink-3)">· zum Teilen einfach diesen Link weitergeben</span></div>`).join('');
+      })()}${d.analyse.map(a=>`<div>📎 <a href="${esc(a.url)}" target="_blank" rel="noopener" style="color:var(--brand-ink);font-weight:700">${esc(a.name)}</a> <span style="color:var(--ink-3)">· ${esc(a.von||'')}${a.ts?' · '+esc(new Date(a.ts).toLocaleDateString('de-AT')):''}</span></div>`).join('')}</div>`:''}
       <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:6px">
         <input type="file" id="an-file" accept="application/pdf,image/*" multiple style="display:none">
         <input type="file" id="an-scan" accept="image/*" capture="environment" style="display:none">
@@ -2978,8 +3000,9 @@ function openModal(id){
         const neu=[];
         if(files.length||recBlob){
           const tok=await driveToken();
-          for(const f of files){neu.push(Object.assign(await driveUpload(tok,f,kurz+' – '+f.name),{von:who,ts:new Date().toISOString()}));}
-          if(recBlob){const ext=(recBlob.type||'').includes('mp4')?'m4a':'webm';neu.push(Object.assign(await driveUpload(tok,recBlob,kurz+' – Sprachnotiz '+tag+'.'+ext),{von:who,ts:new Date().toISOString()}));}
+          const lf=await driveLeadFolder(tok,kurz); // je Kunde ein eigener, teilbarer Ordner
+          for(const f of files){neu.push(Object.assign(await driveUpload(tok,f,kurz+' – '+f.name,lf.id),{von:who,ts:new Date().toISOString(),ordner:lf.url}));}
+          if(recBlob){const ext=(recBlob.type||'').includes('mp4')?'m4a':'webm';neu.push(Object.assign(await driveUpload(tok,recBlob,kurz+' – Sprachnotiz '+tag+'.'+ext,lf.id),{von:who,ts:new Date().toISOString(),ordner:lf.url}));}
         }
         collect();
         d.analyse=(d.analyse||[]).concat(neu);
