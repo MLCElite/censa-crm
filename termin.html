@@ -161,6 +161,16 @@ function paint(){
   b.disabled=!(gmbh==='ja'&&selDay&&selTime);
   b.textContent=(gmbh!=='ja')?'Bitte zuerst oben „Ja" wählen':(selTime?('✅ Termin fixieren: '+fmtD(selDay)+' um '+selTime):'Bitte Uhrzeit wählen …');
 }
+// Herkunft aus der Werbung/Website (?src=…&fehler=…&typ=…) in die Buchungs-Notiz übernehmen – fürs Selektieren im CRM
+const HERKUNFT=(()=>{try{
+  const q=new URLSearchParams(location.search),t=[];
+  const s=v=>(v||'').replace(/[^\wäöüÄÖÜß\- ]/g,'').slice(0,30);
+  if(q.get('src'))t.push('Quelle: '+s(q.get('src')));
+  if(q.get('typ'))t.push('Typ: '+s(q.get('typ')));
+  if(q.get('fehler')!==null&&q.get('fehler')!=='')t.push('Fehler-Check: '+s(q.get('fehler'))+'/5');
+  return t.join(' · ');
+}catch(e){return '';}})();
+function mitHerkunft(m){return HERKUNFT?((m?m+' | ':'')+HERKUNFT):m;}
 document.getElementById('g-ja').addEventListener('click',()=>{gmbh='ja';document.getElementById('g-ja').classList.add('on');document.getElementById('g-nein').classList.remove('on');document.getElementById('nein-teil').classList.add('hide');document.getElementById('card-termin').classList.remove('hide');document.getElementById('card-daten').classList.remove('hide');paint();});
 document.getElementById('g-nein').addEventListener('click',()=>{gmbh='nein';document.getElementById('g-nein').classList.add('on');document.getElementById('g-ja').classList.remove('on');document.getElementById('nein-teil').classList.remove('hide');document.getElementById('card-termin').classList.add('hide');document.getElementById('card-daten').classList.add('hide');});
 // Zusatzfragen (GF / Mitarbeiter / Gewinn)
@@ -182,7 +192,7 @@ document.getElementById('gr-send').addEventListener('click',async()=>{
   if(name.length<2||tel.length<6){err.textContent='Bitte Name und Telefonnummer ausfüllen.';err.style.display='block';return;}
   const btn=document.getElementById('gr-send');btn.disabled=true;btn.textContent='Sende …';
   try{
-    await fs.collection('buchungen').add({typ:'gruender',slot:'',name,firma:'',tel,email:'',msg:document.getElementById('gr-msg').value.trim(),ts:new Date().toISOString()});
+    await fs.collection('buchungen').add({typ:'gruender',slot:'',name,firma:'',tel,email:'',msg:mitHerkunft(document.getElementById('gr-msg').value.trim()),ts:new Date().toISOString()});
     document.getElementById('form-teil').classList.add('hide');
     document.getElementById('ok-teil').classList.remove('hide');
     document.getElementById('ok-h2').textContent='Danke, '+name.split(' ')[0]+'!';
@@ -207,7 +217,7 @@ document.getElementById('buchen').addEventListener('click',async()=>{
   try{
     const batch=fs.batch();
     batch.set(fs.collection('slots').doc(sid+'__'+Math.random().toString(36).slice(2,8)),{b:1,ts:new Date().toISOString()});
-    batch.set(fs.collection('buchungen').doc(),{typ:'termin',slot:sid,name,firma,tel,email:mail,msg:document.getElementById('f-msg').value.trim(),gf:ANT.gf,ma:ANT.ma,gewinn:ANT.gewinn,wo:WO,str:WO==='kunde'?str:'',plz:WO==='kunde'?plz:'',stadt:WO==='kunde'?stadt:'',ts:new Date().toISOString()});
+    batch.set(fs.collection('buchungen').doc(),{typ:'termin',slot:sid,name,firma,tel,email:mail,msg:mitHerkunft(document.getElementById('f-msg').value.trim()),gf:ANT.gf,ma:ANT.ma,gewinn:ANT.gewinn,wo:WO,str:WO==='kunde'?str:'',plz:WO==='kunde'?plz:'',stadt:WO==='kunde'?stadt:'',ts:new Date().toISOString()});
     await batch.commit();
     document.getElementById('form-teil').classList.add('hide');
     document.getElementById('ok-teil').classList.remove('hide');
