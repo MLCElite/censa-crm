@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CENSA · Termin-Auswahl</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%230C806D'/%3E%3Ctext x='50' y='68' font-size='58' font-weight='bold' font-family='Segoe UI,Arial' fill='white' text-anchor='middle'%3EC%3C/text%3E%3C/svg%3E">
+<style>
+  :root{--brand:#0C806D;--brand-ink:#0A5A4C;--ink:#17241F;--ink2:#46564F;--ink3:#7B8A84;--bg2:#F2F8F6;--line:#DCE6E2;--good:#1E9E6A;--bad:#C0392B}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:var(--ink);background:var(--bg2);line-height:1.55;font-size:16px;padding:16px}
+  .card{max-width:560px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 18px 50px -28px rgba(12,128,109,.4)}
+  .logo{font-size:22px;font-weight:800;letter-spacing:3px;color:var(--brand)}
+  .logo small{display:block;font-size:8.5px;letter-spacing:.4px;color:var(--ink3);font-weight:600;line-height:1.1}
+  h1{font-size:20px;margin:14px 0 4px}
+  .sub{color:var(--ink2);font-size:14px;margin-bottom:16px}
+  .t{border:1.5px solid var(--line);border-radius:14px;padding:13px 14px;margin-bottom:11px}
+  .t .typ{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:#fff;background:var(--brand);border-radius:99px;padding:2px 10px}
+  .t .typ.bg{background:#8E5BC0}
+  .t .wann{font-size:17px;font-weight:800;margin:6px 0 2px}
+  .t .wo{font-size:13.5px;color:var(--ink2)}
+  .wahl{display:flex;gap:8px;margin-top:10px}
+  .wbtn{flex:1;border:2px solid var(--line);background:#fff;border-radius:11px;padding:11px 8px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;color:var(--ink2);transition:.12s}
+  .wbtn.ja.on{border-color:var(--good);background:#E9F7F0;color:var(--good)}
+  .wbtn.nein.on{border-color:var(--bad);background:#FBEEEC;color:var(--bad)}
+  .send{display:block;width:100%;background:var(--brand);color:#fff;border:none;border-radius:13px;padding:15px;font-size:17px;font-weight:800;cursor:pointer;font-family:inherit;margin-top:14px}
+  .send:disabled{opacity:.55;cursor:default}
+  .hint{font-size:12px;color:var(--ink3);margin-top:10px;text-align:center}
+  .err{display:none;background:#FBEEEC;border:1px solid var(--bad);color:var(--bad);border-radius:10px;padding:9px 12px;font-size:13.5px;font-weight:600;margin-top:10px}
+  #ok,#leer{display:none;text-align:center;padding:26px 6px}
+  #ok .big{font-size:40px}
+  #ok h2{margin:8px 0 4px}
+  #ok p,#leer p{color:var(--ink2);font-size:14.5px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">CENSA<small>Wir übernehmen die Vorsorge.<br>Sie führen die GmbH.</small></div>
+  <div id="formteil">
+    <h1 id="hallo">Termin-Auswahl</h1>
+    <div class="sub" id="sub">Lade Termine …</div>
+    <div id="liste"></div>
+    <button class="send" id="senden" disabled>Auswahl absenden</button>
+    <div class="err" id="err"></div>
+    <div class="hint">Bitte bei JEDEM Termin wählen. Zugeteilt wird fair im Anschluss – du bekommst die fixe Einladung per Kalender.</div>
+  </div>
+  <div id="ok"><div class="big">✅</div><h2>Danke!</h2><p>Deine Auswahl ist angekommen. Die Zuteilung kommt in Kürze als Kalender-Einladung – nur für Termine, die dir fix zugeteilt wurden.</p></div>
+  <div id="leer"><div style="font-size:40px">🌙</div><h2>Keine offene Runde</h2><p>Diese Verteilungsrunde ist schon abgeschlossen oder der Link ist nicht mehr gültig.</p></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>
+const FIREBASE_CONFIG={apiKey:"AIzaSyBrj8TmlY0bXVsplnwUl1ZBK5OhWqsaQjs",authDomain:"censa-crm.firebaseapp.com",projectId:"censa-crm",storageBucket:"censa-crm.firebasestorage.app",messagingSenderId:"289633541904",appId:"1:289633541904:web:3fbcada3344a6b32c50f95"};
+firebase.initializeApp(FIREBASE_CONFIG);
+const fs=firebase.firestore();
+const Q=new URLSearchParams(location.search);
+const RID=(Q.get('r')||'').replace(/[^\w-]/g,'').slice(0,40);
+const TOK=(Q.get('p')||'').replace(/[^\w-]/g,'').slice(0,40);
+const WAHL={}; let TERMINE=[],NAME='',ROLLE='';
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function zeigLeer(){document.getElementById('formteil').style.display='none';document.getElementById('leer').style.display='block';}
+function pruef(){document.getElementById('senden').disabled=!(TERMINE.length&&TERMINE.every(t=>WAHL[t.tid]==='ja'||WAHL[t.tid]==='nein'));}
+async function lade(){
+  if(!RID||!TOK){zeigLeer();return;}
+  let doc;
+  try{doc=await fs.collection('dispoRunden').doc(RID).get();}catch(e){zeigLeer();return;}
+  if(!doc.exists){zeigLeer();return;}
+  const r=doc.data()||{};
+  if(r.offen===false){zeigLeer();return;}
+  const me=(r.pers||{})[TOK];
+  if(!me){zeigLeer();return;}
+  NAME=me.name||'';
+  const rollen=me.rollen||[me.rolle].filter(Boolean);
+  TERMINE=(r.termine||[]).filter(t=>rollen.includes(t.rolle));
+  document.getElementById('hallo').textContent='Hallo '+(NAME.split(' ')[0]||NAME)+'!';
+  if(!TERMINE.length){document.getElementById('sub').textContent='Für dich gibt es in dieser Runde keine offenen Termine.';document.getElementById('senden').style.display='none';return;}
+  document.getElementById('sub').textContent='Neue Termine – sag uns bei jedem, ob du kannst:';
+  document.getElementById('liste').innerHTML=TERMINE.map(t=>`
+    <div class="t">
+      <span class="typ${t.rolle==='berater'?' bg':''}">${t.rolle==='berater'?'Beratung':'Analyse'}</span>
+      <div class="wann">📅 ${esc(t.wann||'Termin folgt')}</div>
+      <div class="wo">📍 ${esc(t.ort||'Ort folgt')}</div>
+      <div class="wahl">
+        <button type="button" class="wbtn ja" data-tid="${esc(t.tid)}" data-k="ja">✓ Ich kann</button>
+        <button type="button" class="wbtn nein" data-tid="${esc(t.tid)}" data-k="nein">✗ Ich kann nicht</button>
+      </div>
+    </div>`).join('');
+  document.querySelectorAll('.wbtn').forEach(b=>b.addEventListener('click',()=>{
+    WAHL[b.dataset.tid]=b.dataset.k;
+    document.querySelectorAll('.wbtn[data-tid="'+b.dataset.tid+'"]').forEach(x=>x.classList.toggle('on',x===b));
+    pruef();
+  }));
+}
+document.getElementById('senden').addEventListener('click',async()=>{
+  const err=document.getElementById('err');err.style.display='none';
+  const btn=document.getElementById('senden');btn.disabled=true;btn.textContent='Sende …';
+  try{
+    const batch=fs.batch();
+    TERMINE.forEach(t=>batch.set(fs.collection('dispoAntworten').doc(),{r:RID,tok:TOK,name:NAME,tid:t.tid,kann:WAHL[t.tid],ts:new Date().toISOString()}));
+    await batch.commit();
+    document.getElementById('formteil').style.display='none';
+    document.getElementById('ok').style.display='block';
+  }catch(e){btn.disabled=false;btn.textContent='Auswahl absenden';err.textContent='Senden fehlgeschlagen – bitte noch einmal versuchen.';err.style.display='block';}
+});
+lade();
+</script>
+</body>
+</html>

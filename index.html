@@ -326,7 +326,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="30.10-M";
+const APP_VERSION="30.10-N";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1516,6 +1516,7 @@ function renderSteuerung(){
       ${(!dispoA.length&&!handover.length)?'<div class="empty-col">Nichts zuzuordnen – alles verteilt 👍</div>':''}
     </div>
     ${zuordPanel()}
+    ${dispoPanel()}
     <div class="panel"><h3>🗺️ Bezirks-Zuteilung – Telefonisten <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— ganzer Bezirk mit einem Klick an einen Telefonisten; Zuteilen gibt neue Kunden (📥 Posteingang) automatisch frei</span></h3>
       ${teNames.length?(bzList.length?`
       <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-2);margin:0 0 8px;cursor:pointer"><input type="checkbox" id="bzMove" style="width:auto"> auch bereits zugeteilte Kunden umziehen (sonst bekommt der Telefonist nur die noch freien)</label>
@@ -1644,6 +1645,17 @@ function renderSteuerung(){
       renderSteuerung();
     }catch(e){toast('Zurücksetzen fehlgeschlagen'+(e&&e.code?' ('+e.code+')':''));renderSteuerung();}
   });
+  dispoResume(); // laufende Abend-Verteilung nach Neuladen wiederfinden
+  const dsS=host.querySelector('#dsStart');if(dsS)dsS.addEventListener('click',dispoStart);
+  const dsR=host.querySelector('#dsRefresh');if(dsR)dsR.addEventListener('click',async()=>{await dispoLadeAntworten();markDirty('steuerung');render();});
+  const dsZ=host.querySelector('#dsZuteilen');if(dsZ)dsZ.addEventListener('click',dispoZuteilen);
+  const dsA=host.querySelector('#dsAbbruch');if(dsA)dsA.addEventListener('click',async()=>{
+    if(!confirm('Runde wirklich verwerfen? Die verschickten Links werden ungültig, es wird nichts zugeteilt.'))return;
+    try{await firebase.firestore().collection('dispoRunden').doc(DISPO_R.id).update({offen:false});}catch(e){}
+    try{localStorage.removeItem('censa_dispo_rid');}catch(e){}
+    DISPO_R=null;DISPO_ANT=[];render();toast('Runde verworfen');
+  });
+  host.querySelectorAll('[data-dscopy]').forEach(b=>b.addEventListener('click',()=>{try{navigator.clipboard.writeText(b.dataset.dscopy);toast('🔗 Link kopiert – einfach in die Nachricht einfügen');}catch(e){prompt('Link kopieren:',b.dataset.dscopy);}}));
   wireTeamPanel(host);
 }
 function wireTeamPanel(host){
@@ -2537,6 +2549,144 @@ async function zuordUrgenz(){
     chatSys('❗ URGENZ an '+m.ackWer+': Die '+typ+'-Zuordnung „'+(m.dealName||'—')+'" wartet seit über '+ZUORD_URGENZ_STD+' Stunden auf deine Reaktion – bitte SOFORT in der Aufgaben-Box annehmen oder ablehnen!',d||null,m.ackWer);
     chatSys('ℹ️ '+m.ackWer+' hat die '+typ+'-Zuordnung „'+(m.dealName||'—')+'" nach '+ZUORD_URGENZ_STD+' Std nicht bestätigt – Urgenz wurde automatisch geschickt.',d||null,'__admin__');
   }
+}
+/* ---------- 🌙 Abend-Verteilung (31.10., Melanies Ansage) ----------
+   Offene Termine (AG ohne Analyst / BG ohne Berater, mit Datum) als Runde an alle
+   Analysten/Berater ausschreiben (öffentliche Wahl-Seite dispo.html, kein CRM nötig):
+   jeder klickt „kann / kann nicht" → Antworten sammeln → FAIR zuteilen (wer am
+   wenigsten hat, zuerst; knappe Termine zuerst) → Kalender-Einladungen; Termine
+   ohne Zusage bleiben offen und gehen in die nächste Runde. */
+let DISPO_R=null, DISPO_ANT=[], __dispoLoading=false;
+function dispoOffeneTermine(){
+  const out=[];
+  state.deals.forEach(d=>{
+    if(d.status!=='open'||(d.quelle||'')==='Recruiting')return;
+    const ort=((d.notizen||'').indexOf('CENSA-Büro')>=0)?'CENSA Büro, 1230 Wien':(d.bezirk||[d.plz,d.ort].filter(Boolean).join(' ')||'Wien/NÖ');
+    if((d.datumAG||'').trim()&&!(d.analyst||'').trim())out.push({tid:d.id+'_ag',rolle:'analyst',wann:d.datumAG,ort:ort});
+    if((d.datumBG||'').trim()&&!(d.berater||'').trim())out.push({tid:d.id+'_bg',rolle:'berater',wann:d.datumBG,ort:ort});
+  });
+  return out;
+}
+async function dispoStart(){
+  if(MODE!=='db'||!isAdmin())return;
+  const termine=dispoOffeneTermine();
+  if(!termine.length){toast('Keine offenen Termine mit Datum (AG ohne Analyst / BG ohne Berater)');return;}
+  const pers={};
+  TEAM.forEach(m=>{
+    const rollen=['analyst','berater'].filter(rr=>hasRole(m,rr)&&termine.some(t=>t.rolle===rr));
+    if(rollen.length){const tok='p'+Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6);pers[tok]={name:m.name,rollen:rollen,tel:m.tel||''};}
+  });
+  if(!Object.keys(pers).length){toast('Keine Analysten/Berater im Team gefunden (Team & Zugänge)');return;}
+  const rid='r'+Date.now().toString(36);
+  const doc={ts:new Date().toISOString(),offen:true,termine:termine,pers:pers};
+  try{await firebase.firestore().collection('dispoRunden').doc(rid).set(doc);}
+  catch(e){toast('Runde anlegen fehlgeschlagen'+(e&&e.code?' ('+e.code+')':'')+' – sind die neuen Firestore-Regeln (dispoRunden/dispoAntworten) schon eingespielt?');return;}
+  DISPO_R=Object.assign({id:rid},doc);DISPO_ANT=[];
+  try{localStorage.setItem('censa_dispo_rid',rid);}catch(e){}
+  chatSys('🌙 Abend-Verteilung gestartet: '+termine.length+' Termin(e) ausgeschrieben an '+Object.keys(pers).length+' Person(en).');
+  render();
+  toast('🌙 Runde läuft – jetzt die Links verschicken (Knöpfe im Panel)');
+}
+async function dispoResume(){
+  if(DISPO_R||__dispoLoading||MODE!=='db'||!isAdmin())return;
+  let rid='';try{rid=localStorage.getItem('censa_dispo_rid')||'';}catch(e){}
+  if(!rid)return;
+  __dispoLoading=true;
+  try{
+    const doc=await firebase.firestore().collection('dispoRunden').doc(rid).get();
+    if(doc.exists&&(doc.data()||{}).offen!==false){DISPO_R=Object.assign({id:rid},doc.data());await dispoLadeAntworten();markDirty('steuerung');render();}
+    else{try{localStorage.removeItem('censa_dispo_rid');}catch(e){}}
+  }catch(e){}
+  __dispoLoading=false;
+}
+async function dispoLadeAntworten(){
+  if(!DISPO_R)return;
+  try{
+    const s=await firebase.firestore().collection('dispoAntworten').where('r','==',DISPO_R.id).get();
+    DISPO_ANT=s.docs.map(x=>x.data());
+  }catch(e){toast('Antworten laden fehlgeschlagen'+(e&&e.code?' ('+e.code+')':''));}
+}
+function dispoMatrix(){ // je Person+Termin zählt die LETZTE Antwort
+  const last={};DISPO_ANT.forEach(a=>{const k=(a.tok||'')+'|'+(a.tid||'');if(!last[k]||(a.ts||'')>(last[k].ts||''))last[k]=a;});
+  const m={};Object.values(last).forEach(a=>{const e=(m[a.tid]=m[a.tid]||{ja:[],nein:[]});(a.kann==='ja'?e.ja:e.nein).push(a.name||a.tok);});
+  return m;
+}
+function dispoFair(termine,mx){ // knappe Termine zuerst; dann an die Person mit der geringsten Auslastung
+  const load={},zu={},offenT=[];
+  const ts=[...termine].sort((a,b)=>((mx[a.tid]||{ja:[]}).ja.length)-((mx[b.tid]||{ja:[]}).ja.length));
+  ts.forEach(t=>{
+    const c=[...new Set((mx[t.tid]||{ja:[]}).ja)];
+    if(!c.length){offenT.push(t);return;}
+    c.sort((a,b)=>((load[a]||0)-(load[b]||0))||a.localeCompare(b));
+    zu[t.tid]=c[0];load[c[0]]=(load[c[0]]||0)+1;
+  });
+  return {zu:zu,offenT:offenT,load:load};
+}
+async function dispoZuteilen(){
+  if(!DISPO_R)return;
+  await dispoLadeAntworten();
+  const mx=dispoMatrix();
+  const termine=(DISPO_R.termine||[]);
+  const erg=dispoFair(termine,mx);
+  let n=0;
+  for(const tid of Object.keys(erg.zu)){
+    const t=termine.find(x=>x.tid===tid);
+    const d=state.deals.find(x=>x.id===tid.replace(/_(ag|bg)$/,''));
+    if(!t||!d)continue;
+    const feld=t.rolle;
+    if((d[feld]||'').trim())continue; // wurde inzwischen manuell besetzt
+    d[feld]=erg.zu[tid];
+    histAdd(d,'Abend-Verteilung: '+(feld==='analyst'?'Analyst':'Berater')+' → '+erg.zu[tid]+' (hat zugesagt)');
+    if(!externCal(d,feld)){ // intern: Einladung + Info (Zusage liegt ja bereits vor)
+      const dt=parseTermin(feld==='analyst'?d.datumAG:d.datumBG);
+      const mail=teamMail(erg.zu[tid]);
+      if(dt&&mail&&GCAL_CLIENT_ID&&__gcalTok&&Date.now()<__gcalExp-60000){
+        gcalInsert((feld==='analyst'?'Analyse: ':'Beratung: ')+(d.name||d.org||'Kunde'),dt,60,'Tel: '+(d.telefon||'-')+(d.briefing?' | '+d.briefing:''),[d.strasse,d.plz,d.ort].filter(Boolean).join(', '),[d.email,mail,OFFICE_MAIL]);
+      }
+      chatSys('🌙 Zugeteilt nach Zusage: '+(d.name||d.org||'—')+' → '+erg.zu[tid]+' ('+(feld==='analyst'?'Analyse':'Beratung')+')',d);
+    }
+    dbPersist(d);n++;
+  }
+  try{await firebase.firestore().collection('dispoRunden').doc(DISPO_R.id).update({offen:false});}catch(e){}
+  chatSys('🌙 Abend-Verteilung abgeschlossen: '+n+' Termin(e) fair zugeteilt'+(erg.offenT.length?(' · '+erg.offenT.length+' ohne Zusage geblieben – neue Runde starten („werden nochmal gefragt")'):' – alles verteilt ✔'),null,erg.offenT.length?'__admin__':null);
+  try{localStorage.removeItem('censa_dispo_rid');}catch(e){}
+  DISPO_R=null;DISPO_ANT=[];
+  render();
+  toast('⚖️ '+n+' zugeteilt'+(erg.offenT.length?(' · '+erg.offenT.length+' offen → einfach neue Runde starten'):' – alles verteilt ✔'));
+}
+function dispoPanel(){
+  if(MODE!=='db')return '';
+  if(!DISPO_R){
+    const offene=dispoOffeneTermine();
+    return `<div class="panel"><h3>🌙 Abend-Verteilung <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— offene Termine an ALLE Analysten/Berater ausschreiben (auch ohne CRM): jeder klickt am Handy „kann / kann nicht", danach fair zuteilen</span></h3>
+      <div style="font-size:12.5px;margin-bottom:8px">${offene.length} offene Termin(e) mit Datum, ohne Zuständigen (${offene.filter(t=>t.rolle==='analyst').length} Analysen · ${offene.filter(t=>t.rolle==='berater').length} Beratungen).</div>
+      <button class="btn pri" id="dsStart" ${offene.length?'':'disabled'}>🌙 Runde starten (${offene.length} Termine)</button></div>`;
+  }
+  const mx=dispoMatrix();
+  const termine=(DISPO_R.termine||[]);
+  const persArr=Object.entries(DISPO_R.pers||{});
+  const beantwortet=new Set(DISPO_ANT.map(a=>a.tok));
+  const linkRows=persArr.map(p=>{
+    const tok=p[0],pp=p[1];
+    const url='https://mlcelite.github.io/censa-crm/dispo.html?r='+DISPO_R.id+'&p='+tok;
+    const msg=encodeURIComponent('🌙 CENSA Abend-Verteilung: Neue Termine warten auf dich – bitte kurz je Termin „kann / kann nicht" anklicken (dauert 60 Sekunden): '+url);
+    const telD=(pp.tel||'').replace(/\D/g,'').replace(/^0/,'43');
+    return `<div class="gl" style="cursor:default;flex-wrap:wrap"><span class="gn">${esc(pp.name)}</span><span class="ph">${esc((pp.rollen||[]).join(' + '))}</span>${beantwortet.has(tok)?'<span class="tg" style="background:var(--good);color:#fff">✓ geantwortet</span>':'<span class="tg od">⏳ offen</span>'}${telD?`<a class="mini-btn" target="_blank" rel="noopener" href="https://wa.me/${telD}?text=${msg}">📱 WhatsApp</a>`:''}<button class="mini-btn" data-dscopy="${esc(url)}">🔗 Link kopieren</button></div>`;
+  }).join('');
+  const rows=termine.map(t=>{
+    const e=mx[t.tid]||{ja:[],nein:[]};
+    const d=state.deals.find(x=>x.id===t.tid.replace(/_(ag|bg)$/,''));
+    return `<div class="gl" ${d?`data-id="${esc(d.id)}"`:'style="cursor:default"'}><span class="gn">${esc(d?(d.name||d.org||'—'):'—')}</span><span class="ph">${t.rolle==='berater'?'BG':'AG'} · ${esc(t.wann||'')} · ${esc(t.ort||'')}</span><span class="tg" style="background:var(--good);color:#fff">✓ ${e.ja.length}</span>${e.ja.length?`<span class="ph">${e.ja.map(esc).join(', ')}</span>`:''}<span class="tg od">✗ ${e.nein.length}</span></div>`;
+  }).join('');
+  return `<div class="panel" style="border-color:var(--brand)"><h3>🌙 Abend-Verteilung – Runde läuft <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— 1. Links verschicken · 2. Antworten einsammeln · 3. fair zuteilen</span></h3>
+    <div class="ehgt" style="margin:2px 0 6px">1 · Links an ${persArr.length} Person(en)</div><div class="st-list">${linkRows}</div>
+    <div class="ehgt" style="margin:10px 0 6px">2 · Antworten je Termin (${beantwortet.size}/${persArr.length} Personen haben geantwortet)</div><div class="st-list">${rows}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn" id="dsRefresh">🔄 Antworten aktualisieren</button>
+      <button class="btn pri" id="dsZuteilen">⚖️ Jetzt fair zuteilen</button>
+      <button class="btn" id="dsAbbruch" style="color:var(--bad)">Runde verwerfen</button>
+    </div>
+    <div style="font-size:11px;color:var(--ink-3);margin-top:6px">Fair heißt: knappe Termine zuerst vergeben, und es bekommt immer die Person mit den wenigsten Terminen dieser Runde. Zugeteilte bekommen automatisch die Kalender-Einladung (samt Kunde); Termine ohne Zusage bleiben offen – einfach danach eine neue Runde starten.</div></div>`;
 }
 function ehgPanel(){
   if(!isMelanie())return '';
