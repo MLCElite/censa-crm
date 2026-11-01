@@ -328,7 +328,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="01.11-A";
+const APP_VERSION="01.11-B";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -370,6 +370,14 @@ async function dbPersistMany(list){
 function setDbState(txt,color){const el=document.getElementById('dbState');if(el){el.innerHTML=txt;el.style.color=color||'';}}
 // Cache-first-Start (31.10.): Erstanzeige aus dem Geräte-Cache (schnell, 0 Server-Lesevorgänge);
 // nur beim allerersten Öffnen auf einem Gerät einmal vom Server. Danach hält onSnapshot aktuell.
+/* Blitz-Start: eigener 1-Blob-Cache in IndexedDB. Firestore-Persistence braucht bei
+   7.000+ Docs beim Öffnen viele Sekunden – der Blob zeigt den letzten Stand in <1 s,
+   der Live-Abgleich (onSnapshot) ersetzt ihn danach still. */
+function blitzDb(){return new Promise((res,rej)=>{const r=indexedDB.open('censaBlitz',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+async function blitzGet(){try{const db=await blitzDb();return await new Promise(res=>{const g=db.transaction('kv').objectStore('kv').get('deals');g.onsuccess=()=>res(g.result||null);g.onerror=()=>res(null);});}catch(e){return null;}}
+let __blitzT=null;
+function blitzSave(){clearTimeout(__blitzT);__blitzT=setTimeout(async()=>{try{const db=await blitzDb();db.transaction('kv','readwrite').objectStore('kv').put(JSON.parse(JSON.stringify(state.deals)),'deals');}catch(e){}},4000);}
+
 async function ladeStart(col,n){
   try{const c=await col.limit(n).get({source:'cache'});if(c&&!c.empty)return c;}catch(e){}
   return await col.limit(n).get();
@@ -3907,12 +3915,21 @@ lsLoad();render();
       try{await fs.enablePersistence({synchronizeTabs:true});}catch(e){}
       const t0=await ladeStart(teamCol,200);
       TEAM=t0.docs.map(s=>{const m=Object.assign({},s.data()||{});m.id=s.id;return m;});
-      const s0=await ladeStart(dealsCol,10000);
-      MODE='db';
-      state.deals=s0.docs.map(s=>{const b=Object.assign(blank(),s.data());b.id=s.id;return b;});
-      matchMe();
-      setDbState('🟢 CENSA-DB · '+state.deals.length,'var(--good)');
-      applyRoleUI();render();
+      const blitz=await blitzGet();
+      if(blitz&&blitz.length){ // Blitz-Start: letzten Stand SOFORT zeigen, Live-Daten kommen per onSnapshot nach
+        MODE='db';
+        state.deals=blitz.map(o=>Object.assign(blank(),o));
+        matchMe();
+        setDbState('🟡 Schnellstart · '+state.deals.length+' · Live-Abgleich läuft …','var(--warn)');
+        applyRoleUI();render();
+      }else{
+        const s0=await ladeStart(dealsCol,10000);
+        MODE='db';
+        state.deals=s0.docs.map(s=>{const b=Object.assign(blank(),s.data());b.id=s.id;return b;});
+        matchMe();
+        setDbState('🟢 CENSA-DB · '+state.deals.length,'var(--good)');
+        applyRoleUI();render();
+      }
       if(!ME&&TEAM.length&&!isAdmin())toast('Deine E-Mail ist keinem Zugang zugeordnet – bitte beim Admin melden');
       window.__dealsInit=false;
       unsubDeals=dealsCol.limit(10000).onSnapshot(snap=>{
@@ -3933,6 +3950,7 @@ lsLoad();render();
         }
         setDbState('🟢 CENSA-DB · '+state.deals.length,'var(--good)');
         scheduleRender();
+        blitzSave(); // Blitz-Cache fürs nächste Öffnen aktuell halten
       },err=>{setDbState('🟠 Live-Sync unterbrochen – neu laden hilft','var(--warn)');});
       unsubTeam=teamCol.limit(200).onSnapshot(snap=>{
         TEAM=snap.docs.map(s=>{const m=Object.assign({},s.data()||{});m.id=s.id;return m;});
