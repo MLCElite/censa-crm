@@ -328,7 +328,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="01.11-B";
+const APP_VERSION="01.11-C";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -3850,7 +3850,7 @@ function loadDemo(){
 /* ---------- tabs ---------- */
 document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
-  ['steuerung','gp','telefon','pipeline','liste','foerder','dashboard','woche','chat'].forEach(t=>document.getElementById('view-'+t).classList.toggle('hide',t!==b.dataset.tab));
+  ['steuerung','gp','pool','telefon','pipeline','liste','foerder','dashboard','woche','chat'].forEach(t=>document.getElementById('view-'+t).classList.toggle('hide',t!==b.dataset.tab));
   renderTab(b.dataset.tab);
   if(b.dataset.tab==='chat'){ensureChatUI();updateChatLog();markChatSeen();}
   if(b.dataset.tab==='woche')renderWoche();
