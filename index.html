@@ -330,7 +330,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="02.11-D";
+const APP_VERSION="02.11-E";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2144,7 +2144,7 @@ function gcalToken(){
             if(r&&r.access_token){__gcalTok=r.access_token;__gcalExp=Date.now()+((r.expires_in||3300)*1000);res(__gcalTok);}
             else rej(new Error('Keine Freigabe erhalten'));
           },
-          error_callback:e=>rej(new Error(e&&(e.type==='popup_closed'||e.type==='popup_failed_to_open')?'Google-Fenster geschlossen oder blockiert – bitte Popups erlauben':'Google-Anmeldung fehlgeschlagen'))
+          error_callback:e=>rej(new Error(e&&(e.type==='popup_closed'||e.type==='popup_failed_to_open')?'Google-Fenster geschlossen oder blockiert – bitte Popups für diese Seite erlauben und einfach NOCH EINMAL drücken':'Google-Anmeldung fehlgeschlagen'))
         });
         tc.requestAccessToken({prompt:''});
       }catch(e){rej(e);}
@@ -2165,7 +2165,7 @@ function driveToken(){
             if(r&&r.access_token){__drvTok=r.access_token;__drvExp=Date.now()+((r.expires_in||3300)*1000);res(__drvTok);}
             else rej(new Error('Keine Google-Freigabe erhalten'));
           },
-          error_callback:e=>rej(new Error(e&&(e.type==='popup_closed'||e.type==='popup_failed_to_open')?'Google-Fenster geschlossen oder blockiert – bitte Popups erlauben':'Google-Anmeldung fehlgeschlagen'))
+          error_callback:e=>rej(new Error(e&&(e.type==='popup_closed'||e.type==='popup_failed_to_open')?'Google-Fenster geschlossen oder blockiert – bitte Popups für diese Seite erlauben und einfach NOCH EINMAL drücken':'Google-Anmeldung fehlgeschlagen'))
         });
         tc.requestAccessToken({prompt:''});
       }catch(e){rej(e);}
@@ -2383,7 +2383,7 @@ function gmailToken(){ // eigene Freigabe nur für „Entwürfe anlegen" (gmail.
             if(r&&r.access_token){__gmTok=r.access_token;__gmExp=Date.now()+((r.expires_in||3300)*1000);res(__gmTok);}
             else rej(new Error('Keine Google-Freigabe erhalten'));
           },
-          error_callback:e=>rej(new Error(e&&(e.type==='popup_closed'||e.type==='popup_failed_to_open')?'Google-Fenster geschlossen oder blockiert – bitte Popups erlauben':'Google-Anmeldung fehlgeschlagen'))
+          error_callback:e=>rej(new Error(e&&(e.type==='popup_closed'||e.type==='popup_failed_to_open')?'Google-Fenster geschlossen oder blockiert – bitte Popups für diese Seite erlauben und einfach NOCH EINMAL drücken':'Google-Anmeldung fehlgeschlagen'))
         });
         tc.requestAccessToken({prompt:''});
       }catch(e){rej(e);}
@@ -3581,6 +3581,13 @@ function openModal(id){
         const who=chatName()||'—';
         const tag=todayStr().split('-').reverse().join('.');
         const kurz=(d.name||d.org||'Kunde').slice(0,40);
+        // Google-Freigabe SOFORT nach dem Klick holen – nach langem PDF-Bau blockiert der
+        // Popup-Blocker das Google-Fenster (User-Geste verfallen; Melanies Handy-Test 02.11.)
+        let tok=null;
+        if(files.length||recBlob){
+          b.textContent='⏳ Google-Freigabe …';
+          tok=await driveToken();
+        }
         // 📄 Handy-Scans zu EINEM PDF bündeln (mit sichtbarem Fortschritt – am Handy dauert das ein paar Sekunden)
         const scanBilder=files.filter(f=>f.__scan&&/^image\//.test(f.type||''));
         if(scanBilder.length){
@@ -3606,8 +3613,6 @@ function openModal(id){
         astHits=[...new Set(astHits)];
         const neu=[];
         if(files.length||recBlob){
-          b.textContent='⏳ Google-Freigabe …';
-          const tok=await driveToken();
           b.textContent='⏳ Kunden-Ordner …';
           const lf=await driveLeadFolder(tok,kurz,d); // je Kunde ein eigener, teilbarer Ordner (Assistenz=schreiben, Analyst/Berater=lesen)
           let upI=0;const upN=files.length+(recBlob?1:0);
@@ -3674,8 +3679,8 @@ function openModal(id){
     astSec.querySelector('#ast-gmail').addEventListener('click',async e2=>{
       const b=e2.currentTarget;b.disabled=true;const alt=b.textContent;b.textContent='⏳ Lege Entwürfe an …';
       try{
+        const tok=await gmailToken(); // Google-Fenster SOFORT (Popup-Blocker: Geste darf nicht verfallen)
         const w=await bauen();if(!w){b.disabled=false;b.textContent=alt;return;}
-        const tok=await gmailToken();
         let ok2=0;
         for(const a of w.sel){
           const raw=astMime(d,a,astMailText(d,a,w.vmInfo),w.att).replace(/\r\n/g,'\r\n');
