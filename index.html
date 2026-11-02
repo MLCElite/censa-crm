@@ -317,6 +317,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 /* ==== FIREBASE-KONFIGURATION: Werte aus der Firebase-Konsole hier einsetzen ==== */
 const FIREBASE_CONFIG={
@@ -329,7 +330,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="02.11-A";
+const APP_VERSION="02.11-B";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -439,7 +440,7 @@ async function inboxImport(){
     del.push(doc.id);
     if(ex)return; // gibt es schon – Doppelimport verhindern
     const d=blank();
-    ['name','org','telefon','email','strasse','plz','ort','bezirk','branche','quelle','notizen','umsatz','gewinn','anlage','sachanlage','finanzanlage','finanzJahr','website','maGroesse','potenzial','briefing'].forEach(k=>{if(r[k]!=null&&(''+r[k]).trim())d[k]=(''+r[k]).trim();});
+    ['name','org','telefon','email','geb','strasse','plz','ort','bezirk','branche','quelle','notizen','umsatz','gewinn','anlage','sachanlage','finanzanlage','finanzJahr','website','maGroesse','potenzial','briefing'].forEach(k=>{if(r[k]!=null&&(''+r[k]).trim())d[k]=(''+r[k]).trim();});
     d.telefon=normTel(d.telefon);
     d.kundentyp=r.kundentyp==='Privat'?'Privat':'GmbH';
     if(r.gp===true||r.gp==='1'||r.gp==='ja'||(d.quelle||'')==='Recruiting'){d.gp=true;d.quelle=d.quelle||'Recruiting';}
@@ -1499,7 +1500,7 @@ async function mergeDeals(ids){
   const score=d=>(d.calls||[]).length*3+(d.hist||[]).length*2+(d.uebergabe?20:0)+(d.status==='won'?100:d.status==='open'?50:0)+Object.values(d).filter(v=>v&&typeof v==='string').length;
   ds.sort((a,b)=>score(b)-score(a));
   const base=ds[0],rest=ds.slice(1);
-  const FILL=['org','telefon','email','strasse','plz','ort','bezirk','branche','telefonist','analyst','berater','datumAG','datumBG','eh','wiedervorlage','briefing','potenzial','umsatz','gewinn','anlage','sachanlage','finanzanlage','finanzJahr','website','maGroesse','quelle'];
+  const FILL=['org','telefon','email','geb','strasse','plz','ort','bezirk','branche','telefonist','analyst','berater','datumAG','datumBG','eh','wiedervorlage','briefing','potenzial','umsatz','gewinn','anlage','sachanlage','finanzanlage','finanzJahr','website','maGroesse','quelle'];
   rest.forEach(o=>{
     FILL.forEach(f=>{if(o[f]&&!base[f])base[f]=o[f];});
     if(o.notizen&&!(base.notizen||'').includes(o.notizen))base.notizen=((base.notizen?base.notizen+' | ':'')+o.notizen).slice(0,1500);
@@ -2278,6 +2279,51 @@ async function pdfText(file){ // PDF im Browser lesen (pdf.js); Foto-Scans haben
   }catch(e){return '';}
 }
 function anstaltenScan(tx){return ANSTALTEN.filter(a=>a.rx.test(tx||'')).map(a=>a.n);}
+async function scansZuPdf(files){ // Handy-Scans zu EINEM sauberen PDF bündeln (Melanies Ansage 02.11.: keine losen Fotos mehr)
+  const lib=window.jspdf&&window.jspdf.jsPDF;if(!lib||!files.length)return null;
+  try{
+    const pdf=new lib({unit:'mm',format:'a4'});
+    let first=true;
+    for(const f of files){
+      const url=URL.createObjectURL(f);
+      const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;});
+      const sc=Math.min(1,1700/Math.max(img.width,img.height));
+      const cv=document.createElement('canvas');
+      cv.width=Math.max(1,Math.round(img.width*sc));cv.height=Math.max(1,Math.round(img.height*sc));
+      cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+      URL.revokeObjectURL(url);
+      const pw=210,ph=297,rand=8;
+      const r=Math.min((pw-2*rand)/cv.width,(ph-2*rand)/cv.height);
+      if(!first)pdf.addPage();first=false;
+      pdf.addImage(cv.toDataURL('image/jpeg',0.82),'JPEG',(pw-cv.width*r)/2,(ph-cv.height*r)/2,cv.width*r,cv.height*r);
+    }
+    return pdf.output('blob');
+  }catch(e){return null;}
+}
+function kdParse(tx){ // „Kundendaten"-Seite der Analyse auslesen (nur digital ausgefüllte PDFs – Foto-Scans haben keinen Text)
+  if(!tx||!/kundendaten/i.test(tx))return null;
+  const seg=tx.slice(tx.search(/kundendaten/i));
+  const teile=seg.split(/partner(?:in|\/in|\b)/i);
+  const eins=t=>{
+    const o={};
+    // Wert endet am nächsten Formular-Label oder Doppel-Leerzeichen (Blockgrenze im PDF-Textstrom)
+    const bis='(?=\\s{2}|\\s(?:Geburts|Adress|Anschrift|Telefon|Handy|Mobil|E-?Mail|Beruf|SVNr|Stra(?:ß|ss)e)|$)';
+    let m=new RegExp('(?:vor-?\\s?(?:und|u\\.)\\s?)?(?:zu|nach|familien)?name[^:]{0,16}:\\s*([A-Za-zÄÖÜäöüß][\\wäöüß.\\- ]{1,48}?)'+bis,'i').exec(t);
+    if(m)o.name=m[1].trim();
+    m=/geb(?:urtsdatum|urtstag|\.)?[^0-9]{0,18}(\d{1,2}[./]\s?\d{1,2}[./]\s?\d{2,4})/i.exec(t);
+    if(m)o.geb=m[1].replace(/\s/g,'');
+    m=/(?:telefon|handy|mobil|tel\.?)[^0-9+]{0,14}((?:\+43|0)[\d\s/()\-]{6,18}\d)/i.exec(t);
+    if(m)o.tel=m[1].trim();
+    m=/([\w.+\-]+@[\w\-]+\.[a-z]{2,})/i.exec(t);
+    if(m)o.email=m[1];
+    m=new RegExp('(?:adresse|anschrift|wohnadresse|stra(?:ß|ss)e(?:\\s?/?\\s?nr\\.?)?)[^:]{0,12}:\\s*([A-Za-zÄÖÜäöüß][\\wäöüß .\\-]{1,40}?\\s?\\d+[a-zA-Z]?(?:/[\\w.]+)*)(?:[,\\s]+(\\d{4})\\s+([A-Za-zÄÖÜ][\\wäöüß.\\-]+))?','i').exec(t);
+    if(m){o.strasse=m[1].trim();if(m[2]){o.plz=m[2];o.ort=(m[3]||'').trim();}}
+    return o;
+  };
+  const kd=eins(teile[0]);
+  if(teile.length>1){const p=eins(teile.slice(1).join(' '));if(p.name||p.geb)kd.partner=p;}
+  return (kd.name||kd.geb||kd.tel||kd.email||kd.strasse)?kd:null;
+}
 let __gmTok=null,__gmExp=0;
 function gmailToken(){ // eigene Freigabe nur für „Entwürfe anlegen" (gmail.compose) – gleiche Mechanik wie Drive/Kalender
   return new Promise((res,rej)=>{
@@ -2313,7 +2359,8 @@ function astMailText(d,a,vmInfo){ // vmInfo: 'anhang' | URL-String | null
    +' um Übermittlung einer vollständigen Aufstellung der bestehenden Verträge (Sparte, Polizzennummer, Beginn/Ablauf, Prämie, Rückkaufswert sofern zutreffend).\n\n'
    +(a.vnr?'Unsere Vermittlernummer: '+a.vnr+'\n':'')
    +'Kunde: '+((d.name||'')+(d.org&&d.org!==d.name?' ('+d.org+')':'')||'—')+'\n'
-   +'Geburtsdatum: [bitte ergänzen]\n'
+   +'Geburtsdatum: '+((d.geb||'').trim()||'[bitte ergänzen]')+'\n'
+   +((d.partner&&d.partner.name)?'Partner/in: '+d.partner.name+(d.partner.geb?', geb. '+d.partner.geb:'')+'\n':'')
    +'Anschrift: '+([d.strasse,[d.plz,d.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ')||'[bitte ergänzen]')+'\n'
    +(typeof vmInfo==='string'&&vmInfo!=='anhang'?'\nUnterschriebene Auskunftsvollmacht: '+vmInfo+'\n':'')
    +(vmInfo?'':'\n[⚠ Auskunftsvollmacht bitte noch beilegen]\n')
@@ -3156,7 +3203,7 @@ function wireEmpty(host){host.querySelectorAll('[data-act]').forEach(b=>b.addEve
 
 /* ---------- modal ---------- */
 let editId=null;
-function blank(){return {id:uid(),name:'',org:'',kundentyp:'Privat',quelle:'',telefon:'',email:'',strasse:'',plz:'',ort:'',bezirk:'',branche:'',analyst:'',berater:'',telefonist:'',telHist:[],telBeteiligt:false,gp:false,geprueft:true,briefing:'',potenzial:'',ehS:[],ehA:[],umsatz:'',gewinn:'',anlage:'',sachanlage:'',finanzanlage:'',finanzJahr:'',website:'',maGroesse:'',stage:'Neuer Lead',status:'open',lostReason:'',lostDate:'',lostBy:'',datumAG:'',datumBG:'',eh:'',notizen:'',wiedervorlage:'',calls:[]};}
+function blank(){return {id:uid(),name:'',org:'',kundentyp:'Privat',quelle:'',telefon:'',email:'',geb:'',partner:'',strasse:'',plz:'',ort:'',bezirk:'',branche:'',analyst:'',berater:'',telefonist:'',telHist:[],telBeteiligt:false,gp:false,geprueft:true,briefing:'',potenzial:'',ehS:[],ehA:[],umsatz:'',gewinn:'',anlage:'',sachanlage:'',finanzanlage:'',finanzJahr:'',website:'',maGroesse:'',stage:'Neuer Lead',status:'open',lostReason:'',lostDate:'',lostBy:'',datumAG:'',datumBG:'',eh:'',notizen:'',wiedervorlage:'',calls:[]};}
 function bezFromPLZ(v){ // Gebiet aus PLZ: Wien je Bezirk, sonst Bundesland-Raster (fürs Bündeln der Anruf-Gebiete)
   const m=/\b([1-9]\d{3})\b/.exec((v||'')+'');if(!m)return '';
   const p=parseInt(m[1],10);
@@ -3270,6 +3317,16 @@ function openModal(id){
       </details>
       <div class="fld"><label>Telefon</label><input id="m-tel" value="${esc(d.telefon)}" placeholder="+43 …"></div>
       <div class="fld"><label>E-Mail (Kunde) <span style="font-weight:500;color:var(--ink-3);text-transform:none">— für Termineinladung</span></label><input id="m-email" type="email" value="${esc(d.email||'')}" placeholder="kunde@firma.at"></div>
+      <div class="fld"><label>Geburtsdatum <span style="font-weight:500;color:var(--ink-3);text-transform:none">— für Anstalts-Auskünfte</span></label><input id="m-geb" value="${esc(d.geb||'')}" placeholder="TT.MM.JJJJ"></div>
+      <details class="sec"${(d.partner&&d.partner.name)?' open':''}><summary>👫 Partner / Familie <span class="sv">${esc((d.partner&&d.partner.name)||'— keiner erfasst —')}${(d.partner&&d.partner.geb)?' · '+esc(d.partner.geb):''}</span></summary>
+        <div class="inner2" style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1.2fr;gap:8px">
+          <input id="m-pname" placeholder="Name Partner/in" value="${esc((d.partner&&d.partner.name)||'')}">
+          <input id="m-pgeb" placeholder="Geburtsdatum" value="${esc((d.partner&&d.partner.geb)||'')}">
+          <input id="m-ptel" placeholder="Telefon" value="${esc((d.partner&&d.partner.telefon)||'')}">
+          <input id="m-pmail" placeholder="E-Mail" value="${esc((d.partner&&d.partner.email)||'')}">
+        </div>
+        <div style="font-size:11px;color:var(--ink-3);margin-top:4px">Beide bleiben in EINEM Kunden („Familie") – Analysen, Termine und Auskünfte laufen gemeinsam.</div>
+      </details>
       <details class="sec"${(d.strasse||d.plz||d.ort)?'':' open'}><summary>📍 Adresse <span class="sv">${esc([d.strasse,d.plz,d.ort].filter(Boolean).join(', ')||'— noch leer —')}${d.bezirk?' · '+esc(d.bezirk):''}</span></summary>
         <div class="inner2" style="display:grid;grid-template-columns:2fr .8fr 1.2fr;gap:9px">
           <input id="m-str" value="${esc(d.strasse||'')}" placeholder="Straße + Nr.">
@@ -3400,6 +3457,10 @@ function openModal(id){
   const collect=()=>{d.kundentyp=typ.value;d.quelle=m.querySelector('#m-quelle').value;d.name=m.querySelector('#m-name').value;d.org=m.querySelector('#m-org')?m.querySelector('#m-org').value:d.org;
     d.telefon=normTel(m.querySelector('#m-tel').value);
     const emEl=m.querySelector('#m-email');if(emEl)d.email=emEl.value.trim();
+    const gbEl=m.querySelector('#m-geb');if(gbEl)d.geb=gbEl.value.trim();
+    const pv=k=>{const el=m.querySelector(k);return el?el.value.trim():'';};
+    const pN=pv('#m-pname'),pG=pv('#m-pgeb'),pT=pv('#m-ptel'),pM=pv('#m-pmail');
+    d.partner=(pN||pG||pT||pM)?{name:pN,geb:pG,telefon:pT,email:pM}:'';
     d.strasse=m.querySelector('#m-str').value;d.plz=plzIn.value;d.ort=m.querySelector('#m-ort').value;
     const bz=bezFromPLZ(d.plz);if(bz)d.bezirk=bz;else if(d.plz)d.bezirk='';
     d.analyst=m.querySelector('#m-an').value;d.berater=m.querySelector('#m-be').value;
@@ -3429,7 +3490,8 @@ function openModal(id){
     const anTxt=()=>{const n=selFiles.length;const t=[];if(n)t.push(n+(n===1?' Datei gewählt':' Dateien gewählt'));if(recBlob)t.push('Sprachnotiz ✓');anSt.textContent=t.join(' · ');};
     const grab=(inp,scan)=>{Array.from(inp.files||[]).forEach(f=>{
       if(scan){scanN++;const ext=((f.name||'').split('.').pop()||'jpg').toLowerCase();
-        try{f=new File([f],'Scan '+todayStr().split('-').reverse().join('.')+' Nr.'+scanN+'.'+ext,{type:f.type});}catch(_){}}
+        try{f=new File([f],'Scan '+todayStr().split('-').reverse().join('.')+' Nr.'+scanN+'.'+ext,{type:f.type});}catch(_){}
+        f.__scan=true;}
       selFiles.push(f);});
       inp.value='';anTxt();};
     anSec.querySelector('#an-pick').addEventListener('click',()=>fIn.click());
@@ -3450,7 +3512,16 @@ function openModal(id){
     anSec.querySelector('#an-send').addEventListener('click',async e2=>{
       const b=e2.currentTarget;
       if(rec&&rec.state==='recording'){rec.stop();await new Promise(r=>setTimeout(r,400));}
-      const files=selFiles.slice();
+      let files=selFiles.slice();
+      // 📄 Handy-Scans zu EINEM PDF bündeln – keine losen Fotos mehr, Anstalten bekommen ein sauberes Dokument
+      const scanBilder=files.filter(f=>f.__scan&&/^image\//.test(f.type||''));
+      if(scanBilder.length){
+        const pb=await scansZuPdf(scanBilder);
+        if(pb){
+          files=files.filter(f=>!scanBilder.includes(f));
+          files.push(new File([pb],'Scan '+todayStr().split('-').reverse().join('.')+' ('+scanBilder.length+(scanBilder.length===1?' Seite':' Seiten')+').pdf',{type:'application/pdf'}));
+        }
+      }
       const note=anSec.querySelector('#an-note').value.trim();
       if(!files.length&&!recBlob&&!note){toast('Bitte PDF/Foto wählen, scannen, Sprachnotiz aufnehmen oder Notiz schreiben');return;}
       collect(); // bei neuen Kunden: Formularstand übernehmen, BEVOR Dateiname/Anlage daraus gebaut wird
@@ -3461,11 +3532,11 @@ function openModal(id){
         const tag=todayStr().split('-').reverse().join('.');
         const kurz=(d.name||d.org||'Kunde').slice(0,40);
         // 📧 Anstalten-Scan: jede PDF-Analyse nach erwähnten Versicherungs-Anstalten durchsuchen
-        let astHits=[];
+        let astHits=[],astTx='';
         for(const f of files){
           if(/\.pdf$/i.test(f.name||'')||(f.type||'').includes('pdf')){
             const tx=await pdfText(f);
-            if(tx)astHits=astHits.concat(anstaltenScan(tx));
+            if(tx){astHits=astHits.concat(anstaltenScan(tx));astTx+=' '+tx;}
           }
         }
         astHits=[...new Set(astHits)];
@@ -3482,6 +3553,20 @@ function openModal(id){
         if(astHits.length){
           d.anstalten=[...new Set([...(d.anstalten||[]),...astHits])];
           chatSys('📧 In der Analyse erkannt: '+astHits.join(', ')+' – Auskunfts-Mails können jetzt im Kunden vorbereitet werden.',d);
+        }
+        // 👤 „Kundendaten"-Seite der Analyse: leere Lead-Felder automatisch befüllen, Partner als Familie dazu
+        const kd=kdParse(astTx);
+        if(kd){
+          const set2=[];
+          const fill2=(feld,wert)=>{if(wert&&!(''+(d[feld]||'')).trim()){d[feld]=wert;set2.push(feld);}};
+          fill2('name',kd.name);fill2('geb',kd.geb);fill2('telefon',kd.tel?normTel(kd.tel):'');fill2('email',kd.email);
+          fill2('strasse',kd.strasse);fill2('plz',kd.plz);fill2('ort',kd.ort);
+          if(d.plz&&!(d.bezirk||'').trim()){const b2=bezFromPLZ(d.plz);if(b2)d.bezirk=b2;}
+          if(kd.partner&&(kd.partner.name||kd.partner.geb)&&!(d.partner&&d.partner.name)){
+            d.partner={name:kd.partner.name||'',geb:kd.partner.geb||'',telefon:kd.partner.tel||'',email:kd.partner.email||''};
+            set2.push('Partner');
+          }
+          if(set2.length)chatSys('👤 Kundendaten aus der Analyse übernommen: '+set2.join(', ')+((d.partner&&d.partner.name)?' · 👫 Familie: '+d.partner.name:''),d);
         }
         if(STAGES.indexOf(d.stage)<STAGES.indexOf('Analyse & Doku'))d.stage='Analyse & Doku';
         if(note)d.notizen=(tag+' Analyse-Übergabe ('+who+'): '+note+'\n'+(d.notizen||'')).slice(0,8000);
