@@ -330,7 +330,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="02.11-C";
+const APP_VERSION="02.11-D";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2217,11 +2217,16 @@ async function driveLeadFolder(tok,kunde,deal){ // je Kunde ein Unterordner in �
 }
 async function driveUpload(tok,blob,name,folderId){
   const folder=folderId||await driveFolder(tok);
-  const fd=new FormData();
-  fd.append('metadata',new Blob([JSON.stringify({name:name,parents:[folder]})],{type:'application/json'}));
-  fd.append('file',blob);
-  const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink',{method:'POST',headers:{Authorization:'Bearer '+tok},body:fd});
-  const j=await r.json();
+  const mach=async()=>{
+    const fd=new FormData();
+    fd.append('metadata',new Blob([JSON.stringify({name:name,parents:[folder]})],{type:'application/json'}));
+    fd.append('file',blob);
+    const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink',{method:'POST',headers:{Authorization:'Bearer '+tok},body:fd});
+    return await r.json();
+  };
+  let j;
+  try{j=await mach();}
+  catch(e){await new Promise(r=>setTimeout(r,1500));j=await mach();} // 1 automatischer Netz-Neuversuch (Handy-Funklöcher)
   if(!j.id)throw new Error('Upload fehlgeschlagen'+(j.error&&j.error.message?': '+j.error.message:''));
   try{await fetch('https://www.googleapis.com/drive/v3/files/'+j.id+'/permissions',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({role:'reader',type:'anyone'})});}catch(e){}
   return {id:j.id,url:j.webViewLink||('https://drive.google.com/file/d/'+j.id+'/view'),name:name};
@@ -2287,7 +2292,7 @@ async function scansZuPdf(files){ // Handy-Scans zu EINEM sauberen PDF bündeln 
     for(const f of files){
       const url=URL.createObjectURL(f);
       const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;});
-      const sc=Math.min(1,1700/Math.max(img.width,img.height));
+      const sc=Math.min(1,1500/Math.max(img.width,img.height)); // kleiner = schnellerer Handy-Upload, Lesbarkeit bleibt
       const cv=document.createElement('canvas');
       cv.width=Math.max(1,Math.round(img.width*sc));cv.height=Math.max(1,Math.round(img.height*sc));
       cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
@@ -2295,7 +2300,7 @@ async function scansZuPdf(files){ // Handy-Scans zu EINEM sauberen PDF bündeln 
       const pw=210,ph=297,rand=8;
       const r=Math.min((pw-2*rand)/cv.width,(ph-2*rand)/cv.height);
       if(!first)pdf.addPage();first=false;
-      pdf.addImage(cv.toDataURL('image/jpeg',0.82),'JPEG',(pw-cv.width*r)/2,(ph-cv.height*r)/2,cv.width*r,cv.height*r);
+      pdf.addImage(cv.toDataURL('image/jpeg',0.8),'JPEG',(pw-cv.width*r)/2,(ph-cv.height*r)/2,cv.width*r,cv.height*r);
     }
     return pdf.output('blob');
   }catch(e){return null;}
@@ -3567,28 +3572,33 @@ function openModal(id){
       const b=e2.currentTarget;
       if(rec&&rec.state==='recording'){rec.stop();await new Promise(r=>setTimeout(r,400));}
       let files=selFiles.slice();
-      // 📄 Handy-Scans zu EINEM PDF bündeln – keine losen Fotos mehr, Anstalten bekommen ein sauberes Dokument
-      const scanBilder=files.filter(f=>f.__scan&&/^image\//.test(f.type||''));
-      if(scanBilder.length){
-        const pb=await scansZuPdf(scanBilder);
-        if(pb){
-          files=files.filter(f=>!scanBilder.includes(f));
-          files.push(new File([pb],'Scan '+todayStr().split('-').reverse().join('.')+' ('+scanBilder.length+(scanBilder.length===1?' Seite':' Seiten')+').pdf',{type:'application/pdf'}));
-        }
-      }
       const note=anSec.querySelector('#an-note').value.trim();
       if(!files.length&&!recBlob&&!note){toast('Bitte PDF/Foto wählen, scannen, Sprachnotiz aufnehmen oder Notiz schreiben');return;}
       collect(); // bei neuen Kunden: Formularstand übernehmen, BEVOR Dateiname/Anlage daraus gebaut wird
       if(!((d.name||'')+(d.org||'')).trim()){toast('Bitte zuerst Name oder Firma eintragen – dann abgeben');return;}
-      b.disabled=true;b.textContent='⏳ Speichert …';
+      b.disabled=true;b.textContent='⏳ Startet …';
       try{
         const who=chatName()||'—';
         const tag=todayStr().split('-').reverse().join('.');
         const kurz=(d.name||d.org||'Kunde').slice(0,40);
-        // 📧 Anstalten-Scan: jede PDF-Analyse nach erwähnten Versicherungs-Anstalten durchsuchen
+        // 📄 Handy-Scans zu EINEM PDF bündeln (mit sichtbarem Fortschritt – am Handy dauert das ein paar Sekunden)
+        const scanBilder=files.filter(f=>f.__scan&&/^image\//.test(f.type||''));
+        if(scanBilder.length){
+          b.textContent='⏳ Baue PDF ('+scanBilder.length+' Seiten) …';
+          const pb=await scansZuPdf(scanBilder);
+          if(pb){
+            files=files.filter(f=>!scanBilder.includes(f));
+            const pf=new File([pb],'Scan '+tag+' ('+scanBilder.length+(scanBilder.length===1?' Seite':' Seiten')+').pdf',{type:'application/pdf'});
+            pf.__noText=true; // Bild-PDF hat keinen lesbaren Text – Anstalten-Scan überspringen spart Handy-Zeit
+            files.push(pf);
+          }
+        }
+        // 📧 Anstalten-Scan: jede ECHTE PDF-Analyse nach erwähnten Versicherungs-Anstalten durchsuchen
         let astHits=[],astTx='';
         for(const f of files){
+          if(f.__noText)continue;
           if(/\.pdf$/i.test(f.name||'')||(f.type||'').includes('pdf')){
+            b.textContent='⏳ Lese Analyse …';
             const tx=await pdfText(f);
             if(tx){astHits=astHits.concat(anstaltenScan(tx));astTx+=' '+tx;}
           }
@@ -3596,10 +3606,13 @@ function openModal(id){
         astHits=[...new Set(astHits)];
         const neu=[];
         if(files.length||recBlob){
+          b.textContent='⏳ Google-Freigabe …';
           const tok=await driveToken();
+          b.textContent='⏳ Kunden-Ordner …';
           const lf=await driveLeadFolder(tok,kurz,d); // je Kunde ein eigener, teilbarer Ordner (Assistenz=schreiben, Analyst/Berater=lesen)
-          for(const f of files){neu.push(Object.assign(await driveUpload(tok,f,kurz+' – '+f.name,lf.id),{von:who,ts:new Date().toISOString(),ordner:lf.url}));}
-          if(recBlob){const ext=(recBlob.type||'').includes('mp4')?'m4a':'webm';neu.push(Object.assign(await driveUpload(tok,recBlob,kurz+' – Sprachnotiz '+tag+'.'+ext,lf.id),{von:who,ts:new Date().toISOString(),ordner:lf.url}));}
+          let upI=0;const upN=files.length+(recBlob?1:0);
+          for(const f of files){upI++;b.textContent='⏳ Lade hoch ('+upI+'/'+upN+') …';neu.push(Object.assign(await driveUpload(tok,f,kurz+' – '+f.name,lf.id),{von:who,ts:new Date().toISOString(),ordner:lf.url}));}
+          if(recBlob){upI++;b.textContent='⏳ Lade hoch ('+upI+'/'+upN+') …';const ext=(recBlob.type||'').includes('mp4')?'m4a':'webm';neu.push(Object.assign(await driveUpload(tok,recBlob,kurz+' – Sprachnotiz '+tag+'.'+ext,lf.id),{von:who,ts:new Date().toISOString(),ordner:lf.url}));}
         }
         collect();
         neu.forEach(x=>{if(/vollmacht/i.test(x.name||''))x.vm=1;}); // Vollmacht am Dateinamen erkennen
@@ -3628,13 +3641,17 @@ function openModal(id){
         histAdd(d,'Analyse abgegeben'+(neu.length?' ('+neu.map(x=>x.name).join(', ').slice(0,120)+')':''));
         persist();
         toast((isNew?'✅ Neuer Kunde angelegt + Analyse gespeichert':'✅ Analyse beim Kunden gespeichert')+(neu.length?' – Dateien im Google-Ordner „CENSA Analysen"':''));
+        selFiles.length=0;recBlob=null; // erfolgreich abgegeben -> nichts „Offenes" mehr im Formular
         openModal(d.id); // Fenster bleibt offen und zeigt sofort die neuen Anlagen (Melanies Ansage 31.10.)
         const sec2=document.getElementById('m-analysesec');if(sec2)sec2.scrollIntoView({block:'center'});
       }catch(err){
-        toast('❌ '+(err&&err.message?err.message:'Speichern fehlgeschlagen – bitte noch einmal versuchen'));
+        const msg=err&&err.message?err.message:'Speichern fehlgeschlagen – bitte noch einmal versuchen';
+        toast('❌ '+msg);
+        anSt.innerHTML='<span style="color:var(--bad);font-weight:800">❌ '+esc(msg)+'</span> – deine Dateien/Scans sind NOCH DA: einfach nochmal „📤 Abgeben" drücken.';
         b.disabled=false;b.textContent='📤 Abgeben';
       }
     });
+    m.__anPending=()=>selFiles.length+(recBlob?1:0); // Verlust-Schutz: ungesicherte Dateien/Scans beim Schließen/Speichern abfangen
   }
   const astSec=m.querySelector('#m-anstsec');
   if(astSec){
@@ -3753,7 +3770,9 @@ function openModal(id){
     d.notizen=('BG ABGESAGT (war '+alt+') am '+todayStr().split('-').reverse().join('.')+' – neu terminisieren | '+(d.notizen||''));
     chatSys('❗ Beratungstermin ABGESAGT: '+(d.name||d.org||'—')+' (war '+alt+') – '+(d.berater?('Berater '+d.berater):'Berater')+'/'+(d.analyst||'Analyst')+' bitte neu terminisieren!',d,d.berater||d.analyst||null);
     persist();closeModal();toast('Abgesagt – Termin muss neu gesetzt werden');});
-  m.querySelector('#m-save').addEventListener('click',()=>{collect();d.status='open';
+  m.querySelector('#m-save').addEventListener('click',()=>{
+    if(m.__anPending&&m.__anPending()&&!confirm('⚠ '+m.__anPending()+' gewählte Datei(en)/Scan-Seiten wurden noch NICHT abgegeben und gehen verloren!\n\nZum Hochladen zuerst „📤 Abgeben" drücken.\n\nTrotzdem ohne die Dateien speichern?'))return;
+    collect();d.status='open';
     terminStage(d);
     terminEvents();persist();closeModal();toast('Gespeichert');});
   const mst=m.querySelector('#m-save-top');if(mst)mst.addEventListener('click',()=>m.querySelector('#m-save').click());
@@ -3772,7 +3791,10 @@ function openModal(id){
     d.telefonist='';d.status='open';d.stage='Neuer Lead';d.lostReason='';d.wiedervorlage='';
     d.notizen=('REAKTIVIERT am '+todayStr().split('-').reverse().join('.')+' – neuen Telefonisten zuteilen. Frühere Anrufer: '+(d.telHist||[]).join(', ')+' | '+(d.notizen||'')).trim(' |');
     persist();closeModal();toast('Wieder freigegeben – neuen Telefonisten zuteilen');});
-  m.querySelector('#m-close').addEventListener('click',closeModal);
+  m.querySelector('#m-close').addEventListener('click',()=>{
+    if(m.__anPending&&m.__anPending()&&!confirm('⚠ '+m.__anPending()+' gewählte Datei(en)/Scan-Seiten wurden noch NICHT abgegeben und gehen beim Schließen verloren!\n\nZum Hochladen zuerst „📤 Abgeben" drücken.\n\nTrotzdem schließen?'))return;
+    closeModal();
+  });
   const ub2=m.querySelector('#m-ueb');
   if(ub2)ub2.addEventListener('click',()=>{collect();dbPersist(d);openUebergabe(d.id);});
   const cl=m.querySelector('#m-call');if(cl)cl.addEventListener('click',()=>{d.calls=d.calls||[];d.calls.push(Object.assign({ts:new Date().toISOString(),outcome:'angerufen'},callMeta()));dbPersist(d);document.getElementById('kpiDials').textContent=dialsToday();const nm=m.querySelector('.callbar .num');if(nm)nm.textContent=(d.calls||[]).length;});
