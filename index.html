@@ -316,6 +316,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
 /* ==== FIREBASE-KONFIGURATION: Werte aus der Firebase-Konsole hier einsetzen ==== */
 const FIREBASE_CONFIG={
@@ -328,7 +329,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="01.11-C";
+const APP_VERSION="02.11-A";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2224,6 +2225,114 @@ async function driveUpload(tok,blob,name,folderId){
   try{await fetch('https://www.googleapis.com/drive/v3/files/'+j.id+'/permissions',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({role:'reader',type:'anyone'})});}catch(e){}
   return {id:j.id,url:j.webViewLink||('https://drive.google.com/file/d/'+j.id+'/view'),name:name};
 }
+/* ---------- 📧 Auskunfts-Ersuchen an Versicherungs-Anstalten (Melanies Liste 02.11.2026, „Anstalten Mailadressen.pdf") ----------
+   Mail = die von Melanie markierte Hauptadresse je Anstalt; vnr = CENSA-Vermittlernummer(n) laut Liste. */
+const ANSTALTEN=[
+ {n:'Allianz',m:'person@allianz.at',vnr:'1262733 (FLV: 826187)',rx:/allianz/i},
+ {n:'Arag',m:'info@arag.at',vnr:'E7702655',rx:/\barag\b/i},
+ {n:'Corum',m:'info@corum-investments.at',vnr:'',rx:/corum/i},
+ {n:'D.A.S.',m:'office@das.at',vnr:'',rx:/d\.a\.s|das rechtsschutz/i},
+ {n:'Dialog',m:'team-aut@dialog-leben.at',vnr:'374473',rx:/dialog[- ]?(leben|versicherung)/i},
+ {n:'Donau',m:'donau@donauversicherung.at',vnr:'B90342W3',rx:/donau ?(versicherung|brokerline)/i},
+ {n:'Ergo',m:'office@ergo-versicherung.at',vnr:'W003306466',rx:/\bergo\b/i},
+ {n:'Europa',m:'info@europa.de',vnr:'9209234 (Leben)',rx:/europa ?(leben|versicherung)/i},
+ {n:'Generali',m:'office.ost.at@generali.com',vnr:'',rx:/generali/i},
+ {n:'Golden Gates',m:'b.oberascher@goldengates.sale',cc:'u.erbschwendtner@goldengates.at',vnr:'GG00801',rx:/golden ?gates/i},
+ {n:'Gothaer',m:'info@gothaer.at',vnr:'',rx:/gothaer/i},
+ {n:'GRAWE',m:'wien@grawe.at',vnr:'1034307',rx:/grawe|grazer wechselseitige/i},
+ {n:'Hannoversche',m:'atservice@hannoversche.at',vnr:'VL109545-001',rx:/hannoversche/i},
+ {n:'HDI',m:'office@hdi.at',vnr:'5085 (Sach) / FLV je Bundesland lt. Liste',rx:/\bhdi\b/i},
+ {n:'Helvetia',m:'info@helvetia.at',vnr:'92622 (Sach) / 11866 (Leben)',rx:/helvetia/i},
+ {n:'Janitos',m:'versicherung@janitos.de',vnr:'81229600',rx:/janitos/i},
+ {n:'Merkur',m:'merkur@merkur.at',vnr:'54337',rx:/merkur/i},
+ {n:'MUKI',m:'service@muki.at',vnr:'7010221',rx:/muki/i},
+ {n:'NV',m:'maklerwien@nv.at',vnr:'31296',rx:/niederösterreichische ?versicherung|\bnv\b/i},
+ {n:'Nürnberger',m:'info@nuernberger.at',vnr:'710 139 000',rx:/n(ü|ue)rnberger/i},
+ {n:'PartnerBank',m:'bki@partnerbank.at',vnr:'',rx:/partner ?bank/i},
+ {n:'R+V',m:'info@ruv.at',vnr:'349032',rx:/r ?\+ ?v/i},
+ {n:'sBausparkasse',m:'info@sbausparkasse.at',vnr:'',rx:/s[- ]?bausparkasse|bausparkasse der sparkasse/i},
+ {n:'Uniqa',m:'partnerservice.noe@uniqa.at',vnr:'241792',rx:/uniqa/i},
+ {n:'VAV',m:'serviceteam2@vav.at',vnr:'7704',rx:/\bvav\b/i},
+ {n:'Wiener Städtische',m:'kundenservice@wienerstaedtische.at',vnr:'',rx:/wiener ?st(ä|ae)dt|wr\.? ?st(ä|ae)dt/i},
+ {n:'Wüstenrot',m:'vertrag@wuestenrot.at',vnr:'387492-2',rx:/w(ü|ue)stenrot/i},
+ {n:'WWK',m:'vd.oesterreich@wwk.at',vnr:'Q940 2000',rx:/\bwwk\b/i},
+ {n:'Zürich',m:'maklerservice.noe@at.zurich.com',vnr:'216814-6 (Sach) / 217024-8 (Leben) / 217377-8 (BAV)',rx:/z(ü|u)rich/i},
+ {n:'ÖBV',m:'makler@oebv.com',vnr:'011519',rx:/öbv|oebv|österr\w* beamtenversicherung/i},
+ {n:'Interrisk',m:'',vnr:'27917',rx:/interrisk/i},
+ {n:'Meine Versicherung',m:'',vnr:'VP-123',rx:/meine versicherung ag/i},
+ {n:'Roland',m:'',vnr:'801.223',rx:/roland ?(rechtsschutz|versicherung)/i},
+ {n:'s-Wohnfinanz',m:'',vnr:'71076',rx:/s[- ]?wohnfinanz/i},
+ {n:'Wiener Verein',m:'',vnr:'097005G5',rx:/wiener ?verein/i}
+];
+async function pdfText(file){ // PDF im Browser lesen (pdf.js); Foto-Scans haben keinen Text -> ''
+  try{
+    if(!window.pdfjsLib)return '';
+    pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const doc=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+    let t='';
+    for(let p=1;p<=Math.min(doc.numPages,25);p++){
+      const c=await (await doc.getPage(p)).getTextContent();
+      t+=' '+c.items.map(it=>it.str).join(' ');
+    }
+    return t;
+  }catch(e){return '';}
+}
+function anstaltenScan(tx){return ANSTALTEN.filter(a=>a.rx.test(tx||'')).map(a=>a.n);}
+let __gmTok=null,__gmExp=0;
+function gmailToken(){ // eigene Freigabe nur für „Entwürfe anlegen" (gmail.compose) – gleiche Mechanik wie Drive/Kalender
+  return new Promise((res,rej)=>{
+    if(__gmTok&&Date.now()<__gmExp-60000)return res(__gmTok);
+    gisLoad().then(()=>{
+      try{
+        const tc=google.accounts.oauth2.initTokenClient({
+          client_id:GCAL_CLIENT_ID,
+          scope:'https://www.googleapis.com/auth/gmail.compose',
+          callback:r=>{
+            if(r&&r.access_token){__gmTok=r.access_token;__gmExp=Date.now()+((r.expires_in||3300)*1000);res(__gmTok);}
+            else rej(new Error('Keine Google-Freigabe erhalten'));
+          },
+          error_callback:e=>rej(new Error(e&&(e.type==='popup_closed'||e.type==='popup_failed_to_open')?'Google-Fenster geschlossen oder blockiert – bitte Popups erlauben':'Google-Anmeldung fehlgeschlagen'))
+        });
+        tc.requestAccessToken({prompt:''});
+      }catch(e){rej(e);}
+    },rej);
+  });
+}
+function b64u8(s){return btoa(unescape(encodeURIComponent(s)));}
+async function astVmB64(id){ // Vollmacht-Datei (Jeder-mit-Link-lesbar) als Base64 für den Mail-Anhang holen
+  const r=await fetch('https://www.googleapis.com/drive/v3/files/'+id+'?alt=media&key='+FIREBASE_CONFIG.apiKey);
+  if(!r.ok)throw new Error('Vollmacht-Download fehlgeschlagen');
+  const b=new Uint8Array(await r.arrayBuffer());
+  let s='';for(let i=0;i<b.length;i+=8192)s+=String.fromCharCode.apply(null,b.subarray(i,i+8192));
+  return btoa(s);
+}
+function astMailText(d,a,vmInfo){ // vmInfo: 'anhang' | URL-String | null
+  return 'Sehr geehrte Damen und Herren,\n\n'
+   +'wir betreuen den unten angeführten Kunden und ersuchen'
+   +(vmInfo==='anhang'?' – entsprechend der beiliegenden, unterschriebenen Auskunftsvollmacht –':'')
+   +' um Übermittlung einer vollständigen Aufstellung der bestehenden Verträge (Sparte, Polizzennummer, Beginn/Ablauf, Prämie, Rückkaufswert sofern zutreffend).\n\n'
+   +(a.vnr?'Unsere Vermittlernummer: '+a.vnr+'\n':'')
+   +'Kunde: '+((d.name||'')+(d.org&&d.org!==d.name?' ('+d.org+')':'')||'—')+'\n'
+   +'Geburtsdatum: [bitte ergänzen]\n'
+   +'Anschrift: '+([d.strasse,[d.plz,d.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ')||'[bitte ergänzen]')+'\n'
+   +(typeof vmInfo==='string'&&vmInfo!=='anhang'?'\nUnterschriebene Auskunftsvollmacht: '+vmInfo+'\n':'')
+   +(vmInfo?'':'\n[⚠ Auskunftsvollmacht bitte noch beilegen]\n')
+   +'\nVielen Dank und freundliche Grüße\n'+(chatName()||'')+'\nCENSA – Wir übernehmen die Vorsorge. Sie führen die GmbH.';
+}
+function astMime(d,a,text,att){ // kompletter Mail-Rohbau (für Gmail-Entwurf UND .eml-Datei)
+  const nl='\r\n';
+  let h='To: '+a.m+nl+(a.cc?'Cc: '+a.cc+nl:'')
+   +'Subject: =?UTF-8?B?'+b64u8('Auskunftsersuchen – '+(d.name||d.org||'Kunde'))+'?='+nl
+   +'X-Unsent: 1'+nl+'MIME-Version: 1.0'+nl;
+  if(!att)return h+'Content-Type: text/plain; charset=UTF-8'+nl+'Content-Transfer-Encoding: base64'+nl+nl+b64u8(text).replace(/(.{76})/g,'$1'+nl);
+  const bd='censa-'+Date.now();
+  return h+'Content-Type: multipart/mixed; boundary="'+bd+'"'+nl+nl
+   +'--'+bd+nl+'Content-Type: text/plain; charset=UTF-8'+nl+'Content-Transfer-Encoding: base64'+nl+nl+b64u8(text).replace(/(.{76})/g,'$1'+nl)+nl
+   +'--'+bd+nl+'Content-Type: application/pdf; name="'+att.name.replace(/"/g,'')+'"'+nl
+   +'Content-Transfer-Encoding: base64'+nl+'Content-Disposition: attachment; filename="'+att.name.replace(/"/g,'')+'"'+nl+nl
+   +att.b64.replace(/(.{76})/g,'$1'+nl)+nl+'--'+bd+'--'+nl;
+}
+
 async function gcalInsert(title,dt,durMin,desc,loc,attendees){
   if(!GCAL_CLIENT_ID)return false;
   let tok;try{tok=await gcalToken();}catch(e){return false;}
@@ -3205,6 +3314,24 @@ function openModal(id){
       </div>
       <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Dateien werden über deinen Google-Zugang im Kunden-Ordner unter „CENSA Analysen" gespeichert – beim ersten Mal fragt Google einmal um Erlaubnis. Team-Mitglieder mit Rolle „Assistenz" können Berechnungen direkt in den Ordner legen; Analyst &amp; Berater sehen ihn automatisch in ihrem Drive unter „Für mich freigegeben".${isNew?' · 💾 Beim Abgeben wird der neue Kunde automatisch mit angelegt.':''}</div>
     </div>
+    ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px" id="m-anstsec">
+      <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">📧 Auskunfts-Ersuchen an Anstalten <span style="font-weight:500;color:var(--ink-2);font-size:12px">– aus der PDF-Analyse erkannt; der Entwurf wird fertig vorbereitet, kontrolliert und GESENDET wird von euch</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0">
+        ${ANSTALTEN.filter(a=>(d.anstalten||[]).includes(a.n)).map(a=>`<label class="gptoggle"><input type="checkbox" class="ast-ck" value="${esc(a.n)}" checked> ${esc(a.n)}${a.m?'':' ⚠'}</label>`).join('')||'<span style="font-size:12px;color:var(--ink-3)">Noch keine Anstalt aus einer PDF erkannt (Foto-Scans haben keinen lesbaren Text) – unten per Hand anhaken.</span>'}
+      </div>
+      <details style="margin:4px 0"><summary style="cursor:pointer;font-size:12px;color:var(--ink-2)">+ weitere Anstalten wählen</summary>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0">${ANSTALTEN.filter(a=>!(d.anstalten||[]).includes(a.n)).map(a=>`<label class="gptoggle"><input type="checkbox" class="ast-ck" value="${esc(a.n)}"> ${esc(a.n)}${a.m?'':' ⚠'}</label>`).join('')}</div>
+      </details>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0">
+        <span style="font-size:12px;font-weight:700">Vollmacht anhängen:</span>
+        <select id="ast-vm" style="min-width:0;max-width:340px">${(()=>{const fs2=(d.analyse||[]).filter(x=>x.id);let pre=fs2.findIndex(x=>x.vm||/vollmacht/i.test(x.name||''));return '<option value="">— ohne Anhang —</option>'+fs2.map((x,i)=>`<option value="${esc(x.id)}"${i===pre?' selected':''}>${esc(x.name)}</option>`).join('');})()}</select>
+      </div>
+      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:6px">
+        <button type="button" class="btn pri" id="ast-gmail">📧 Gmail-Entwürfe anlegen</button>
+        <button type="button" class="btn" id="ast-eml">💾 E-Mail-Dateien (.eml)</button>
+      </div>
+      <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Gmail-Entwürfe landen in DEINEM Gmail unter „Entwürfe" (einmalige Google-Freigabe) – dort nur noch kontrollieren und senden. .eml-Dateien öffnen sich in Outlook &amp; Co. als fertiger, ungesendeter Entwurf samt Anhang. ⚠ = keine Mailadresse in der Liste hinterlegt.</div>
+    </div>`:''}
     ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid ${d.auswertung&&d.auswertung.status==='offen'?'var(--bad)':'var(--line)'};border-radius:12px" id="m-auswsec">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">🧮 Fall-Auswertung <span style="font-weight:500;color:var(--ink-2);font-size:12px">– die Assistenz wertet aus; Analyst &amp; Berater bekommen die Info automatisch als Aufgabe</span></div>
       ${d.auswertung?(d.auswertung.status==='fertig'
@@ -3333,6 +3460,15 @@ function openModal(id){
         const who=chatName()||'—';
         const tag=todayStr().split('-').reverse().join('.');
         const kurz=(d.name||d.org||'Kunde').slice(0,40);
+        // 📧 Anstalten-Scan: jede PDF-Analyse nach erwähnten Versicherungs-Anstalten durchsuchen
+        let astHits=[];
+        for(const f of files){
+          if(/\.pdf$/i.test(f.name||'')||(f.type||'').includes('pdf')){
+            const tx=await pdfText(f);
+            if(tx)astHits=astHits.concat(anstaltenScan(tx));
+          }
+        }
+        astHits=[...new Set(astHits)];
         const neu=[];
         if(files.length||recBlob){
           const tok=await driveToken();
@@ -3341,7 +3477,12 @@ function openModal(id){
           if(recBlob){const ext=(recBlob.type||'').includes('mp4')?'m4a':'webm';neu.push(Object.assign(await driveUpload(tok,recBlob,kurz+' – Sprachnotiz '+tag+'.'+ext,lf.id),{von:who,ts:new Date().toISOString(),ordner:lf.url}));}
         }
         collect();
+        neu.forEach(x=>{if(/vollmacht/i.test(x.name||''))x.vm=1;}); // Vollmacht am Dateinamen erkennen
         d.analyse=(d.analyse||[]).concat(neu);
+        if(astHits.length){
+          d.anstalten=[...new Set([...(d.anstalten||[]),...astHits])];
+          chatSys('📧 In der Analyse erkannt: '+astHits.join(', ')+' – Auskunfts-Mails können jetzt im Kunden vorbereitet werden.',d);
+        }
         if(STAGES.indexOf(d.stage)<STAGES.indexOf('Analyse & Doku'))d.stage='Analyse & Doku';
         if(note)d.notizen=(tag+' Analyse-Übergabe ('+who+'): '+note+'\n'+(d.notizen||'')).slice(0,8000);
         chatSys('📤 Analyse abgegeben: '+(d.name||d.org||'—')+' von '+who+(neu.length?' · '+neu.length+(neu.length===1?' Datei':' Dateien')+' gespeichert':'')+(note?' – '+note:''),d);
@@ -3354,6 +3495,71 @@ function openModal(id){
         toast('❌ '+(err&&err.message?err.message:'Speichern fehlgeschlagen – bitte noch einmal versuchen'));
         b.disabled=false;b.textContent='📤 Abgeben';
       }
+    });
+  }
+  const astSec=m.querySelector('#m-anstsec');
+  if(astSec){
+    const selAst=()=>Array.from(astSec.querySelectorAll('.ast-ck:checked')).map(x=>ANSTALTEN.find(a=>a.n===x.value)).filter(Boolean);
+    const vmEntry=()=>{const id=(astSec.querySelector('#ast-vm')||{value:''}).value;return id?(d.analyse||[]).find(x=>x.id===id):null;};
+    const bauen=async()=>{ // gemeinsame Vorarbeit: Auswahl + Vollmacht (Anhang, sonst Link)
+      const sel=selAst();
+      if(!sel.length){toast('Bitte mindestens eine Anstalt anhaken');return null;}
+      const ohneMail=sel.filter(a=>!a.m);
+      if(ohneMail.length)toast('⚠ Ohne Mailadresse in der Liste (wird übersprungen): '+ohneMail.map(a=>a.n).join(', '));
+      const mitMail=sel.filter(a=>a.m);
+      if(!mitMail.length)return null;
+      const vm=vmEntry();let att=null,vmInfo=null;
+      if(vm){
+        try{att={name:((vm.name||'Vollmacht').replace(/\.pdf$/i,''))+'.pdf',b64:await astVmB64(vm.id)};vmInfo='anhang';}
+        catch(e){vmInfo=vm.url||null;} // Download klappt nicht -> Link in den Mailtext
+      }
+      return {sel:mitMail,att,vmInfo};
+    };
+    astSec.querySelector('#ast-gmail').addEventListener('click',async e2=>{
+      const b=e2.currentTarget;b.disabled=true;const alt=b.textContent;b.textContent='⏳ Lege Entwürfe an …';
+      try{
+        const w=await bauen();if(!w){b.disabled=false;b.textContent=alt;return;}
+        const tok=await gmailToken();
+        let ok2=0;
+        for(const a of w.sel){
+          const raw=astMime(d,a,astMailText(d,a,w.vmInfo),w.att).replace(/\r\n/g,'\r\n');
+          const raw64=btoa(unescape(encodeURIComponent(raw))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+          const r=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({message:{raw:raw64}})});
+          const j=await r.json();
+          if(r.ok&&j.id)ok2++;
+          else{
+            const em=((j.error&&j.error.message)||'')+' '+((j.error&&j.error.status)||'');
+            if(r.status===403&&/has not been used|is disabled|accessNotConfigured|SERVICE_DISABLED/i.test(em))
+              throw new Error('Gmail ist für CENSA noch nicht freigeschaltet (einmalige Aktivierung durch Melanie: Google-Konsole → Gmail API aktivieren).');
+            throw new Error('Gmail-Entwurf fehlgeschlagen'+((j.error&&j.error.message)?' – Google sagt: '+j.error.message.slice(0,120):''));
+          }
+        }
+        histAdd(d,'Auskunfts-Mails vorbereitet (Gmail-Entwurf): '+w.sel.map(a=>a.n).join(', ')+(w.att?' · Vollmacht angehängt':''));
+        chatSys('📧 '+ok2+' Auskunfts-Entwürfe für '+(d.name||d.org||'—')+' in Gmail angelegt ('+w.sel.map(a=>a.n).join(', ')+') – bitte kontrollieren und senden.',d);
+        persist();
+        toast('✅ '+ok2+' Entwürfe liegen in deinem Gmail unter „Entwürfe" – kontrollieren + senden');
+      }catch(err){toast('❌ '+(err&&err.message?err.message:'Fehlgeschlagen'));}
+      b.disabled=false;b.textContent=alt;
+    });
+    astSec.querySelector('#ast-eml').addEventListener('click',async e2=>{
+      const b=e2.currentTarget;b.disabled=true;const alt=b.textContent;b.textContent='⏳ Baue Dateien …';
+      try{
+        const w=await bauen();if(!w){b.disabled=false;b.textContent=alt;return;}
+        if(w.sel.length>1)toast('Der Browser fragt evtl. „mehrere Downloads zulassen" – bitte erlauben');
+        for(const a of w.sel){
+          const mime=astMime(d,a,astMailText(d,a,w.vmInfo),w.att);
+          const bl=new Blob([mime],{type:'message/rfc822'});
+          const a2=document.createElement('a');a2.href=URL.createObjectURL(bl);
+          a2.download='Auskunft '+a.n+' – '+(d.name||d.org||'Kunde').slice(0,30)+'.eml';
+          document.body.appendChild(a2);a2.click();a2.remove();
+          setTimeout(((u)=>()=>URL.revokeObjectURL(u))(a2.href),5000);
+          await new Promise(r=>setTimeout(r,350));
+        }
+        histAdd(d,'Auskunfts-Mails vorbereitet (.eml): '+w.sel.map(a=>a.n).join(', ')+(w.att?' · Vollmacht angehängt':''));
+        persist();
+        toast('✅ '+w.sel.length+' E-Mail-Dateien heruntergeladen – öffnen, kontrollieren, senden');
+      }catch(err){toast('❌ '+(err&&err.message?err.message:'Fehlgeschlagen'));}
+      b.disabled=false;b.textContent=alt;
     });
   }
   const awF=m.querySelector('#aw-fertig');
