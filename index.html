@@ -330,7 +330,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="02.11-F";
+const APP_VERSION="02.11-G";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2398,12 +2398,13 @@ async function astVmB64(id){ // Vollmacht-Datei (Jeder-mit-Link-lesbar) als Base
   let s='';for(let i=0;i<b.length;i+=8192)s+=String.fromCharCode.apply(null,b.subarray(i,i+8192));
   return btoa(s);
 }
-function astMailText(d,a,vmInfo){ // vmInfo: 'anhang' | URL-String | null
+function astMailText(d,sel,vmInfo){ // EINE Sammel-Mail an alle gewählten Anstalten (Melanies Ansage 02.11.); vmInfo: 'anhang' | URL | null
+  const vnrs=(sel||[]).filter(a=>a.vnr);
   return 'Sehr geehrte Damen und Herren,\n\n'
    +'wir betreuen den unten angeführten Kunden und ersuchen'
    +(vmInfo==='anhang'?' – entsprechend der beiliegenden, unterschriebenen Auskunftsvollmacht –':'')
    +' um Übermittlung einer vollständigen Aufstellung der bestehenden Verträge (Sparte, Polizzennummer, Beginn/Ablauf, Prämie, Rückkaufswert sofern zutreffend).\n\n'
-   +(a.vnr?'Unsere Vermittlernummer: '+a.vnr+'\n':'')
+   +(vnrs.length?('Unsere Vermittlernummer'+(vnrs.length===1?': '+vnrs[0].vnr:'n (je Gesellschaft):\n'+vnrs.map(a=>'- '+a.n+': '+a.vnr).join('\n'))+'\n\n'):'')
    +'Kunde: '+((d.name||'')+(d.org&&d.org!==d.name?' ('+d.org+')':'')||'—')+'\n'
    +'Geburtsdatum: '+((d.geb||'').trim()||'[bitte ergänzen]')+'\n'
    +((d.partner&&d.partner.name)?'Partner/in: '+d.partner.name+(d.partner.geb?', geb. '+d.partner.geb:'')+'\n':'')
@@ -2412,9 +2413,10 @@ function astMailText(d,a,vmInfo){ // vmInfo: 'anhang' | URL-String | null
    +(vmInfo?'':'\n[⚠ Auskunftsvollmacht bitte noch beilegen]\n')
    +'\nVielen Dank und freundliche Grüße\n'+(chatName()||'')+'\nCENSA – Wir übernehmen die Vorsorge. Sie führen die GmbH.';
 }
-function astMime(d,a,text,att){ // kompletter Mail-Rohbau (für Gmail-Entwurf UND .eml-Datei)
+function astBcc(sel){return [...new Set((sel||[]).flatMap(a=>[a.m,a.cc]).filter(Boolean))].join(', ');}
+function astMime(d,hdr,text,att){ // kompletter Mail-Rohbau (für Gmail-Entwurf UND .eml-Datei); hdr={to?,cc?,bcc?}
   const nl='\r\n';
-  let h='To: '+a.m+nl+(a.cc?'Cc: '+a.cc+nl:'')
+  let h=(hdr.to?'To: '+hdr.to+nl:'')+(hdr.cc?'Cc: '+hdr.cc+nl:'')+(hdr.bcc?'Bcc: '+hdr.bcc+nl:'')
    +'Subject: =?UTF-8?B?'+b64u8('Auskunftsersuchen – '+(d.name||d.org||'Kunde'))+'?='+nl
    +'X-Unsent: 1'+nl+'MIME-Version: 1.0'+nl;
   if(!att)return h+'Content-Type: text/plain; charset=UTF-8'+nl+'Content-Transfer-Encoding: base64'+nl+nl+b64u8(text).replace(/(.{76})/g,'$1'+nl);
@@ -3435,7 +3437,7 @@ function openModal(id){
         <button type="button" class="btn" id="ast-eml">💾 Outlook-Programm (.eml)</button>
       </div>
       <div id="ast-owa-liste"></div>
-      <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Gmail-Entwürfe landen in DEINEM Gmail unter „Entwürfe" (einmalige Google-Freigabe). 🌐 Web-Outlook öffnet je Anstalt einen fertigen Entwurf im Browser (Vollmacht steht als Link im Text – Anhänge kann das Web-Outlook nicht vorbefüllen). .eml-Dateien öffnen sich im Outlook-PROGRAMM am PC als ungesendeter Entwurf samt Anhang. ⚠ = keine Mailadresse hinterlegt.</div>
+      <div style="font-size:11px;color:var(--ink-3);margin-top:5px"><b>EINE Sammel-Mail an alle angehakten Anstalten – alle Adressen im BCC</b> (die Anstalten sehen einander nicht), Vermittlernummern je Gesellschaft stehen im Text. Gmail: Entwurf mit Vollmacht-ANHANG in deinem Gmail. 🌐 Web-Outlook: Entwurf im Browser, Vollmacht als Link. .eml: fürs Outlook-PROGRAMM am PC, mit Anhang. ⚠ = keine Mailadresse hinterlegt.</div>
     </div>`:''}
     ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid ${d.auswertung&&d.auswertung.status==='offen'?'var(--bad)':'var(--line)'};border-radius:12px" id="m-auswsec">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">🧮 Fall-Auswertung <span style="font-weight:500;color:var(--ink-2);font-size:12px">– die Assistenz wertet aus; Analyst &amp; Berater bekommen die Info automatisch als Aufgabe</span></div>
@@ -3683,24 +3685,21 @@ function openModal(id){
       try{
         const tok=await gmailToken(); // Google-Fenster SOFORT (Popup-Blocker: Geste darf nicht verfallen)
         const w=await bauen();if(!w){b.disabled=false;b.textContent=alt;return;}
-        let ok2=0;
-        for(const a of w.sel){
-          const raw=astMime(d,a,astMailText(d,a,w.vmInfo),w.att).replace(/\r\n/g,'\r\n');
-          const raw64=btoa(unescape(encodeURIComponent(raw))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-          const r=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({message:{raw:raw64}})});
-          const j=await r.json();
-          if(r.ok&&j.id)ok2++;
-          else{
-            const em=((j.error&&j.error.message)||'')+' '+((j.error&&j.error.status)||'');
-            if(r.status===403&&/has not been used|is disabled|accessNotConfigured|SERVICE_DISABLED/i.test(em))
-              throw new Error('Gmail ist für CENSA noch nicht freigeschaltet (einmalige Aktivierung durch Melanie: Google-Konsole → Gmail API aktivieren).');
-            throw new Error('Gmail-Entwurf fehlgeschlagen'+((j.error&&j.error.message)?' – Google sagt: '+j.error.message.slice(0,120):''));
-          }
+        // EINE Sammel-Mail: alle Anstalten im BCC (sehen einander nicht), Vollmacht angehängt
+        const raw=astMime(d,{bcc:astBcc(w.sel)},astMailText(d,w.sel,w.vmInfo),w.att);
+        const raw64=btoa(unescape(encodeURIComponent(raw))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+        const r=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({message:{raw:raw64}})});
+        const j=await r.json();
+        if(!r.ok||!j.id){
+          const em=((j.error&&j.error.message)||'')+' '+((j.error&&j.error.status)||'');
+          if(r.status===403&&/has not been used|is disabled|accessNotConfigured|SERVICE_DISABLED/i.test(em))
+            throw new Error('Gmail ist für CENSA noch nicht freigeschaltet (einmalige Aktivierung durch Melanie: Google-Konsole → Gmail API aktivieren).');
+          throw new Error('Gmail-Entwurf fehlgeschlagen'+((j.error&&j.error.message)?' – Google sagt: '+j.error.message.slice(0,120):''));
         }
-        histAdd(d,'Auskunfts-Mails vorbereitet (Gmail-Entwurf): '+w.sel.map(a=>a.n).join(', ')+(w.att?' · Vollmacht angehängt':''));
-        chatSys('📧 '+ok2+' Auskunfts-Entwürfe für '+(d.name||d.org||'—')+' in Gmail angelegt ('+w.sel.map(a=>a.n).join(', ')+') – bitte kontrollieren und senden.',d);
+        histAdd(d,'Sammel-Auskunftsmail vorbereitet (Gmail, BCC): '+w.sel.map(a=>a.n).join(', ')+(w.att?' · Vollmacht angehängt':''));
+        chatSys('📧 Sammel-Auskunftsmail für '+(d.name||d.org||'—')+' in Gmail angelegt – '+w.sel.length+' Anstalten im BCC ('+w.sel.map(a=>a.n).join(', ')+') – bitte kontrollieren und senden.',d);
         persist();
-        toast('✅ '+ok2+' Entwürfe liegen in deinem Gmail unter „Entwürfe" – kontrollieren + senden');
+        toast('✅ 1 Sammel-Entwurf ('+w.sel.length+' Anstalten im BCC) liegt in deinem Gmail unter „Entwürfe"');
       }catch(err){toast('❌ '+(err&&err.message?err.message:'Fehlgeschlagen'));}
       b.disabled=false;b.textContent=alt;
     });
@@ -3710,34 +3709,32 @@ function openModal(id){
       const sel=selAst().filter(a=>a.m);
       if(!sel.length){toast('Bitte mindestens eine Anstalt (mit Mailadresse) anhaken');return;}
       const vm=vmEntry();
+      // EINE Sammel-Mail: alle Anstalten im BCC; Vollmacht als Link im Text (Web-Outlook kann keine Anhänge vorbefüllen)
+      const q='bcc='+encodeURIComponent(astBcc(sel))
+        +'&subject='+encodeURIComponent('Auskunftsersuchen – '+(d.name||d.org||'Kunde'))
+        +'&body='+encodeURIComponent(astMailText(d,sel,vm?(vm.url||null):null));
+      window.open('https://outlook.cloud.microsoft/mail/deeplink/compose?'+q,'_blank'); // EIN Fenster, synchron im Klick = Popup-sicher
       const host2=astSec.querySelector('#ast-owa-liste');
-      host2.innerHTML='<div style="margin:8px 0;padding:9px 11px;border:1.5px solid var(--brand);border-radius:10px;font-size:12.5px"><b>🌐 Je Anstalt anklicken</b> – öffnet den fertigen Entwurf im Web-Outlook (Firmen-Konto; 🏠 = privates outlook.com):<div style="display:flex;flex-direction:column;gap:5px;margin-top:6px">'
-        +sel.map(a=>{
-          const q='to='+encodeURIComponent(a.m)+(a.cc?'&cc='+encodeURIComponent(a.cc):'')
-            +'&subject='+encodeURIComponent('Auskunftsersuchen – '+(d.name||d.org||'Kunde'))
-            +'&body='+encodeURIComponent(astMailText(d,a,vm?(vm.url||null):null));
-          return '<div>📧 <a href="https://outlook.cloud.microsoft/mail/deeplink/compose?'+q+'" target="_blank" rel="noopener" style="font-weight:800;color:var(--brand-ink)">'+esc(a.n)+' öffnen</a> &nbsp;<a href="https://outlook.live.com/mail/deeplink/compose?'+q+'" target="_blank" rel="noopener" style="color:var(--ink-2)">🏠 privat</a></div>';
-        }).join('')+'</div></div>';
-      histAdd(d,'Auskunfts-Mails vorbereitet (Web-Outlook): '+sel.map(a=>a.n).join(', '));
+      host2.innerHTML='<div style="margin:8px 0;padding:9px 11px;border:1.5px solid var(--brand);border-radius:10px;font-size:12.5px"><b>🌐 Sammel-Entwurf geöffnet</b> ('+sel.length+' Anstalten im BCC). Falls kein Fenster aufging: '
+        +'<a href="https://outlook.cloud.microsoft/mail/deeplink/compose?'+q+'" target="_blank" rel="noopener" style="font-weight:800;color:var(--brand-ink)">hier klicken</a> &nbsp;·&nbsp; <a href="https://outlook.live.com/mail/deeplink/compose?'+q+'" target="_blank" rel="noopener" style="color:var(--ink-2)">🏠 privates outlook.com</a>'
+        +'<div style="color:var(--ink-3);margin-top:4px">Vollmacht steht als Link im Text – zum Anhängen als Datei bitte Gmail- oder .eml-Weg nutzen.</div></div>';
+      histAdd(d,'Sammel-Auskunftsmail vorbereitet (Web-Outlook, BCC): '+sel.map(a=>a.n).join(', '));
       persist();
     });
     astSec.querySelector('#ast-eml').addEventListener('click',async e2=>{
       const b=e2.currentTarget;b.disabled=true;const alt=b.textContent;b.textContent='⏳ Baue Dateien …';
       try{
         const w=await bauen();if(!w){b.disabled=false;b.textContent=alt;return;}
-        if(w.sel.length>1)toast('Der Browser fragt evtl. „mehrere Downloads zulassen" – bitte erlauben');
-        for(const a of w.sel){
-          const mime=astMime(d,a,astMailText(d,a,w.vmInfo),w.att);
-          const bl=new Blob([mime],{type:'message/rfc822'});
-          const a2=document.createElement('a');a2.href=URL.createObjectURL(bl);
-          a2.download='Auskunft '+a.n+' – '+(d.name||d.org||'Kunde').slice(0,30)+'.eml';
-          document.body.appendChild(a2);a2.click();a2.remove();
-          setTimeout(((u)=>()=>URL.revokeObjectURL(u))(a2.href),5000);
-          await new Promise(r=>setTimeout(r,350));
-        }
-        histAdd(d,'Auskunfts-Mails vorbereitet (.eml): '+w.sel.map(a=>a.n).join(', ')+(w.att?' · Vollmacht angehängt':''));
+        // EINE Sammel-.eml: alle Anstalten im BCC, Vollmacht angehängt
+        const mime=astMime(d,{bcc:astBcc(w.sel)},astMailText(d,w.sel,w.vmInfo),w.att);
+        const bl=new Blob([mime],{type:'message/rfc822'});
+        const a2=document.createElement('a');a2.href=URL.createObjectURL(bl);
+        a2.download='Auskunftsersuchen – '+(d.name||d.org||'Kunde').slice(0,30)+' ('+w.sel.length+' Anstalten).eml';
+        document.body.appendChild(a2);a2.click();a2.remove();
+        setTimeout(((u)=>()=>URL.revokeObjectURL(u))(a2.href),5000);
+        histAdd(d,'Sammel-Auskunftsmail vorbereitet (.eml, BCC): '+w.sel.map(a=>a.n).join(', ')+(w.att?' · Vollmacht angehängt':''));
         persist();
-        toast('✅ '+w.sel.length+' E-Mail-Dateien heruntergeladen – öffnen, kontrollieren, senden');
+        toast('✅ 1 E-Mail-Datei ('+w.sel.length+' Anstalten im BCC) heruntergeladen – öffnen, kontrollieren, senden');
       }catch(err){toast('❌ '+(err&&err.message?err.message:'Fehlgeschlagen'));}
       b.disabled=false;b.textContent=alt;
     });
