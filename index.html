@@ -330,7 +330,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="02.11-E";
+const APP_VERSION="02.11-F";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -3431,9 +3431,11 @@ function openModal(id){
       </div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:6px">
         <button type="button" class="btn pri" id="ast-gmail">📧 Gmail-Entwürfe anlegen</button>
-        <button type="button" class="btn" id="ast-eml">💾 E-Mail-Dateien (.eml)</button>
+        <button type="button" class="btn" id="ast-owa">🌐 Web-Outlook</button>
+        <button type="button" class="btn" id="ast-eml">💾 Outlook-Programm (.eml)</button>
       </div>
-      <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Gmail-Entwürfe landen in DEINEM Gmail unter „Entwürfe" (einmalige Google-Freigabe) – dort nur noch kontrollieren und senden. .eml-Dateien öffnen sich in Outlook &amp; Co. als fertiger, ungesendeter Entwurf samt Anhang. ⚠ = keine Mailadresse in der Liste hinterlegt.</div>
+      <div id="ast-owa-liste"></div>
+      <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Gmail-Entwürfe landen in DEINEM Gmail unter „Entwürfe" (einmalige Google-Freigabe). 🌐 Web-Outlook öffnet je Anstalt einen fertigen Entwurf im Browser (Vollmacht steht als Link im Text – Anhänge kann das Web-Outlook nicht vorbefüllen). .eml-Dateien öffnen sich im Outlook-PROGRAMM am PC als ungesendeter Entwurf samt Anhang. ⚠ = keine Mailadresse hinterlegt.</div>
     </div>`:''}
     ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid ${d.auswertung&&d.auswertung.status==='offen'?'var(--bad)':'var(--line)'};border-radius:12px" id="m-auswsec">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">🧮 Fall-Auswertung <span style="font-weight:500;color:var(--ink-2);font-size:12px">– die Assistenz wertet aus; Analyst &amp; Berater bekommen die Info automatisch als Aufgabe</span></div>
@@ -3701,6 +3703,23 @@ function openModal(id){
         toast('✅ '+ok2+' Entwürfe liegen in deinem Gmail unter „Entwürfe" – kontrollieren + senden');
       }catch(err){toast('❌ '+(err&&err.message?err.message:'Fehlgeschlagen'));}
       b.disabled=false;b.textContent=alt;
+    });
+    astSec.querySelector('#ast-owa').addEventListener('click',()=>{
+      // Web-Outlook: je Anstalt ein Deep-Link-Entwurf. KEIN window.open-Stapel (Popup-Blocker!) –
+      // stattdessen klickbare Liste, jeder Klick ist eine eigene Browser-Geste.
+      const sel=selAst().filter(a=>a.m);
+      if(!sel.length){toast('Bitte mindestens eine Anstalt (mit Mailadresse) anhaken');return;}
+      const vm=vmEntry();
+      const host2=astSec.querySelector('#ast-owa-liste');
+      host2.innerHTML='<div style="margin:8px 0;padding:9px 11px;border:1.5px solid var(--brand);border-radius:10px;font-size:12.5px"><b>🌐 Je Anstalt anklicken</b> – öffnet den fertigen Entwurf im Web-Outlook (Firmen-Konto; 🏠 = privates outlook.com):<div style="display:flex;flex-direction:column;gap:5px;margin-top:6px">'
+        +sel.map(a=>{
+          const q='to='+encodeURIComponent(a.m)+(a.cc?'&cc='+encodeURIComponent(a.cc):'')
+            +'&subject='+encodeURIComponent('Auskunftsersuchen – '+(d.name||d.org||'Kunde'))
+            +'&body='+encodeURIComponent(astMailText(d,a,vm?(vm.url||null):null));
+          return '<div>📧 <a href="https://outlook.cloud.microsoft/mail/deeplink/compose?'+q+'" target="_blank" rel="noopener" style="font-weight:800;color:var(--brand-ink)">'+esc(a.n)+' öffnen</a> &nbsp;<a href="https://outlook.live.com/mail/deeplink/compose?'+q+'" target="_blank" rel="noopener" style="color:var(--ink-2)">🏠 privat</a></div>';
+        }).join('')+'</div></div>';
+      histAdd(d,'Auskunfts-Mails vorbereitet (Web-Outlook): '+sel.map(a=>a.n).join(', '));
+      persist();
     });
     astSec.querySelector('#ast-eml').addEventListener('click',async e2=>{
       const b=e2.currentTarget;b.disabled=true;const alt=b.textContent;b.textContent='⏳ Baue Dateien …';
