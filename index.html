@@ -330,7 +330,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="02.11-B";
+const APP_VERSION="02.11-C";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2300,6 +2300,47 @@ async function scansZuPdf(files){ // Handy-Scans zu EINEM sauberen PDF bündeln 
     return pdf.output('blob');
   }catch(e){return null;}
 }
+function scanOverlay(){ // 📷 Mehrseiten-Scanner (Melanies Ansage 02.11.): Kamera bleibt offen, Seite für Seite auslösen, Fertig = alle Seiten
+  return new Promise(async res=>{
+    let stream=null;
+    try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:2560},height:{ideal:1920}},audio:false});}
+    catch(e){return res(null);} // keine Kamera / keine Erlaubnis -> Aufrufer nutzt den alten Einzelfoto-Weg
+    const tag=todayStr().split('-').reverse().join('.');
+    const ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:#000;z-index:10000;display:flex;flex-direction:column';
+    ov.innerHTML='<video autoplay playsinline muted style="flex:1;min-height:0;width:100%;object-fit:contain;background:#000"></video>'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px calc(14px + env(safe-area-inset-bottom));background:#111">'
+      +'<button type="button" id="sc-abbr" style="background:none;border:1.5px solid #666;color:#eee;border-radius:10px;padding:10px 14px;font-size:14px">✖ Abbrechen</button>'
+      +'<div style="display:flex;align-items:center;gap:10px">'
+      +'<img id="sc-thumb" style="width:44px;height:58px;object-fit:cover;border-radius:6px;border:1.5px solid #555;display:none">'
+      +'<button type="button" id="sc-shot" style="width:72px;height:72px;border-radius:50%;border:5px solid #fff;background:#e33;color:#fff;font-size:13px;font-weight:800">📷</button>'
+      +'</div>'
+      +'<button type="button" id="sc-ok" style="background:#0C806D;border:none;color:#fff;border-radius:10px;padding:12px 16px;font-size:14px;font-weight:800">✅ Fertig (<span id="sc-n">0</span>)</button>'
+      +'</div>';
+    document.body.appendChild(ov);
+    const video=ov.querySelector('video');video.srcObject=stream;
+    const pages=[];
+    const ende=out=>{try{stream.getTracks().forEach(t=>t.stop());}catch(e){}ov.remove();res(out);};
+    ov.querySelector('#sc-shot').addEventListener('click',()=>{
+      if(!video.videoWidth)return;
+      // SYNCHRON einfrieren – auch bei schnellem Tippen darf keine Seite verloren gehen
+      const cv=document.createElement('canvas');cv.width=video.videoWidth;cv.height=video.videoHeight;
+      cv.getContext('2d').drawImage(video,0,0);
+      const du=cv.toDataURL('image/jpeg',0.9);
+      const b=atob(du.split(',')[1]);const u=new Uint8Array(b.length);for(let i2=0;i2<b.length;i2++)u[i2]=b.charCodeAt(i2);
+      const f=new File([u],'Scan '+tag+' Seite '+(pages.length+1)+'.jpg',{type:'image/jpeg'});
+      f.__scan=true;pages.push(f);
+      ov.querySelector('#sc-n').textContent=pages.length;
+      const th=ov.querySelector('#sc-thumb');th.src=du;th.style.display='block';
+      video.style.opacity='.25';setTimeout(()=>{video.style.opacity='1';},140); // Blitz-Feedback
+    });
+    ov.querySelector('#sc-ok').addEventListener('click',()=>ende(pages));
+    ov.querySelector('#sc-abbr').addEventListener('click',()=>{
+      if(pages.length&&!confirm(pages.length+' aufgenommene Seite(n) verwerfen?'))return;
+      ende([]);
+    });
+  });
+}
 function kdParse(tx){ // „Kundendaten"-Seite der Analyse auslesen (nur digital ausgefüllte PDFs – Foto-Scans haben keinen Text)
   if(!tx||!/kundendaten/i.test(tx))return null;
   const seg=tx.slice(tx.search(/kundendaten/i));
@@ -3487,7 +3528,10 @@ function openModal(id){
     const fIn=anSec.querySelector('#an-file'),scIn=anSec.querySelector('#an-scan'),anSt=anSec.querySelector('#an-state');
     let recBlob=null,rec=null,recChunks=[];
     const selFiles=[];let scanN=0; // Dateien sammeln sich über mehrere Auswahlen/Scans hinweg
-    const anTxt=()=>{const n=selFiles.length;const t=[];if(n)t.push(n+(n===1?' Datei gewählt':' Dateien gewählt'));if(recBlob)t.push('Sprachnotiz ✓');anSt.textContent=t.join(' · ');};
+    const anTxt=()=>{const sc=selFiles.filter(f=>f.__scan).length,an=selFiles.length-sc;const t=[];
+      if(sc)t.push('📷 '+sc+' Scan-Seite'+(sc===1?'':'n')+' → wird beim Abgeben 1 PDF');
+      if(an)t.push(an+(an===1?' Datei':' Dateien'));
+      if(recBlob)t.push('Sprachnotiz ✓');anSt.textContent=t.join(' · ');};
     const grab=(inp,scan)=>{Array.from(inp.files||[]).forEach(f=>{
       if(scan){scanN++;const ext=((f.name||'').split('.').pop()||'jpg').toLowerCase();
         try{f=new File([f],'Scan '+todayStr().split('-').reverse().join('.')+' Nr.'+scanN+'.'+ext,{type:f.type});}catch(_){}
@@ -3495,7 +3539,17 @@ function openModal(id){
       selFiles.push(f);});
       inp.value='';anTxt();};
     anSec.querySelector('#an-pick').addEventListener('click',()=>fIn.click());
-    anSec.querySelector('#an-scanbtn').addEventListener('click',()=>scIn.click());
+    anSec.querySelector('#an-scanbtn').addEventListener('click',async()=>{
+      // Mehrseiten-Scanner (Kamera bleibt offen); ohne Kamera/Erlaubnis -> alter Einzelfoto-Weg
+      if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia){
+        const pages=await scanOverlay();
+        if(pages!==null){ // null = Kamera nicht verfügbar -> Fallback
+          if(pages.length){pages.forEach(f=>selFiles.push(f));anTxt();toast(pages.length+' Seite'+(pages.length===1?'':'n')+' aufgenommen – beim Abgeben wird daraus 1 PDF');}
+          return;
+        }
+      }
+      scIn.click();
+    });
     fIn.addEventListener('change',()=>grab(fIn,false));
     scIn.addEventListener('change',()=>grab(scIn,true));
     anSec.querySelector('#an-rec').addEventListener('click',async e2=>{
