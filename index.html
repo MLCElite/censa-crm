@@ -330,7 +330,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="02.11-G";
+const APP_VERSION="04.11-A";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2090,6 +2090,15 @@ function autoEntries(person,start){
     const push=(art,ds)=>{const dt=parseTermin(ds);if(dt&&dt>=start&&dt<end){out.push({auto:true,dealId:d.id,art,tag:Math.floor((dt-start)/86400000),zeit:calPad(dt.getHours())+':'+calPad(dt.getMinutes()),kunde:d.name||d.org||'—',ort:d.bezirk||d.ort||'',status:'',name:person});}};
     if(hit(d.analyst))push('AG',d.datumAG);
     if(hit(d.berater))push('BG',d.datumBG);
+    else if(hit(d.analyst)||hit(d.telefonist)){ // 👀 BG-Mitschau (Melanies Ansage 04.11.): eigener Kunde hat Beratung bei jemand anderem
+      const dt=parseTermin(d.datumBG);
+      if(dt&&dt>=start&&dt<end){
+        const v=(d.bgDabei||{})[canonName(person)];
+        out.push({auto:true,mitschau:true,dabei:(typeof v==='undefined'?null:(v?1:0)),dealId:d.id,art:'BG',
+          tag:Math.floor((dt-start)/86400000),zeit:calPad(dt.getHours())+':'+calPad(dt.getMinutes()),
+          kunde:(d.name||d.org||'—')+' · BG bei '+(d.berater||'Berater offen'),ort:d.bezirk||d.ort||'',status:'',name:person});
+      }
+    }
   });
   return out;
 }
@@ -2120,6 +2129,10 @@ async function wSetStatus(ent,wk,next){
 }
 /* ---------- Google-Kalender-Sync (jede Person verbindet ihr eigenes Google-Konto) ---------- */
 let __gisReady=null,__gcalTok=null,__gcalExp=0,__gcalLast={};
+/* Google-Tokens überleben den Seiten-Reload (Melanies Ärgernis 04.11.: „immer wieder neu synchronisieren").
+   Google-Token leben ~1 Std – innerhalb der Stunde kein Neu-Verbinden mehr, danach genügt 1 Klick. */
+function tokSave(k,t,e){try{localStorage.setItem('censa_tok_'+k,JSON.stringify({t:t,e:e}));}catch(_){}}
+function tokLoad(k){try{const o=JSON.parse(localStorage.getItem('censa_tok_'+k)||'0');if(o&&o.t&&o.e>Date.now()+60000)return o;}catch(_){ }return null;}
 function gisLoad(){
   if(window.google&&google.accounts&&google.accounts.oauth2)return Promise.resolve();
   if(__gisReady)return __gisReady;
@@ -2141,7 +2154,7 @@ function gcalToken(){
           client_id:GCAL_CLIENT_ID,
           scope:'https://www.googleapis.com/auth/calendar.events',
           callback:r=>{
-            if(r&&r.access_token){__gcalTok=r.access_token;__gcalExp=Date.now()+((r.expires_in||3300)*1000);res(__gcalTok);}
+            if(r&&r.access_token){__gcalTok=r.access_token;__gcalExp=Date.now()+((r.expires_in||3300)*1000);tokSave('gcal',__gcalTok,__gcalExp);res(__gcalTok);}
             else rej(new Error('Keine Freigabe erhalten'));
           },
           error_callback:e=>rej(new Error(e&&(e.type==='popup_closed'||e.type==='popup_failed_to_open')?'Google-Fenster geschlossen oder blockiert – bitte Popups für diese Seite erlauben und einfach NOCH EINMAL drücken':'Google-Anmeldung fehlgeschlagen'))
@@ -2162,7 +2175,7 @@ function driveToken(){
           client_id:GCAL_CLIENT_ID,
           scope:'https://www.googleapis.com/auth/drive.file',
           callback:r=>{
-            if(r&&r.access_token){__drvTok=r.access_token;__drvExp=Date.now()+((r.expires_in||3300)*1000);res(__drvTok);}
+            if(r&&r.access_token){__drvTok=r.access_token;__drvExp=Date.now()+((r.expires_in||3300)*1000);tokSave('drive',__drvTok,__drvExp);res(__drvTok);}
             else rej(new Error('Keine Google-Freigabe erhalten'));
           },
           error_callback:e=>rej(new Error(e&&(e.type==='popup_closed'||e.type==='popup_failed_to_open')?'Google-Fenster geschlossen oder blockiert – bitte Popups für diese Seite erlauben und einfach NOCH EINMAL drücken':'Google-Anmeldung fehlgeschlagen'))
@@ -2371,6 +2384,7 @@ function kdParse(tx){ // „Kundendaten"-Seite der Analyse auslesen (nur digital
   return (kd.name||kd.geb||kd.tel||kd.email||kd.strasse)?kd:null;
 }
 let __gmTok=null,__gmExp=0;
+(()=>{let o=tokLoad('gcal');if(o){__gcalTok=o.t;__gcalExp=o.e;}o=tokLoad('drive');if(o){__drvTok=o.t;__drvExp=o.e;}o=tokLoad('gmail');if(o){__gmTok=o.t;__gmExp=o.e;}})();
 function gmailToken(){ // eigene Freigabe nur für „Entwürfe anlegen" (gmail.compose) – gleiche Mechanik wie Drive/Kalender
   return new Promise((res,rej)=>{
     if(__gmTok&&Date.now()<__gmExp-60000)return res(__gmTok);
@@ -2380,7 +2394,7 @@ function gmailToken(){ // eigene Freigabe nur für „Entwürfe anlegen" (gmail.
           client_id:GCAL_CLIENT_ID,
           scope:'https://www.googleapis.com/auth/gmail.compose',
           callback:r=>{
-            if(r&&r.access_token){__gmTok=r.access_token;__gmExp=Date.now()+((r.expires_in||3300)*1000);res(__gmTok);}
+            if(r&&r.access_token){__gmTok=r.access_token;__gmExp=Date.now()+((r.expires_in||3300)*1000);tokSave('gmail',__gmTok,__gmExp);res(__gmTok);}
             else rej(new Error('Keine Google-Freigabe erhalten'));
           },
           error_callback:e=>rej(new Error(e&&(e.type==='popup_closed'||e.type==='popup_failed_to_open')?'Google-Fenster geschlossen oder blockiert – bitte Popups für diese Seite erlauben und einfach NOCH EINMAL drücken':'Google-Anmeldung fehlgeschlagen'))
@@ -2681,7 +2695,7 @@ async function renderWoche(){
       const dd=new Date(start.getTime()+t*86400000);
       const today=new Date();today.setHours(0,0,0,0);
       const ents=wEntriesFor(me,start,wk).filter(e=>e.tag===t);
-      return `<div class="wday${dd.getTime()===today.getTime()?' today':''}"><div class="wdh">${d2} ${fmtDM(dd)}</div>${ents.map((e,i2)=>`<div class="wentry" data-wi="${e.auto?('a:'+e.dealId+':'+e.art):('m:'+e._id)}"><button class="wdel" data-wdel="${e.auto?'':e._id}" title="${e.auto?'Automatisch aus dem CRM-Termin':(e.gcal?'Aus deinem Google Kalender (Sync)':'Eintrag löschen')}">${e.auto?'🔗':(e.gcal?'📅':'×')}</button><span class="wart" style="background:${WARTC[e.art]||'var(--ink-3)'}">${esc(e.art)}</span><b>${esc(e.zeit)}</b> ${esc(e.kunde)}${e.ort?`<div class="wsub">${esc(e.ort)}</div>`:''}<div class="wsts">${[['done','✔','durchgeführt'],['moved','↗','verschoben'],['cancelled','✖','abgesagt']].map(([s,ic,tt])=>`<button class="wst${e.status===s?' on '+s:''}" data-ws="${s}" title="${tt}">${ic}</button>`).join('')}</div></div>`).join('')||'<div style="font-size:11px;color:var(--ink-3);text-align:center">—</div>'}</div>`;
+      return `<div class="wday${dd.getTime()===today.getTime()?' today':''}"><div class="wdh">${d2} ${fmtDM(dd)}</div>${ents.map((e,i2)=>`<div class="wentry" data-wi="${e.auto?('a:'+e.dealId+':'+e.art):('m:'+e._id)}"${e.mitschau?` style="${e.dabei===0?'opacity:.55;border:1.5px dashed var(--ink-3);background:var(--surface-2)':(e.dabei===1?'border:1.5px solid var(--good)':'border:1.5px solid var(--warn);background:rgba(230,160,30,.07)')}"`:''}><button class="wdel" data-wdel="${e.auto?'':e._id}" title="${e.auto?'Automatisch aus dem CRM-Termin':(e.gcal?'Aus deinem Google Kalender (Sync)':'Eintrag löschen')}">${e.auto?'🔗':(e.gcal?'📅':'×')}</button><span class="wart" style="background:${e.mitschau&&e.dabei===0?'var(--ink-3)':(WARTC[e.art]||'var(--ink-3)')}">${esc(e.art)}</span>${e.mitschau?`<span class="tg" style="background:${e.dabei===1?'var(--good)':(e.dabei===0?'var(--ink-3)':'var(--warn)')};color:#fff;font-weight:800">${e.dabei===1?'👀 dabei':(e.dabei===0?'ohne mich':'Dabei?')}</span>`:''}<b>${esc(e.zeit)}</b> ${esc(e.kunde)}${e.ort?`<div class="wsub">${esc(e.ort)}</div>`:''}${e.mitschau?`<div style="display:flex;gap:4px;margin-top:4px"><button class="mini-btn" data-wbg="1" style="${e.dabei===1?'background:var(--good);color:#fff;font-weight:800':''}">👍 dabei</button><button class="mini-btn" data-wbg="0" style="${e.dabei===0?'background:var(--ink-3);color:#fff;font-weight:800':''}">✗ ohne mich</button></div>`:''}<div class="wsts">${[['done','✔','durchgeführt'],['moved','↗','verschoben'],['cancelled','✖','abgesagt']].map(([s,ic,tt])=>`<button class="wst${e.status===s?' on '+s:''}" data-ws="${s}" title="${tt}">${ic}</button>`).join('')}</div></div>`).join('')||'<div style="font-size:11px;color:var(--ink-3);text-align:center">—</div>'}</div>`;
     }).join('')}</div>
     <div class="ehsec wnew" style="margin-top:14px"><div class="ehhead">＋ Eintrag hinzufügen <span class="ehtag">MGT, EG, KG, TG, Privat – AG/BG kommen automatisch aus den Terminen</span></div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
@@ -2723,6 +2737,14 @@ async function renderWoche(){
     el.querySelectorAll('[data-ws]').forEach(b=>b.addEventListener('click',ev=>{
       ev.stopPropagation();
       wSetStatus(ent,wk,ent.status===b.dataset.ws?'':b.dataset.ws);
+    }));
+    el.querySelectorAll('[data-wbg]').forEach(b=>b.addEventListener('click',ev=>{ // 👀 BG-Mitschau: dabei / nicht dabei
+      ev.stopPropagation();
+      const d2=state.deals.find(x=>x.id===ent.dealId);if(!d2)return;
+      const v=b.dataset.wbg==='1'?1:0;
+      d2.bgDabei=Object.assign({},d2.bgDabei||{});d2.bgDabei[canonName(me)]=v;
+      histAdd(d2,'BG-Teilnahme '+me+': '+(v?'dabei':'nicht dabei'));
+      dbPersist(d2);renderWoche();
     }));
     const del=el.querySelector('.wdel');
     del.addEventListener('click',async ev=>{
