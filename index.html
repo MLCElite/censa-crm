@@ -267,6 +267,7 @@
   <div class="tabs">
     <button data-tab="steuerung" class="on">CEO</button>
     <button data-tab="gp">GP</button>
+    <button data-tab="koop">🤝 Koop</button>
     <button data-tab="pool">📦 Pool</button>
     <button data-tab="telefon">Telefon</button>
     <button data-tab="pipeline">Pipeline</button>
@@ -292,6 +293,7 @@
 <main>
   <div id="view-steuerung"></div>
   <div id="view-gp" class="hide"></div>
+  <div id="view-koop" class="hide"></div>
   <div id="view-pool" class="hide"></div>
   <div id="view-telefon" class="hide"></div>
   <div id="view-pipeline" class="hide"></div>
@@ -330,7 +332,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="04.11-B";
+const APP_VERSION="05.11-A";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -556,11 +558,12 @@ function applyRoleUI(){
     if(b.dataset.tab==='dashboard')b.classList.toggle('hide',!admin);
     if(b.dataset.tab==='gp')b.classList.toggle('hide',!admin);
     if(b.dataset.tab==='pool')b.classList.toggle('hide',!admin); // Lead-Pool: Zuordnen ist Chefsache
+    if(b.dataset.tab==='koop')b.classList.toggle('hide',!admin); // Kooperationspartner: Chefsache
     if(b.dataset.tab==='foerder')b.classList.toggle('hide',!admin); // Förderungsrechner vorerst nur für Admins (29.10.)
   });
   if(!admin){
     const cur=document.querySelector('.tabs button.on');
-    if(cur&&(cur.dataset.tab==='steuerung'||cur.dataset.tab==='dashboard'||cur.dataset.tab==='gp'||cur.dataset.tab==='foerder'||cur.dataset.tab==='pool')){
+    if(cur&&(cur.dataset.tab==='steuerung'||cur.dataset.tab==='dashboard'||cur.dataset.tab==='gp'||cur.dataset.tab==='foerder'||cur.dataset.tab==='pool'||cur.dataset.tab==='koop')){
       const tb=document.querySelector('.tabs button[data-tab="telefon"]');if(tb)tb.click();
     }
   }
@@ -633,7 +636,7 @@ function fmtEH(x){return x.toFixed(1).replace('.',',');}
 /* ---------- render ---------- */
 /* Tempo: es wird NUR die sichtbare Ansicht gebaut. Alle anderen merken sich per
    „dirty", dass sie beim nächsten Tab-Wechsel frisch gerendert werden müssen. */
-const RENDERERS={pipeline:renderPipeline,liste:renderListe,dashboard:renderDashboard,steuerung:renderSteuerung,telefon:renderTelefon,gp:renderGP,pool:renderPool};
+const RENDERERS={pipeline:renderPipeline,liste:renderListe,dashboard:renderDashboard,steuerung:renderSteuerung,telefon:renderTelefon,gp:renderGP,pool:renderPool,koop:renderKoop};
 const __dirty={};
 function activeTab(){const b=document.querySelector('.tabs button.on');return b?b.dataset.tab:'';}
 function renderTab(t){if(RENDERERS[t]&&__dirty[t]!==false){RENDERERS[t]();__dirty[t]=false;}}
@@ -856,6 +859,105 @@ function renderListe(){
       const lu=det.querySelector('[data-lueb]');if(lu)lu.addEventListener('click',()=>openUebergabe(d.id));
     }
   }
+}
+
+/* ---------- 🤝 Kooperationspartner: Quelle „Kooperation…" = eigener Tab mit Plan/Status/Kapitalheft/Termin + Leads-CSV ---------- */
+const KOOPST=['Erstgespräch','In Abstimmung','Aktiv – liefert Leads','Pausiert'];
+function renderKoop(){
+  const host=document.getElementById('view-koop');
+  const rows=state.deals.filter(d=>/kooperation/i.test(d.quelle||''));
+  rows.sort((a,b)=>COLL.compare(a.org||a.name||'',b.org||b.name||''));
+  const heute=new Date();heute.setHours(0,0,0,0);
+  host.innerHTML=`<div class="card">
+    <h2>🤝 Kooperationspartner – ${rows.length}</h2>
+    <div class="sub">Jeder Kunde mit Quelle „Kooperation…" landet automatisch hier. Felder speichern sich sofort; eine Leads-CSV wird importiert und dem Partner zugeordnet (Dubletten werden übersprungen, die Leads landen im 📦 Pool).</div>
+    ${rows.length?'':'<div style="font-size:12.5px;color:var(--ink-3);margin:10px 0">Noch keine Partner – beim Kunden einfach als Quelle „Kooperation" eintragen (z. B. „Kooperation – Personalleasing XY").</div>'}
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;margin-top:8px">${rows.map(d=>{
+      const k=d.koop||{};
+      const nl=state.deals.filter(x=>x.koopVon===d.id).length;
+      const dt=parseTermin(k.naechster||'');
+      const od=!!(dt&&dt<heute);
+      return `<div class="panel" style="margin:0${od?';border:1.5px solid var(--bad)':''}">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="cursor:pointer;font-size:14px;color:var(--brand-ink)" data-open="${d.id}">${esc(d.org||d.name||'—')}</b>${d.telefon?`<span class="tnum" style="font-size:12px;color:var(--ink-2)">${esc(d.telefon)}</span>`:''}<span class="tg" style="margin-left:auto">${nl} Lead${nl===1?'':'s'} geliefert</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px">
+          <select data-kf="status" data-id="${d.id}"><option value="">Status wählen…</option>${KOOPST.map(s=>`<option${k.status===s?' selected':''}>${s}</option>`).join('')}</select>
+          <label class="gptoggle" style="display:flex;align-items:center;gap:6px;justify-content:center"><input type="checkbox" data-kf="kapitalheft" data-id="${d.id}"${k.kapitalheft?' checked':''}> Kapitalheft ✍ ${k.kapitalheft?'✅':''}</label>
+          <input data-kf="naechster" data-id="${d.id}" placeholder="Nächster Kontakt (z. B. 12.11. 14:00)" value="${esc(k.naechster||'')}" style="grid-column:1/-1${od?';border-color:var(--bad);color:var(--bad);font-weight:700':''}">
+          <textarea data-kf="plan" data-id="${d.id}" placeholder="Was ist geplant? (Leads-Austausch, gemeinsamer Termin, …)" style="grid-column:1/-1;min-height:52px;resize:vertical">${esc(k.plan||'')}</textarea>
+        </div>
+        ${od?'<div style="color:var(--bad);font-weight:800;font-size:11.5px;margin-top:4px">⏰ Kontakt überfällig!</div>':''}
+        <div style="display:flex;gap:7px;margin-top:8px;align-items:center;flex-wrap:wrap">
+          <button class="mini-btn" data-kcsv="${d.id}">📥 Leads-Datei (CSV) importieren</button>
+          <span style="font-size:10.5px;color:var(--ink-3)">Excel? Vorher „Speichern unter → CSV".</span>
+        </div>
+      </div>`;}).join('')}</div>
+    <input type="file" id="koop-file" accept=".csv,text/csv" style="display:none">
+  </div>`;
+  if(!host.__wired){
+    host.__wired=true;
+    host.addEventListener('click',e=>{
+      const op=e.target.closest('[data-open]');if(op){openModal(op.dataset.open);return;}
+      const kc=e.target.closest('[data-kcsv]');if(kc){host.__kPartner=kc.dataset.kcsv;host.querySelector('#koop-file').click();return;}
+    });
+    host.addEventListener('change',async e=>{
+      if(e.target.id==='koop-file'){
+        const f=e.target.files&&e.target.files[0];e.target.value='';
+        const p=state.deals.find(x=>x.id===host.__kPartner);
+        if(f&&p)await koopLeadImport(f,p);
+        return;
+      }
+      const kf=e.target.dataset&&e.target.dataset.kf;
+      if(kf){
+        const d=state.deals.find(x=>x.id===e.target.dataset.id);if(!d)return;
+        d.koop=Object.assign({},d.koop||{});
+        d.koop[kf]=(kf==='kapitalheft')?(e.target.checked?1:0):e.target.value.trim();
+        if(kf==='kapitalheft')histAdd(d,'Koop: Kapitalheft '+(d.koop.kapitalheft?'geschrieben ✓':'wieder offen'));
+        dbPersist(d);
+        if(kf!=='plan')renderKoop(); // Textarea nicht neu bauen (Cursor), Rest sofort sichtbar aktualisieren
+      }
+    });
+  }
+}
+async function koopLeadImport(file,partner){
+  if(/\.xlsx?$/i.test(file.name||'')){toast('Bitte als CSV speichern (Excel: Datei → Speichern unter → CSV) und noch einmal wählen');return;}
+  const text=await file.text();
+  let rows=parseCSV(text);
+  if(rows.length&&rows[0].length<2&&(rows[0][0]||'').includes(';'))
+    rows=text.replace(/^﻿/,'').split(/\r?\n/).filter(z=>z.trim()).map(z=>z.split(';')); // Semikolon-CSV
+  if(rows.length<2){toast('Keine Datenzeilen gefunden');return;}
+  const head=rows[0].map(h=>(h||'').trim().toLowerCase());
+  const col=(...names)=>{for(const n of names){const i=head.findIndex(h=>h===n||h.startsWith(n));if(i>=0)return i;}return -1;};
+  const ci={name:col('name','ansprechpartner','kontakt'),org:col('firma','organisation','unternehmen','org'),tel:col('telefon','tel','phone','handy','mobil'),plz:col('plz'),ort:col('ort','stadt'),email:col('e-mail','email','mail'),notiz:col('notiz','bemerkung','info'),strasse:col('straße','strasse','adresse')};
+  if(ci.name<0&&ci.org<0){toast('Spalte „Name" oder „Firma" nicht gefunden – bitte Kopfzeile der CSV prüfen');return;}
+  const nt=t=>{const x=(t||'').replace(/\D/g,'');return x.length>=8?x.slice(-10):'';};
+  const nn=s=>(s||'').toLowerCase().replace(/gesmbh|gmbh|e\.u\./g,'').replace(/[^a-z0-9äöüß]/g,'').slice(0,30);
+  const telIdx=new Set(),nmIdx=new Set();
+  state.deals.forEach(x=>{const t=nt(x.telefon);if(t)telIdx.add(t);const n1=nn(x.org||x.name);if(n1)nmIdx.add(n1);});
+  const neu=[];let dupe=0;
+  for(let i=1;i<rows.length;i++){
+    const g=k2=>ci[k2]>=0?String(rows[i][ci[k2]]||'').trim():'';
+    const name=g('name'),org=g('org'),tel=g('tel');
+    if(!name&&!org)continue;
+    const tk=nt(tel),nk=nn(org||name);
+    if((tk&&telIdx.has(tk))||(nk&&nmIdx.has(nk))){dupe++;continue;}
+    if(tk)telIdx.add(tk);if(nk)nmIdx.add(nk);
+    const d=blank();
+    d.name=name||org;d.org=org;d.telefon=normTel(tel);d.plz=g('plz');d.ort=g('ort');d.email=g('email');d.strasse=g('strasse');
+    d.bezirk=bezFromPLZ(d.plz||d.ort||'');
+    d.kundentyp=/gmbh|gesmbh|\bag\b|holding/i.test(org)?'GmbH':'Privat';
+    d.quelle=('Koop-Lead: '+(partner.org||partner.name||'Partner')).slice(0,60);
+    d.koopVon=partner.id;
+    d.notizen=((g('notiz')?g('notiz')+'\n':'')+'Von Kooperationspartner '+(partner.org||partner.name||'')+' am '+todayStr().split('-').reverse().join('.')).slice(0,2000);
+    neu.push(d);
+  }
+  if(!neu.length){toast('0 neue Leads – '+dupe+' waren schon im CRM');return;}
+  if(!(await dbPersistMany(neu)))return;
+  neu.forEach(d=>state.deals.push(d));
+  histAdd(partner,'Leads-Datei importiert: '+neu.length+' neu, '+dupe+' Dubletten ('+(file.name||'CSV')+')');
+  dbPersist(partner);
+  chatSys('🤝 '+neu.length+' Leads von Kooperationspartner '+(partner.org||partner.name||'—')+' importiert ('+dupe+' Dubletten übersprungen) – liegen im 📦 Pool zum Zuordnen.');
+  toast('✅ '+neu.length+' Leads importiert ('+dupe+' Dubletten übersprungen) – liegen im Pool');
+  markDirty('liste');markDirty('pool');renderKoop();
 }
 
 /* ---------- 📦 Lead-Pool: alle offenen Leads ohne Telefonist, nach Branche + Gebiet, Zuordnen per Haken ---------- */
@@ -4261,7 +4363,7 @@ function loadDemo(){
 /* ---------- tabs ---------- */
 document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
-  ['steuerung','gp','pool','telefon','pipeline','liste','foerder','dashboard','woche','chat'].forEach(t=>document.getElementById('view-'+t).classList.toggle('hide',t!==b.dataset.tab));
+  ['steuerung','gp','koop','pool','telefon','pipeline','liste','foerder','dashboard','woche','chat'].forEach(t=>document.getElementById('view-'+t).classList.toggle('hide',t!==b.dataset.tab));
   renderTab(b.dataset.tab);
   if(b.dataset.tab==='chat'){ensureChatUI();updateChatLog();markChatSeen();}
   if(b.dataset.tab==='woche')renderWoche();
