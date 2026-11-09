@@ -332,7 +332,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="05.11-A";
+const APP_VERSION="09.11-A";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1676,6 +1676,34 @@ async function openDupCheck(){
   }));
   }catch(e){alert('🔍 Duplikat-Check Fehler: '+((e&&e.message)||e)+'\n\nBitte diese Meldung an Claude weitergeben.');}
 }
+function steuerungSecs(host){ // CEO-Seite als Reiter statt Scrollen (Melanies Ansage 09.11.): jeder Block = ein Klick
+  const kids=[...host.children];
+  const i0=kids.findIndex(el=>el.classList&&el.classList.contains('panel'));
+  if(i0<0)return;
+  const secs=[];let cur=null;
+  for(let i=i0;i<kids.length;i++){
+    const el=kids[i];
+    if(el.classList.contains('panel')){
+      const h=el.querySelector('h3');
+      let t=h?((h.childNodes[0]&&h.childNodes[0].textContent)||h.textContent):'Weitere';
+      t=(t||'').split(/[–—]/)[0].replace(/\s+/g,' ').trim().slice(0,30)||'Weitere';
+      cur={t,els:[el]};secs.push(cur);
+    }else if(cur){cur.els.push(el);}
+  }
+  if(secs.length<2)return;
+  if(host.__sec==null||host.__sec>=secs.length){const di=secs.findIndex(s=>/Tages-Dispo/.test(s.t));host.__sec=di>=0?di:0;}
+  const bar=document.createElement('div');
+  bar.id='ceoSecs';
+  bar.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 12px;position:sticky;top:0;z-index:5;background:var(--bg);padding:7px 0;border-bottom:1px solid var(--line)';
+  bar.innerHTML=secs.map((s,i)=>`<button class="btn${i===host.__sec?' pri':''}" data-cs="${i}" style="padding:7px 12px;font-size:12.5px">${esc(s.t)}</button>`).join('');
+  host.insertBefore(bar,kids[i0]);
+  const show=()=>{
+    secs.forEach((s,i)=>s.els.forEach(el=>el.style.display=(i===host.__sec?'':'none')));
+    bar.querySelectorAll('[data-cs]').forEach(b=>b.classList.toggle('pri',+b.dataset.cs===host.__sec));
+  };
+  bar.addEventListener('click',e=>{const b=e.target.closest('[data-cs]');if(!b)return;host.__sec=+b.dataset.cs;show();});
+  show();
+}
 function renderSteuerung(){
   const host=document.getElementById('view-steuerung');
   if(!state.deals.length){host.innerHTML=emptyState()+teamPanel();wireEmpty(host);wireTeamPanel(host);return;}
@@ -1741,13 +1769,13 @@ function renderSteuerung(){
       <div class="mc"><div class="l">Offene Beratungen</div><div class="v tnum">${beratung.length}</div></div>
       <div class="mc bad"><div class="l">Überfällig</div><div class="v tnum">${overdue}</div></div>
     </div>
-    ${buchPanel()}
-    ${adrPanel()}
-    <div style="display:flex;gap:9px;flex-wrap:wrap;margin:0 0 16px">
+    <div style="display:flex;gap:9px;flex-wrap:wrap;margin:0 0 10px">
       <button class="btn pri" id="btnCeo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M3 3v18h18M7 14l4-4 3 3 5-6"/></svg>CEO-Wochenupdate</button>
       <button class="btn" id="btnReports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Wochenbericht je Berater</button>
       <button class="btn" id="btnDup">🔍 Duplikat-Check</button>
     </div>
+    ${buchPanel()}
+    ${adrPanel()}
     <div class="panel" style="border-color:var(--brand)"><h3>📋 Tages-Dispo – Termine zuordnen <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— am Tagesende neue Termine dem passenden Mitarbeiter zuweisen; die Person sieht es sofort in ihrer Liste und im Chat</span></h3>
       ${dispoA.length?`<div class="ehgt" style="margin:2px 0 6px">Analysen ohne Analyst (${dispoA.length})</div><div class="st-list">${dispoSort(dispoA,'analyst').map(x=>dRow(x,'analyst',anNames)).join('')}</div>`:''}
       ${handover.length?`<div class="ehgt" style="margin:12px 0 6px">Beratungen – übergabereif, ohne Berater (${handover.length})</div><div class="st-list">${dispoSort(handover,'berater').map(x=>dRow(x,'berater',beNames)).join('')}</div>`:''}
@@ -1895,6 +1923,7 @@ function renderSteuerung(){
   });
   host.querySelectorAll('[data-dscopy]').forEach(b=>b.addEventListener('click',()=>{try{navigator.clipboard.writeText(b.dataset.dscopy);toast('🔗 Link kopiert – einfach in die Nachricht einfügen');}catch(e){prompt('Link kopieren:',b.dataset.dscopy);}}));
   wireTeamPanel(host);
+  steuerungSecs(host); // Blöcke zu Reitern bündeln – zuletzt, damit alle Hörer schon verdrahtet sind
 }
 function wireTeamPanel(host){
   const ta=host.querySelector('#tmAdd');
