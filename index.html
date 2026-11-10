@@ -332,7 +332,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="10.11-E";
+const APP_VERSION="10.11-F";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -3621,7 +3621,7 @@ function openModal(id){
   if(id&&!d){toast('Lead nicht gefunden oder für dich nicht sichtbar');return;}
   editId=id;
   const isNew=!id;
-  const before={wv:d.wiedervorlage||'',ag:d.datumAG||'',bg:d.datumBG||''};
+  const before={wv:d.wiedervorlage||'',ag:d.datumAG||'',bg:d.datumBG||'',an:(d.analyst||'').trim(),be:(d.berater||'').trim()};
   const HFIELDS={stage:'Phase',status:'Status',analyst:'Analyst',berater:'Berater',telefonist:'Telefonist',telefon:'Telefon',email:'E-Mail',wiedervorlage:'Wiedervorlage',datumAG:'AG-Termin',datumBG:'BG-Termin',name:'Name',org:'Firma'};
   const before2={};Object.keys(HFIELDS).forEach(k=>before2[k]=d[k]==null?'':''+d[k]);
   const histDiff=()=>{
@@ -3829,6 +3829,15 @@ function openModal(id){
     if((d.datumAG||'')!==before.ag&&d.datumAG)chatSys('📅 Analysetermin '+(before.ag?'GEÄNDERT (war '+before.ag+')':'gesetzt')+': '+nm+' – '+d.datumAG+((d.analyst||'').trim()?'':' · Zuordnung über die Tages-Dispo'),d,before.ag?(d.analyst||d.telefonist||null):null);
     if((d.datumBG||'')!==before.bg&&d.datumBG)chatSys('📅 Beratungstermin '+(before.bg?'GEÄNDERT (war '+before.bg+')':'gesetzt')+': '+nm+' – '+d.datumBG+((d.berater||'').trim()?'':' · Zuordnung über die Tages-Dispo'),d,before.bg?(d.berater||d.analyst||null):null);
     if((d.wiedervorlage||'')!==before.wv&&d.wiedervorlage)chatSys('🔁 Wiedervorlage: '+nm+' – '+d.wiedervorlage.split('-').reverse().join('.'),d);};
+  const zuordEvents=()=>{ // Melanies Norm 10.11.: im Modal selbst eingetragen = entschieden → sofort Kalender, kein Annehmen
+    [['analyst','an'],['berater','be']].forEach(p=>{
+      const role=p[0],neu=(d[role]||'').trim();
+      if(!neu||neu===before[p[1]])return;
+      d.geprueft=true;
+      if(externCal(d,role))chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet (EXTERN): '+(d.name||d.org||'—')+' → '+neu+' – Einladung per Kalender',d);
+      else zuordDirekt(d,role);
+      before[p[1]]=neu; // doppelte Buchung beim nächsten Speichern verhindern
+    });};
   const persist=()=>{histDiff();if(isNew&&!state.deals.includes(d))state.deals.unshift(d);dbPersist(d);render();};
   const callMeta=()=>{const dur=m.querySelector('#m-dur'),no=m.querySelector('#m-cnote');const o={};if(dur&&dur.value)o.dur=parseFloat(dur.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
   const anSec=m.querySelector('#m-analysesec');
@@ -4094,7 +4103,7 @@ function openModal(id){
     if(m.__anPending&&m.__anPending()&&!confirm('⚠ '+m.__anPending()+' gewählte Datei(en)/Scan-Seiten wurden noch NICHT abgegeben und gehen verloren!\n\nZum Hochladen zuerst „📤 Abgeben" drücken.\n\nTrotzdem ohne die Dateien speichern?'))return;
     collect();d.status='open';
     terminStage(d);
-    terminEvents();persist();closeModal();toast('Gespeichert');});
+    terminEvents();zuordEvents();persist();closeModal();toast('Gespeichert');});
   const mst=m.querySelector('#m-save-top');if(mst)mst.addEventListener('click',()=>m.querySelector('#m-save').click());
   m.querySelector('#m-won').addEventListener('click',()=>{collect();d.status='won';chatSys('🏆 Gewonnen: '+(d.name||d.org||'—'),d);
     const sd=new Date(Date.now()+14*86400000).toISOString().slice(0,10);
@@ -4345,7 +4354,8 @@ function openUebergabe(id){
     histAdd(d,'Übergabe-Formular '+(war?'aktualisiert':'ausgefüllt'));
     dbPersist(d);
     const beraterExt=d.berater?externCal(d,'berater'):false;
-    chatSys('📋 Übergabe '+(war?'aktualisiert':'ausgefüllt')+': '+(d.name||d.org||'—')+(d.berater?(beraterExt?' – Berater '+d.berater+' (extern, Einladung per Kalender)':' – Berater '+d.berater+', bitte annehmen!'):' – bereit für Berater-Zuordnung (Dispo)'),d,(d.berater&&!beraterExt)?d.berater:null,(d.berater&&!beraterExt)?'beratung-zuord':null);
+    if(d.berater&&!beraterExt)zuordDirekt(d,'berater'); // gleicher Prozess wie überall: sofort Kalender buchen, kein Annehmen (Melanies Norm 10.11.)
+    chatSys('📋 Übergabe '+(war?'aktualisiert':'ausgefüllt')+': '+(d.name||d.org||'—')+(d.berater?(beraterExt?' – Berater '+d.berater+' (extern, Einladung per Kalender)':' – Berater '+d.berater+' (Termin per Kalender gebucht)'):' – bereit für Berater-Zuordnung (Dispo)'),d);
     render();openModal(d.id);toast('Übergabe gespeichert');
   });
 }
