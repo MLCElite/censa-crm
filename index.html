@@ -332,7 +332,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="10.11-K";
+const APP_VERSION="10.11-L";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1962,6 +1962,13 @@ function renderSteuerung(){
     dbPersist(d);
     markDirty('steuerung');render();
   }));
+  host.querySelectorAll('[data-dsr]').forEach(b=>b.addEventListener('click',()=>{ // Runden-Empfänger an-/abwählen
+    const name=b.dataset.dsr;
+    DISPO_RSEL[name]=(DISPO_RSEL[name]===0)?1:0;
+    const on=DISPO_RSEL[name]!==0;
+    b.style.background=on?'var(--brand)':'';b.style.borderColor=on?'var(--brand)':'';b.style.color=on?'#fff':'';
+    b.textContent=(on?'✓ ':'✗ ')+name+(b.dataset.tg==='1'?' 🤖':'');
+  }));
   host.querySelectorAll('[data-dsgo]').forEach(b=>b.addEventListener('click',async()=>{
     const rolle=b.dataset.dsgo;
     const typ=rolle==='analyst'?'Analysen':'Beratungen';
@@ -2037,6 +2044,47 @@ function wireTeamPanel(host){
       toast(war?('Zugang aktualisiert: '+name):('Zugang angelegt: '+name+' – Passwort in Firebase (Authentication → Add user) anlegen!'));
     }catch(e){toast('Speichern fehlgeschlagen'+(e&&e.code?' ('+e.code+')':''));}
   });
+  const tb=host.querySelector('#tmTg');
+  if(tb)tb.addEventListener('click',()=>{
+    const t=prompt('Telegram-Bot-Token einfügen:\n\n1. In Telegram @BotFather öffnen → /newbot → Namen vergeben (z. B. „CENSA Abend-Bot")\n2. Den angezeigten Token (Zahlen:Buchstaben) kopieren und hier einfügen.\n\nDer Token bleibt NUR auf diesem Gerät gespeichert.','');
+    if(t===null)return;
+    if(!/^\d+:[\w-]{30,}$/.test(t.trim())){toast('Das sieht nicht wie ein Bot-Token aus (Format 123456:ABC…) – bitte aus @BotFather kopieren');return;}
+    try{localStorage.setItem('censa_tg_token',t.trim());}catch(e){}
+    toast('🤖 Bot verbunden – jetzt schreibt jedes Teammitglied dem Bot einmal /start, dann „Anmeldungen abholen" klicken');
+    renderSteuerung();
+  });
+  const tp=host.querySelector('#tmTgPull');
+  if(tp)tp.addEventListener('click',async()=>{
+    tp.disabled=true;tp.textContent='Hole …';
+    try{
+      const r=await fetch('https://api.telegram.org/bot'+tgToken()+'/getUpdates');
+      const j=await r.json();
+      if(!j.ok)throw new Error(j.description||'Token prüfen');
+      const seen={},list=[];
+      (j.result||[]).forEach(u=>{
+        const c=u.message&&u.message.chat;
+        if(!c||c.type!=='private'||seen[c.id])return;
+        seen[c.id]=1;
+        list.push({id:c.id,name:[c.first_name,c.last_name].filter(Boolean).join(' ')||c.username||('Chat '+c.id),user:c.username||''});
+      });
+      window.TG_PEND=list.filter(u=>!TEAM.some(m=>String(m.tg||'')===String(u.id)));
+      toast(TG_PEND.length?('🤖 '+TG_PEND.length+' neue Anmeldung(en) – unten der Person zuordnen'):'Keine neuen Anmeldungen – jedes Teammitglied muss dem Bot einmal /start schreiben (Bot-Name in Telegram suchen)');
+      renderSteuerung();
+    }catch(e){toast('Abholen fehlgeschlagen'+(e&&e.message?' ('+e.message+')':'')+' – Token prüfen');tp.disabled=false;tp.textContent='🤖 Anmeldungen abholen & zuordnen';}
+  });
+  host.querySelectorAll('[data-tgzu]').forEach(b=>b.addEventListener('click',async()=>{
+    const u=(window.TG_PEND||[])[+b.dataset.tgzu];if(!u)return;
+    const sel=host.querySelector('select[data-tgsel="'+b.dataset.tgzu+'"]');
+    const mm=TEAM.find(x=>x.name===((sel&&sel.value)||''));
+    if(!mm){toast('Bitte zuerst das Teammitglied wählen');return;}
+    try{
+      await teamCol.doc(mm.id).update({tg:String(u.id)});
+      mm.tg=String(u.id);
+      TG_PEND.splice(+b.dataset.tgzu,1);
+      toast('🤖 '+mm.name+' verbunden – bekommt die Abend-Links ab sofort automatisch');
+      renderSteuerung();
+    }catch(e){toast('Speichern fehlgeschlagen'+(e&&e.code?' ('+e.code+')':''));}
+  }));
   host.querySelectorAll('[data-waid]').forEach(b=>b.addEventListener('click',()=>{
     const mm=TEAM.find(x=>x.id===b.dataset.waid);if(!mm)return;
     if(!mm.email){toast('Zuerst eine E-Mail beim Zugang eintragen');return;}
@@ -3098,7 +3146,7 @@ function teamPanel(){
   const ed=TM_EDIT?TEAM.find(x=>x.id===TM_EDIT):null;
   const rChk=['telefonist','analyst','berater','assistenz','admin'].map(x=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:pointer"><input type="checkbox" class="tmR" value="${x}"${ed&&hasRole(ed,x)?' checked':(!ed&&x==='telefonist'?' checked':'')} style="width:14px;height:14px;accent-color:var(--brand)">${x.charAt(0).toUpperCase()+x.slice(1)}</label>`).join('');
   return `<div class="panel"><h3>Team &amp; Zugänge <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— jedes Mitglied meldet sich mit E-Mail + Passwort an und sieht nur die eigenen zugeteilten, freigegebenen Leads. Das Passwort legst du in der Firebase-Konsole an (Authentication → Users → Add user, gleiche E-Mail).</span></h3>
-    <div class="st-list">${TEAM.length?TEAM.map(mm=>`<div class="gl" style="cursor:default;flex-wrap:wrap${TM_EDIT===mm.id?';border-color:var(--brand)':''}"><span class="gn">${esc(mm.name)}</span><span class="ph">${esc(mm.rolle)}</span>${mm.fk?`<span class="tg">🧭 GP von ${esc(mm.fk)}</span>`:''}<span class="ph">${esc(mm.email||'— keine E-Mail —')}</span><span class="ph tnum">${esc(mm.tel||'—')}</span>${mm.alias?`<span class="ph">alias: ${esc(mm.alias)}</span>`:''}${mm.tel?`<button class="mini-btn" data-waid="${esc(mm.id)}" title="Zugangsdaten per WhatsApp schicken – das Passwort wird abgefragt und nicht gespeichert">📲 Zugang senden</button>`:''}<button class="mini-btn" data-edid="${esc(mm.id)}">✏️ Bearbeiten</button><button class="mini-btn" data-rmid="${esc(mm.id)}" style="color:var(--bad)">Entfernen</button></div>`).join(''):'<div class="empty-col">Noch keine Zugänge – lege zuerst deinen eigenen Admin-Zugang an (mit deiner Anmelde-E-Mail).</div>'}</div>
+    <div class="st-list">${TEAM.length?TEAM.map(mm=>`<div class="gl" style="cursor:default;flex-wrap:wrap${TM_EDIT===mm.id?';border-color:var(--brand)':''}"><span class="gn">${esc(mm.name)}</span><span class="ph">${esc(mm.rolle)}</span>${mm.fk?`<span class="tg">🧭 GP von ${esc(mm.fk)}</span>`:''}${mm.tg?'<span class="tg" style="background:var(--good);color:#fff">🤖 Telegram ✓</span>':''}<span class="ph">${esc(mm.email||'— keine E-Mail —')}</span><span class="ph tnum">${esc(mm.tel||'—')}</span>${mm.alias?`<span class="ph">alias: ${esc(mm.alias)}</span>`:''}${mm.tel?`<button class="mini-btn" data-waid="${esc(mm.id)}" title="Zugangsdaten per WhatsApp schicken – das Passwort wird abgefragt und nicht gespeichert">📲 Zugang senden</button>`:''}<button class="mini-btn" data-edid="${esc(mm.id)}">✏️ Bearbeiten</button><button class="mini-btn" data-rmid="${esc(mm.id)}" style="color:var(--bad)">Entfernen</button></div>`).join(''):'<div class="empty-col">Noch keine Zugänge – lege zuerst deinen eigenen Admin-Zugang an (mit deiner Anmelde-E-Mail).</div>'}</div>
     ${ed?`<div style="margin-top:10px;font-size:12.5px;font-weight:700;color:var(--brand-ink)">✏️ Du bearbeitest gerade: ${esc(ed.name)}</div>`:''}
     <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:8px;align-items:center">
       <input id="tmName" placeholder="Name" style="width:150px" value="${esc(ed?ed.name:'')}">
@@ -3112,7 +3160,10 @@ function teamPanel(){
       <button class="btn" id="tmMerge" title="Vereinheitlicht in ALLEN Kunden die Schreibweisen von Telefonist/Analyst/Berater auf die Team-Namen (nutzt Name + Aliase)">🧹 Schreibweisen zusammenführen</button>
       <a class="btn pri" href="https://console.firebase.google.com/project/censa-crm/authentication/users" target="_blank" rel="noopener" title="Hier legst du für neue Mitarbeiter E-Mail + Passwort an (Add user) und setzt Passwörter zurück">🔑 Mitarbeiter-Konten anlegen (Firebase)</a>
       <a class="btn" href="https://console.cloud.google.com/auth/audience?project=censa-crm" target="_blank" rel="noopener" title="PFLICHT für Kalender/Drive/Gmail: neue Mitarbeiter hier unter „Testnutzer" mit ihrer Gmail-Adresse eintragen – sonst kommt „Zugriff blockiert"">📅 Google-Testnutzer eintragen (Kalender/Drive/Gmail)</a>
-    </div></div>`;
+      <button class="btn" id="tmTg" title="Für den automatischen Abend-Verteilungs-Versand: In Telegram @BotFather öffnen → /newbot → Namen vergeben → den Token hier einfügen (bleibt nur auf diesem Gerät)">🤖 Telegram-Bot ${tgToken()?'✓ (Token ändern)':'verbinden'}</button>
+      ${tgToken()?'<button class="btn" id="tmTgPull" title="Jedes Teammitglied schreibt dem Bot einmal /start – dann hier abholen und der Person zuordnen">🤖 Anmeldungen abholen &amp; zuordnen</button>':''}
+    </div>
+    ${(window.TG_PEND&&TG_PEND.length)?`<div class="ehgt" style="margin-top:10px">🤖 Telegram-Anmeldungen – Person zuordnen</div><div class="st-list">${TG_PEND.map((u,i)=>`<div class="gl" style="cursor:default;flex-wrap:wrap"><span class="gn">${esc(u.name)}</span><span class="ph">${u.user?'@'+esc(u.user):'—'}</span><select data-tgsel="${i}" style="width:auto"><option value="">Teammitglied…</option>${TEAM.map(x=>`<option${splitAliases(x).some(a=>(u.name||'').toLowerCase().indexOf(a.split(' ')[0])>=0)?' selected':''}>${esc(x.name)}</option>`).join('')}</select><button class="mini-btn" data-tgzu="${i}">✔ Zuordnen</button></div>`).join('')}</div>`:''}</div>`;
 }
 
 /* ---------- Unterlagen & Führungsgespräche (Zielvereinbarung + Erwartungshaltung) ----------
@@ -3224,6 +3275,19 @@ async function zuordUrgenz(){
    ohne Zusage bleiben offen und gehen in die nächste Runde. */
 let DISPO_R=null, DISPO_ANT=[], __dispoLoading=false;
 let DISPO_SEL={analyst:{},berater:{}}; // Abend-Zuteilung: angeklickte Personen je Rolle (überlebt Re-Render)
+let DISPO_RSEL={}; // Runden-Empfänger: name→0 = abgewählt (Standard: alle mit passender Rolle dabei)
+/* 🤖 Telegram-Bot (v10.11-L, Melanies Ansage: „alle ausgewählten bekommen automatisch einen link"):
+   Bot bei @BotFather anlegen, Token einmalig im Team-Panel hinterlegen (bleibt in localStorage
+   dieses Geräts). Jedes Teammitglied schreibt dem Bot einmal /start → „Anmeldungen abholen" →
+   zuordnen (m.tg = chat_id im Team-Doc). dispoStart verschickt die Links dann AUTOMATISCH. */
+function tgToken(){try{return localStorage.getItem('censa_tg_token')||'';}catch(e){return '';}}
+async function tgSend(chatId,text){
+  const tok=tgToken();if(!tok||!chatId)return false;
+  try{
+    const r=await fetch('https://api.telegram.org/bot'+tok+'/sendMessage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:chatId,text:text})});
+    const j=await r.json();return !!j.ok;
+  }catch(e){return false;}
+}
 function dispoPending(){ // dealId|rolle → noch nicht angenommene Zuordnungs-Nachricht (kommt wieder in den Abend-Topf)
   const p={};
   zuordOffen().forEach(m=>{if(m.dealId)p[m.dealId+'|'+(m.art==='beratung-zuord'?'berater':'analyst')]=m;});
@@ -3247,19 +3311,35 @@ async function dispoStart(){
   if(!termine.length){toast('Keine offenen Termine mit Datum (AG ohne Analyst / BG ohne Berater)');return;}
   const pers={};
   TEAM.forEach(m=>{
+    if(DISPO_RSEL[m.name]===0)return; // von Melanie abgewählt – bekommt keinen Link
     const rollen=['analyst','berater'].filter(rr=>hasRole(m,rr)&&termine.some(t=>t.rolle===rr));
     if(rollen.length){const tok='p'+Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,6);pers[tok]={name:m.name,rollen:rollen,tel:m.tel||''};}
   });
-  if(!Object.keys(pers).length){toast('Keine Analysten/Berater im Team gefunden (Team & Zugänge)');return;}
+  if(!Object.keys(pers).length){toast('Niemand ausgewählt – bitte mindestens eine Person angewählt lassen (✓)');return;}
   const rid='r'+Date.now().toString(36);
   const doc={ts:new Date().toISOString(),offen:true,termine:termine,pers:pers};
   try{await firebase.firestore().collection('dispoRunden').doc(rid).set(doc);}
   catch(e){toast('Runde anlegen fehlgeschlagen'+(e&&e.code?' ('+e.code+')':'')+' – sind die neuen Firestore-Regeln (dispoRunden/dispoAntworten) schon eingespielt?');return;}
+  // 🤖 Links AUTOMATISCH per Telegram verschicken (an alle Ausgewählten mit verbundenem Bot)
+  let auto=0,hand=[];
+  for(const tok of Object.keys(pers)){
+    const mm=teamByAnyName(pers[tok].name);
+    if(tgToken()&&mm&&mm.tg){
+      const url='https://mlcelite.github.io/censa-crm/dispo.html?r='+rid+'&p='+tok;
+      const okS=await tgSend(mm.tg,'🌙 CENSA Abend-Verteilung: Neue Termine warten auf dich – bitte je Termin „kann / kann nicht" anklicken (dauert 60 Sekunden): '+url);
+      if(okS){
+        auto++;pers[tok].sent=1;
+        try{await firebase.firestore().collection('dispoRunden').doc(rid).update({['pers.'+tok+'.sent']:1});}catch(e){}
+        continue;
+      }
+    }
+    hand.push(pers[tok].name);
+  }
   DISPO_R=Object.assign({id:rid},doc);DISPO_ANT=[];
   try{localStorage.setItem('censa_dispo_rid',rid);}catch(e){}
-  chatSys('🌙 Abend-Verteilung gestartet: '+termine.length+' Termin(e) ausgeschrieben an '+Object.keys(pers).length+' Person(en).');
+  chatSys('🌙 Abend-Verteilung gestartet: '+termine.length+' Termin(e) an '+Object.keys(pers).length+' Person(en)'+(auto?' – '+auto+' Link(s) automatisch per Telegram verschickt 🤖':'')+(hand.length?' – noch von Hand anschreiben: '+hand.join(', '):'')+'.');
   render();
-  toast('🌙 Runde läuft – JETZT je Person auf 📱 WhatsApp klicken und absenden: die Links gehen NICHT von selbst raus!');
+  toast(hand.length?('🌙 '+(auto?auto+' automatisch verschickt · ':'')+hand.length+' Person(en) bitte über 📱 WhatsApp anschreiben: '+hand.join(', ')):'🤖 Alle '+auto+' Links automatisch per Telegram verschickt ✔ – jetzt Antworten abwarten');
 }
 async function dispoResume(){
   if(DISPO_R||__dispoLoading||MODE!=='db'||!isAdmin())return;
@@ -3364,10 +3444,15 @@ function dispoPanel(){
     }).join('');
     return `<div class="panel"><h3>🌙 Abend-Verteilung <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— getrennt nach Analysen und Beratungen: Namen anklicken (einen oder mehrere) und zuteilen – 1 Name = alle an ihn, mehrere = fair aufgeteilt; ODER fair ausschreiben („kann / kann nicht")</span></h3>
       ${blocks}
-      <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)">
-        <button class="btn pri" id="dsStart" ${offene.length?'':'disabled'}>🌙 Fair ausschreiben – Runde starten (${offene.length} Termine)</button>
-        <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Zuteilen oben: mehrere Namen = faire Aufteilung (chronologisch, jeder etwa gleich viele; die Vorschau kommt vor dem Bestätigen). Je Termin gibt es die Aufgabe zum Annehmen, Externe bekommen sofort die Kalender-Einladung. Noch nicht angenommene Zuordnungen kommen automatisch wieder in den Topf (⏳) – beim Neu-Vergeben wird die alte Aufgabe geschlossen. Runde = alle wählen am Handy „kann / kann nicht", danach fair zuteilen.</div>
-      </div></div>`;
+      ${(()=>{ // Fair-Ausschreiben: Empfänger anklicken, Links gehen automatisch per Telegram raus
+        const kand=TEAM.filter(m=>['analyst','berater'].some(rr=>hasRole(m,rr)&&offene.some(t=>t.rolle===rr)));
+        const rChips=kand.map(m=>{const on=DISPO_RSEL[m.name]!==0;const tg=!!m.tg;return `<button class="mini-btn" data-dsr="${esc(m.name)}" data-tg="${tg?1:0}" style="${on?'background:var(--brand);border-color:var(--brand);color:#fff':''}">${on?'✓':'✗'} ${esc(m.name)}${tg?' 🤖':''}</button>`;}).join('');
+        return `<div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)">
+        <div style="font-size:12px;color:var(--ink-2);margin:0 0 5px"><b>Oder fair ausschreiben:</b> Wer darf sich die Termine aussuchen? Namen an-/abwählen (✗ = bekommt keinen Link). 🤖 = bekommt den Link AUTOMATISCH per Telegram${tgToken()?'':' – <b>Bot noch nicht verbunden</b> (Knopf „🤖 Telegram-Bot verbinden" in Team &amp; Zugänge)'}; ohne 🤖 bleibt der 📱-WhatsApp-Knopf.</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${rChips||'<span class="ph">Keine Analysten/Berater im Team</span>'}</div>
+        <button class="btn pri" id="dsStart" ${offene.length?'':'disabled'}>🌙 Runde starten + Links automatisch verschicken (${offene.length} Termine)</button>
+        <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Zuteilen oben: mehrere Namen = faire Aufteilung (chronologisch, jeder etwa gleich viele; die Vorschau kommt vor dem Bestätigen). Je Termin gibt es die Aufgabe zum Annehmen, Externe bekommen sofort die Kalender-Einladung. Noch nicht angenommene Zuordnungen kommen automatisch wieder in den Topf (⏳) – beim Neu-Vergeben wird die alte Aufgabe geschlossen. Runde = die Ausgewählten wählen am Handy „kann / kann nicht", danach fair zuteilen.</div>
+      </div>`;})()}</div>`;
   }
   const mx=dispoMatrix();
   const termine=(DISPO_R.termine||[]);
