@@ -332,7 +332,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="10.11-F";
+const APP_VERSION="10.11-G";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2153,6 +2153,7 @@ function updateChatLog(){
       }
     }
     if(m.ersetzt)ack+=`<div style="margin-top:3px;font-size:11px;color:var(--ink-3);font-weight:700">↪ Nicht angenommen – bei der Abend-Verteilung neu vergeben an ${esc(m.ersetzt)}</div>`;
+    if(m.erledigt&&!m.needAck)ack+=`<div style="margin-top:3px;font-size:11px;color:var(--ink-3);font-weight:700">✔ Hinfällig – automatisch aufgeräumt (Zuordnung inzwischen erledigt)</div>`;
     if(m.sys)return `<div class="msg sys">${zeit} · ${esc(m.text)}${link}${ack}</div>`;
     const mine=m.von===meN;
     return `<div class="msg${mine?' me':''}"><div class="mh">${esc(m.von||'?')} · ${zeit}</div>${esc(m.text)}${link}${ack}</div>`;
@@ -3139,6 +3140,26 @@ function zuordPanel(){
     return `<div class="gl" ${m.dealId?`data-id="${esc(m.dealId)}"`:'style="cursor:default"'}><span class="gn">${esc(m.dealName||'—')}</span><span class="ph">${typ} → <b>${esc(m.ackWer||'—')}</b></span><span class="ph tnum">zugeordnet vor ${alterTxt}</span>${st}</div>`;
   }).join('');
   return `<div class="panel" style="border-color:${offen.some(m=>m.urgiert||((Date.now()-new Date(m.ts||0).getTime())/3600000)>=ZUORD_URGENZ_STD)?'var(--bad)':'var(--line)'}"><h3>⏳ Zuordnungs-Status <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— jede Termin-Zuordnung, bis Analyst/Berater annimmt oder ablehnt · nach ${ZUORD_URGENZ_STD} Std ohne Reaktion geht automatisch eine Urgenz an die Person und eine Info an dich</span></h3>${offen.length?`<div class="st-list">${rows}</div>`:'<div class="empty-col">Alle Zuordnungen angenommen 👍</div>'}</div>`;
+}
+let __putzLast=0;
+async function aufgabenPutz(){ // Melanies Ansage 10.11.: hinfällige Urgenz-/Info-Aufgaben SELBST aufräumen, sobald die Zuordnung erledigt ist
+  if(!isAdmin()||MODE!=='db'||!chatCol)return;
+  if(Date.now()-__putzLast<60000)return; // höchstens 1× pro Minute
+  __putzLast=Date.now();
+  const pend=dispoPending();
+  let n=0;
+  for(const m of CHAT){
+    if(!m.needAck||m.declined||!m.dealId)continue;
+    const t=m.text||'';
+    const urg=t.indexOf('❗ URGENZ an ')===0;
+    const inf=t.indexOf('ℹ️ ')===0&&t.indexOf('Urgenz wurde automatisch geschickt')>=0;
+    if(!urg&&!inf)continue;
+    const rolle=t.indexOf('Beratung-Zuordnung')>=0?'berater':'analyst';
+    if(pend[m.dealId+'|'+rolle])continue; // Zuordnung wartet wirklich noch → Urgenz bleibt stehen
+    try{await chatCol.doc(m._id).update({needAck:false,erledigt:'auto'});}catch(e){continue;}
+    m.needAck=false;m.erledigt='auto';n++;
+  }
+  if(n){updateTodoBadge();updateChatLog();}
 }
 let __zuordLast=0;
 async function zuordUrgenz(){
@@ -4657,6 +4678,7 @@ lsLoad();render();
       ensureChatUI();
       chatUnsub=chatCol.orderBy('ts','desc').limit(200).onSnapshot(snap=>{
         CHAT=snap.docs.map(s=>{const x=Object.assign({},s.data());x._id=s.id;return x;}).reverse();
+        aufgabenPutz(); // hinfällige Urgenz-Aufgaben automatisch schließen (vor der Urgenz-Prüfung)
         zuordUrgenz(); // 3-Std-Urgenz prüfen (Admin-Sitzungen, max. alle 15 Min)
         if(isAdmin())markDirty('steuerung'); // Zuordnungs-Status-Panel aktuell halten
         updateChatLog();updateTodoBadge();
