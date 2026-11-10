@@ -332,7 +332,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="10.11-B";
+const APP_VERSION="10.11-C";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -3160,7 +3160,15 @@ async function dispoResume(){
   __dispoLoading=true;
   try{
     const doc=await firebase.firestore().collection('dispoRunden').doc(rid).get();
-    if(doc.exists&&(doc.data()||{}).offen!==false){DISPO_R=Object.assign({id:rid},doc.data());await dispoLadeAntworten();markDirty('steuerung');render();}
+    const data=doc.exists?(doc.data()||{}):null;
+    const altMs=data&&data.ts?(Date.now()-new Date(data.ts).getTime()):0;
+    if(data&&data.offen!==false&&altMs>48*3600000){ // verwaiste Runde (>48 Std): automatisch verwerfen, sonst blockiert sie die Namens-Schnellzuteilung
+      try{await firebase.firestore().collection('dispoRunden').doc(rid).update({offen:false});}catch(e){}
+      try{localStorage.removeItem('censa_dispo_rid');}catch(e){}
+      chatSys('🌙 Alte Abend-Verteilungs-Runde vom '+new Date(data.ts).toLocaleDateString('de-AT')+' wurde automatisch verworfen (Links abgelaufen, nichts wurde zugeteilt).');
+      markDirty('steuerung');render();
+    }
+    else if(data&&data.offen!==false){DISPO_R=Object.assign({id:rid},data);await dispoLadeAntworten();markDirty('steuerung');render();}
     else{try{localStorage.removeItem('censa_dispo_rid');}catch(e){}}
   }catch(e){}
   __dispoLoading=false;
@@ -3279,7 +3287,7 @@ function dispoPanel(){
       <button class="btn pri" id="dsZuteilen">⚖️ Jetzt fair zuteilen</button>
       <button class="btn" id="dsAbbruch" style="color:var(--bad)">Runde verwerfen</button>
     </div>
-    <div style="font-size:11px;color:var(--ink-3);margin-top:6px">Fair heißt: knappe Termine zuerst vergeben, und es bekommt immer die Person mit den wenigsten Terminen dieser Runde. Zugeteilte bekommen automatisch die Kalender-Einladung (samt Kunde); Termine ohne Zusage bleiben offen – einfach danach eine neue Runde starten.</div></div>`;
+    <div style="font-size:11px;color:var(--ink-3);margin-top:6px">Fair heißt: knappe Termine zuerst vergeben, und es bekommt immer die Person mit den wenigsten Terminen dieser Runde. Zugeteilte bekommen automatisch die Kalender-Einladung (samt Kunde); Termine ohne Zusage bleiben offen – einfach danach eine neue Runde starten. <b>Solange diese Runde läuft, ist die Namens-Schnellzuteilung ausgeblendet</b> – nach „⚖️ Jetzt fair zuteilen" oder „Runde verwerfen" ist sie sofort wieder da (Runden älter als 48 Std räumen sich von selbst weg).</div></div>`;
 }
 function ehgPanel(){
   if(!isMelanie())return '';
