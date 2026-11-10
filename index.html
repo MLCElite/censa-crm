@@ -332,7 +332,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="10.11-J";
+const APP_VERSION="10.11-K";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1929,6 +1929,13 @@ function renderSteuerung(){
     DISPO_R=null;DISPO_ANT=[];render();toast('Runde verworfen');
   });
   host.querySelectorAll('[data-dscopy]').forEach(b=>b.addEventListener('click',()=>{try{navigator.clipboard.writeText(b.dataset.dscopy);toast('🔗 Link kopiert – einfach in die Nachricht einfügen');}catch(e){prompt('Link kopieren:',b.dataset.dscopy);}}));
+  host.querySelectorAll('[data-dssent]').forEach(el=>el.addEventListener('click',async()=>{ // „Link verschickt"-Markierung (Dannas Fall 10.11.: Links gehen NICHT automatisch raus)
+    const tok=el.dataset.dssent;
+    if(!DISPO_R||!DISPO_R.pers||!DISPO_R.pers[tok]||DISPO_R.pers[tok].sent)return;
+    DISPO_R.pers[tok].sent=1;
+    try{await firebase.firestore().collection('dispoRunden').doc(DISPO_R.id).update({['pers.'+tok+'.sent']:1});}catch(e){}
+    markDirty('steuerung');render();
+  }));
   host.querySelectorAll('[data-dsp]').forEach(b=>b.addEventListener('click',()=>{
     const rolle=b.dataset.dsp,name=b.dataset.dsname;
     const s=DISPO_SEL[rolle]=DISPO_SEL[rolle]||{};
@@ -3252,7 +3259,7 @@ async function dispoStart(){
   try{localStorage.setItem('censa_dispo_rid',rid);}catch(e){}
   chatSys('🌙 Abend-Verteilung gestartet: '+termine.length+' Termin(e) ausgeschrieben an '+Object.keys(pers).length+' Person(en).');
   render();
-  toast('🌙 Runde läuft – jetzt die Links verschicken (Knöpfe im Panel)');
+  toast('🌙 Runde läuft – JETZT je Person auf 📱 WhatsApp klicken und absenden: die Links gehen NICHT von selbst raus!');
 }
 async function dispoResume(){
   if(DISPO_R||__dispoLoading||MODE!=='db'||!isAdmin())return;
@@ -3371,7 +3378,8 @@ function dispoPanel(){
     const url='https://mlcelite.github.io/censa-crm/dispo.html?r='+DISPO_R.id+'&p='+tok;
     const msg=encodeURIComponent('🌙 CENSA Abend-Verteilung: Neue Termine warten auf dich – bitte kurz je Termin „kann / kann nicht" anklicken (dauert 60 Sekunden): '+url);
     const telD=(pp.tel||'').replace(/\D/g,'').replace(/^0/,'43');
-    return `<div class="gl" style="cursor:default;flex-wrap:wrap"><span class="gn">${esc(pp.name)}</span><span class="ph">${esc((pp.rollen||[]).join(' + '))}</span>${beantwortet.has(tok)?'<span class="tg" style="background:var(--good);color:#fff">✓ geantwortet</span>':'<span class="tg od">⏳ offen</span>'}${telD?`<a class="mini-btn" target="_blank" rel="noopener" href="https://wa.me/${telD}?text=${msg}">📱 WhatsApp</a>`:''}<button class="mini-btn" data-dscopy="${esc(url)}">🔗 Link kopieren</button></div>`;
+    const st=beantwortet.has(tok)?'<span class="tg" style="background:var(--good);color:#fff">✓ geantwortet</span>':(pp.sent?'<span class="tg">📨 Link verschickt – wartet auf Antwort</span>':'<span class="tg od">⚠ Link noch NICHT verschickt</span>');
+    return `<div class="gl" style="cursor:default;flex-wrap:wrap"><span class="gn">${esc(pp.name)}</span><span class="ph">${esc((pp.rollen||[]).join(' + '))}</span>${st}${telD?`<a class="mini-btn" target="_blank" rel="noopener" data-dssent="${esc(tok)}" href="https://wa.me/${telD}?text=${msg}">📱 WhatsApp</a>`:'<span class="tg od">kein Handy in Team &amp; Zugänge</span>'}<button class="mini-btn" data-dssent="${esc(tok)}" data-dscopy="${esc(url)}">🔗 Link kopieren</button></div>`;
   }).join('');
   const rowFor=t=>{
     const e=mx[t.tid]||{ja:[],nein:[]};
@@ -3382,7 +3390,9 @@ function dispoPanel(){
   const rows=(tAG.length?`<div style="font-size:12px;font-weight:700;margin:4px 0">📊 Analysen (${tAG.length})</div><div class="st-list">${tAG.map(rowFor).join('')}</div>`:'')
             +(tBG.length?`<div style="font-size:12px;font-weight:700;margin:8px 0 4px">🤝 Beratungen (${tBG.length})</div><div class="st-list">${tBG.map(rowFor).join('')}</div>`:'');
   return `<div class="panel" style="border-color:var(--brand)"><h3>🌙 Abend-Verteilung – Runde läuft <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— 1. Links verschicken · 2. Antworten einsammeln · 3. fair zuteilen</span></h3>
-    <div class="ehgt" style="margin:2px 0 6px">1 · Links an ${persArr.length} Person(en)</div><div class="st-list">${linkRows}</div>
+    <div class="ehgt" style="margin:2px 0 6px">1 · Links an ${persArr.length} Person(en)</div>
+    <div style="font-size:12px;font-weight:700;color:var(--bad);margin:0 0 6px">WICHTIG: Das CRM verschickt die Links NICHT von selbst – bei jeder Person auf „📱 WhatsApp" klicken und die Nachricht absenden (ohne Handynummer: „🔗 Link kopieren" und selbst schicken).</div>
+    <div class="st-list">${linkRows}</div>
     <div class="ehgt" style="margin:10px 0 6px">2 · Antworten je Termin (${beantwortet.size}/${persArr.length} Personen haben geantwortet)</div>${rows}
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
       <button class="btn" id="dsRefresh">🔄 Antworten aktualisieren</button>
@@ -3444,12 +3454,27 @@ async function zvgBook(id,dateStr,zeit,agt,ehE,ehT){
     renderSteuerung();
   }catch(e){toast('Einbuchen fehlgeschlagen'+(e&&e.code?' ('+e.code+')':''));}
 }
+function ehMonat(monKey){ // EH-Ist je Teammitglied im Monat – nur Abschluss-Posten MIT Zeitstempel; Split wie im Modal (Berater 50 %, Analyst 50/25 %, Telefonist 25 %)
+  const out={};TEAM.forEach(m=>out[m.name]=0);
+  state.deals.forEach(d=>{
+    (d.ehA||[]).forEach(it=>{
+      if(!it.ts||String(it.ts).slice(0,7)!==monKey)return;
+      const eh=calcEH(it);
+      const be=canonName(d.berater||''),an=canonName(d.analyst||''),te=canonName(d.telefonist||'');
+      if(be&&out[be]!=null)out[be]+=eh*0.5;
+      if(an&&out[an]!=null)out[an]+=eh*(d.telBeteiligt?0.25:0.5);
+      if(d.telBeteiligt&&te&&out[te]!=null)out[te]+=eh*0.25;
+    });
+  });
+  return out;
+}
 function baumPanel(){ // 🌳 Team-Linien: Hierarchie aus „direkte Führungskraft" + Monats-Ist je Person und Linie
   if(!isAdmin()||MODE!=='db'||!TEAM.length)return '';
   const now=new Date();
   const monKey=now.getFullYear()+'-'+calPad(now.getMonth()+1);
   const inM=ds=>{const dt=parseTermin(ds);return !!(dt&&dt.getMonth()===now.getMonth()&&dt.getFullYear()===now.getFullYear());};
-  const ist={};TEAM.forEach(m=>ist[m.name]={ag:0,bg:0});
+  const ehIst=ehMonat(monKey);
+  const ist={};TEAM.forEach(m=>ist[m.name]={ag:0,bg:0,eh:ehIst[m.name]||0});
   state.deals.forEach(d=>{
     if((d.quelle||'')==='Recruiting')return;
     const an=canonName(d.analyst||''),be=canonName(d.berater||'');
@@ -3468,16 +3493,18 @@ function baumPanel(){ // 🌳 Team-Linien: Hierarchie aus „direkte Führungskr
   const row=(m,tiefe,seen)=>{
     if(seen.has(m.id))return '';
     seen.add(m.id);
-    const i=ist[m.name]||{ag:0,bg:0};
+    const i=ist[m.name]||{ag:0,bg:0,eh:0};
     const z=(m.ziele&&m.ziele.monat===monKey)?m.ziele:null;
     const ln=linie(m,new Set());
-    const lAg=ln.reduce((s,x)=>s+((ist[x.name]||{}).ag||0),0),lBg=ln.reduce((s,x)=>s+((ist[x.name]||{}).bg||0),0);
-    return `<div class="gl" style="cursor:default;flex-wrap:wrap;margin-left:${Math.min(tiefe,4)*22}px">${tiefe?'<span class="ph">↳</span>':''}<span class="gn">${esc(m.name)}</span><span class="ph">${esc(m.rolle||'')}</span>${z?`<span class="tg">🎯 ${esc(z.agt||0)} AGT/Wo · ${esc(z.ehE||0)} EH eigen · ${esc(z.ehT||0)} EH Team</span>`:'<span class="ph">— kein Monatsziel —</span>'}<span class="tg" style="background:var(--brand);color:#fff">Monat: AG ${i.ag} · BG ${i.bg}</span>${ln.length>1?`<span class="tg">Linie (${ln.length-1} GP): AG ${lAg} · BG ${lBg}</span>`:''}</div>`
+    const lAg=ln.reduce((s,x)=>s+((ist[x.name]||{}).ag||0),0),lBg=ln.reduce((s,x)=>s+((ist[x.name]||{}).bg||0),0),lEh=ln.reduce((s,x)=>s+((ist[x.name]||{}).eh||0),0);
+    const ehChip=(istW,ziel)=>{const er=ziel&&istW>=ziel;return `<span class="tg"${er?' style="background:var(--good);color:#fff"':''}>EH ${fmtEH(istW)}${ziel?' / Ziel '+esc(ziel):''}${er?' ✔':''}</span>`;};
+    return `<div class="gl" style="cursor:default;flex-wrap:wrap;margin-left:${Math.min(tiefe,4)*22}px">${tiefe?'<span class="ph">↳</span>':''}<span class="gn">${esc(m.name)}</span><span class="ph">${esc(m.rolle||'')}</span>${z?`<span class="tg">🎯 ${esc(z.agt||0)} AGT/Wo · ${esc(z.ehE||0)} EH eigen · ${esc(z.ehT||0)} EH Team</span>`:'<span class="ph">— kein Monatsziel —</span>'}<span class="tg" style="background:var(--brand);color:#fff">Monat: AG ${i.ag} · BG ${i.bg}</span>${ehChip(i.eh,z?z.ehE:0)}${ln.length>1?`<span class="tg">Linie (${ln.length-1} GP): AG ${lAg} · BG ${lBg}</span>`:''}${ln.length>1?ehChip(lEh,z?z.ehT:0).replace('>EH ','>Linie-EH '):''}</div>`
       +(kids[m.name]||[]).map(c=>row(c,tiefe+1,seen)).join('');
   };
   const seen=new Set();
   const body=roots.map(r=>row(r,0,seen)).join('');
-  return `<div class="panel"><h3>🌳 Team-Linien <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— direkte und indirekte GPs (aus „Führungskraft" in Team &amp; Zugänge) · je Person das Monatsziel aus dem ZVG + Termine diesen Monat, je Linie die Summe</span></h3><div class="st-list">${body||'<div class="empty-col">In Team &amp; Zugänge bei jedem Mitglied die direkte Führungskraft wählen – dann baut sich der Baum automatisch.</div>'}</div></div>`;
+  return `<div class="panel"><h3>🌳 Team-Linien <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— direkte und indirekte GPs (aus „Führungskraft" in Team &amp; Zugänge) · je Person Monatsziel (ZVG), Termine und EH diesen Monat, je Linie die Summe · EH-Aufteilung wie im Kunden-Fenster: Berater 50 %, Analyst 50/25 %, Telefonist 25 %</span></h3><div class="st-list">${body||'<div class="empty-col">In Team &amp; Zugänge bei jedem Mitglied die direkte Führungskraft wählen – dann baut sich der Baum automatisch.</div>'}</div>
+    <div style="font-size:11px;color:var(--ink-3);margin-top:6px">EH-Monatszahlen zählen ab jetzt: Abschluss-Einträge bekommen seit heute automatisch ein Datum – ältere Einträge ohne Datum fließen bewusst nicht ein (keine erfundenen Zahlen).</div></div>`;
 }
 function ehgPanel(){
   return ''; // vorerst raus (Melanies Ansage 10.11.2026) – das ZVG-Panel übernimmt; zum Reaktivieren diese Zeile löschen
@@ -4522,7 +4549,7 @@ function wireEH(m,d){
   const tel=m.querySelector('#eh-telb');
   if(tel)tel.addEventListener('change',()=>{d.telBeteiligt=tel.checked;paintEH(m,d);});
   buildAdd(m,d,'a');paintEH(m,d);
-  const addS=it=>{d.ehS.push(it);if(state.deals.includes(d))dbPersist(d);paintEH(m,d);toast('Schätzung hinzugefügt: '+fmtEH(calcEH(it))+' EH');};
+  const addS=it=>{it.ts=it.ts||new Date().toISOString();d.ehS.push(it);if(state.deals.includes(d))dbPersist(d);paintEH(m,d);toast('Schätzung hinzugefügt: '+fmtEH(calcEH(it))+' EH');};
   m.querySelectorAll('[data-q]').forEach(b=>b.addEventListener('click',()=>{
     const q=b.dataset.q;
     if(q==='gg'){
@@ -4563,7 +4590,7 @@ function buildAdd(m,d,which){
   sel.addEventListener('change',upd);
   btn.addEventListener('click',()=>{
     const p=PRODMAP[sel.value];if(!p||!parseFloat(betrag.value)){toast('Produkt und Betrag angeben');return;}
-    const it={k:sel.value,betrag:parseFloat(betrag.value),zw:zw.value};
+    const it={k:sel.value,betrag:parseFloat(betrag.value),zw:zw.value,ts:new Date().toISOString()}; // ts = Basis der EH-Monatszahlen (v10.11-K)
     if(p.lz)it.lz=parseFloat(lz.value)||p.lz;
     if(p.mode==='fin')it.bag=parseFloat(bag.value)||0;
     (which==='s'?d.ehS:d.ehA).push(it);betrag.value='';if(state.deals.includes(d))dbPersist(d);paintEH(m,d);
