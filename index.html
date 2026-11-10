@@ -332,7 +332,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="10.11-D";
+const APP_VERSION="10.11-E";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1933,6 +1933,21 @@ function renderSteuerung(){
     const go=host.querySelector('[data-dsgo="'+rolle+'"]');
     if(go){go.disabled=!n;const sp=go.querySelector('[data-dsn]');if(sp)sp.textContent=n;}
   }));
+  host.querySelectorAll('[data-dsfix]').forEach(b=>b.addEventListener('click',e=>{
+    e.stopPropagation(); // sonst öffnet der Zeilen-Klick das Kunden-Modal
+    const tid=b.dataset.dsfix;
+    const rolle=/_bg$/.test(tid)?'berater':'analyst';
+    const d=state.deals.find(x=>x.id===tid.replace(/_(ag|bg)$/,''));
+    if(!d)return;
+    const name=(d[rolle]||'').trim();
+    if(!name){toast('Kein Name im Lead eingetragen – bitte im Lead zuordnen');return;}
+    if(!confirm((rolle==='analyst'?'Analyse':'Beratung')+' „'+(d.name||d.org||'—')+'" FIX bei '+name+' lassen?\n\nDie offene Annehmen-Aufgabe wird geschlossen, die Kalender-Einladung (samt Kunde) geht raus, der Termin verschwindet aus der Abend-Verteilung.'))return;
+    b.disabled=true;b.textContent='Bucht…';
+    zuordDirekt(d,rolle); // schließt die offene Aufgabe + bucht den Kalender + Chat „FIX zugeordnet"
+    histAdd(d,'Abend-Verteilung: als FIX bestätigt ('+name+')');
+    dbPersist(d);
+    markDirty('steuerung');render();
+  }));
   host.querySelectorAll('[data-dsgo]').forEach(b=>b.addEventListener('click',async()=>{
     const rolle=b.dataset.dsgo;
     const typ=rolle==='analyst'?'Analysen':'Beratungen';
@@ -2646,6 +2661,8 @@ async function gcalInsert(title,dt,durMin,desc,loc,attendees){
    KEIN Annehmen-Workflow mehr → der Termin ist damit auch raus aus der Abend-Verteilung. */
 function zuordDirekt(d,role){
   const name=((role==='analyst'?d.analyst:d.berater)||'').trim();
+  const pm=dispoPending()[d.id+'|'+role]; // alte offene „bitte annehmen"-Aufgabe? → mitschließen, sonst bleibt der Termin in der Abend-Verteilung
+  if(pm){if(chatCol){try{chatCol.doc(pm._id).update({needAck:false,ersetzt:name});}catch(e){}}pm.needAck=false;}
   const nm=d.name||d.org||'—';
   const typ=role==='analyst'?'Analyse':'Beratung';
   const termTxt=role==='analyst'?d.datumAG:d.datumBG;
@@ -3277,7 +3294,8 @@ function dispoPanel(){
       const pers=TEAM.filter(m=>hasRole(m,rolle));
       const rows=ts.slice(0,30).map(t=>{
         const d=state.deals.find(x=>x.id===t.tid.replace(/_(ag|bg)$/,''));
-        return `<div class="gl" ${d?`data-id="${esc(d.id)}"`:'style="cursor:default"'}><span class="gn">${esc(d?(d.name||d.org||'—'):'—')}</span><span class="ph">${esc(t.wann||'')} · ${esc(t.ort||'')}</span>${t.warte?`<span class="tg od">⏳ ${esc(t.warte)} hat noch nicht angenommen – wird neu vergeben</span>`:''}</div>`;
+        const fixName=d?((d[rolle]||'').trim()||t.warte):t.warte;
+        return `<div class="gl" ${d?`data-id="${esc(d.id)}"`:'style="cursor:default"'}><span class="gn">${esc(d?(d.name||d.org||'—'):'—')}</span><span class="ph">${esc(t.wann||'')} · ${esc(t.ort||'')}</span>${t.warte?`<span class="tg od">⏳ ${esc(t.warte)} hat noch nicht angenommen</span><button class="mini-btn" data-dsfix="${esc(t.tid)}" style="border-color:var(--good);color:var(--good)">✔ Fix bei ${esc(fixName)} (buchen + raus)</button>`:''}</div>`;
       }).join('')+(ts.length>30?`<div class="ph" style="padding:4px 2px">… und ${ts.length-30} weitere</div>`:'');
       const selObj=DISPO_SEL[rolle]||{};
       const chips=pers.map(m=>{const on=!!selObj[m.name];return `<button class="mini-btn" data-dsp="${rolle}" data-dsname="${esc(m.name)}" style="${on?'background:var(--brand);border-color:var(--brand);color:#fff':''}">${on?'✓':'👤'} ${esc(m.name)}</button>`;}).join('');
