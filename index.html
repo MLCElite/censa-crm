@@ -332,7 +332,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="10.11-C";
+const APP_VERSION="10.11-D";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -834,7 +834,7 @@ function renderListe(){
         histAdd(d,(role==='telefonist'?'Telefonist':role==='analyst'?'Analyst':'Berater')+': '+(old||'—')+' → '+(val||'—'));
         if(val&&role!=='telefonist'){
           if(externCal(d,role))chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet (EXTERN): '+(d.name||d.org||'—')+' → '+val+' – Einladung per Kalender',d);
-          else chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet: '+(d.name||d.org||'—')+' → '+val+' – bitte annehmen!',d,val,role==='berater'?'beratung-zuord':'analyse-zuord');
+          else zuordDirekt(d,role); // selbst eingetragen = entschieden: sofort Kalender, kein Annehmen (Melanies Norm 10.11.)
         }
         if(role==='berater'&&val&&d.stage==='Analyse & Doku')d.stage='Beratungstermin vereinbart';
         dbPersist(d);renderListe();toast('Gespeichert ✓');
@@ -1831,9 +1831,9 @@ function renderSteuerung(){
     dbPersist(d);
     const nm=d.name||d.org||'—';
     const term=role==='analyst'?d.datumAG:d.datumBG;
-    if(externCal(d,role))chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet (EXTERN): '+nm+' → '+name+(term?' ('+term+')':'')+' – Einladung per Kalender',d);
-    else chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet: '+nm+' → '+name+(term?' ('+term+')':'')+' – bitte annehmen!',d,name,role==='berater'?'beratung-zuord':'analyse-zuord');
-    toast(nm+' → '+name);render();
+    if(externCal(d,role)){chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet (EXTERN): '+nm+' → '+name+(term?' ('+term+')':'')+' – Einladung per Kalender',d);toast(nm+' → '+name);}
+    else zuordDirekt(d,role); // selbst zugeordnet = entschieden: sofort Kalender, kein Annehmen (Melanies Norm 10.11.)
+    render();
   }));
   host.querySelectorAll('[data-bzass]').forEach(b=>b.addEventListener('click',async()=>{
     const g=bzList[+b.dataset.bzass];if(!g)return;
@@ -2639,6 +2639,37 @@ async function gcalInsert(title,dt,durMin,desc,loc,attendees){
     const r=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify(body)});
     return r.ok;
   }catch(e){return false;}
+}
+/* Manuelle Zuordnung (Melanies Norm 10.11.2026): Trägt die Dispo selbst einen Analysten/
+   Berater ein (Lead-Detail oder Tages-Dispo), ist das ENTSCHIEDEN – Termin sofort aus dem
+   Kalender des Zuordnenden buchen (Einladung an Analyst/Berater + Kunde + Office),
+   KEIN Annehmen-Workflow mehr → der Termin ist damit auch raus aus der Abend-Verteilung. */
+function zuordDirekt(d,role){
+  const name=((role==='analyst'?d.analyst:d.berater)||'').trim();
+  const nm=d.name||d.org||'—';
+  const typ=role==='analyst'?'Analyse':'Beratung';
+  const termTxt=role==='analyst'?d.datumAG:d.datumBG;
+  const dt=parseTermin(termTxt);
+  const title=typ+': '+nm;
+  const det='Tel: '+(d.telefon||'-')+(d.briefing?' | '+d.briefing:'')+' | Zugeteilt an: '+name;
+  const loc=[d.strasse,d.plz,d.ort].filter(Boolean).join(', ')||((d.notizen||'').indexOf('CENSA-Büro')>=0?'CENSA Büro, 1230 Wien':'');
+  const att=[d.email,teamMail(name),OFFICE_MAIL];
+  if(!dt){
+    chatSys('👤 '+typ+' FIX zugeordnet: '+nm+' → '+name+' (Termin-Datum fehlt noch – erst Datum eintragen, dann '+(role==='analyst'?'Analyst':'Berater')+' kurz neu auswählen, dann geht die Kalender-Einladung raus)',d);
+    setTimeout(()=>toast('Zugeordnet ✓ – Termin-Datum fehlt: erst Datum eintragen, dann Zuordnung neu setzen → Kalender geht automatisch raus'),80);
+    return;
+  }
+  const haveTok=!!__gcalTok&&Date.now()<__gcalExp-60000;
+  if(GCAL_CLIENT_ID&&haveTok){
+    gcalInsert(title,dt,60,det,loc,att).then(ok=>{
+      if(ok)toast('📅 Termin gebucht – '+name+' und der Kunde haben die Kalender-Einladung bekommen');
+      else toast('📅 Kalender-Buchung fehlgeschlagen – bitte „Google-Kalender verbinden" klicken und die Zuordnung kurz neu setzen');
+    });
+  }else{
+    const w=window.open(calGoogle(title,dt,det,loc,att),'_blank'); // synchron in der Klick-Geste (Popup-Blocker!)
+    setTimeout(()=>toast(w?'📅 Kalender-Tab geöffnet – auf „Speichern" klicken. Tipp: einmal „Google-Kalender verbinden", dann bucht es künftig automatisch':'📅 Popup geblockt – bitte Popups erlauben ODER einmal „Google-Kalender verbinden", dann bucht es automatisch'),80);
+  }
+  chatSys('👤 '+typ+' FIX zugeordnet: '+nm+' → '+name+' ('+termTxt+') – Termin per Kalender-Einladung gebucht, kein Annehmen nötig',d);
 }
 /* Externe Berater/Analysten: Name endet auf "-extern" (z. B. SCHINKO-extern) ->
    kein Bestätigungs-Workflow, stattdessen SOFORT Kalender-Einladung an Extern + Kunde */
