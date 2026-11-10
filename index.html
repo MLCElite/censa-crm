@@ -332,7 +332,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="10.11-A";
+const APP_VERSION="10.11-B";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1946,11 +1946,20 @@ function renderSteuerung(){
     const vorschau=sel.map(n=>n+': '+load[n]).join(' · ');
     if(!confirm(ts.length+' offene '+typ+(sel.length>1?' fair aufteilen auf:\n\n':' komplett zuteilen an:\n\n')+vorschau+'\n\nJede Person bekommt je Termin eine Aufgabe zum Annehmen (Urgenz nach 3 Std läuft automatisch; Externe sofort die Kalender-Einladung).'))return;
     b.disabled=true;b.textContent='Speichert…';
+    const pend=dispoPending();
     const ge=[];
     plan.forEach(p=>{
       const t=p.t,name=p.name;
       const d=state.deals.find(x=>x.id===t.tid.replace(/_(ag|bg)$/,''));
-      if(!d||(d[t.rolle]||'').trim())return;
+      if(!d)return;
+      const alt=(d[t.rolle]||'').trim();
+      const pm=pend[d.id+'|'+t.rolle];
+      if(alt&&!pm)return; // fest besetzt (angenommen oder manuell) – nicht anrühren
+      if(alt&&pm){ // nicht angenommene Zuordnung ersetzen: alte Aufgabe schließen
+        if(chatCol){try{chatCol.doc(pm._id).update({needAck:false,ersetzt:name});}catch(e){}}
+        pm.needAck=false;
+        histAdd(d,'Abend-Verteilung: nicht angenommene Zuordnung ('+alt+') neu vergeben');
+      }
       d[t.rolle]=name;d.geprueft=true;
       if(t.rolle==='berater'&&d.stage==='Analyse & Doku')d.stage='Beratungstermin vereinbart';
       histAdd(d,'Abend-Verteilung (Sammel): '+(rolle==='analyst'?'Analyst':'Berater')+' → '+name);
@@ -2128,6 +2137,7 @@ function updateChatLog(){
         ack+='</div>';
       }
     }
+    if(m.ersetzt)ack+=`<div style="margin-top:3px;font-size:11px;color:var(--ink-3);font-weight:700">↪ Nicht angenommen – bei der Abend-Verteilung neu vergeben an ${esc(m.ersetzt)}</div>`;
     if(m.sys)return `<div class="msg sys">${zeit} · ${esc(m.text)}${link}${ack}</div>`;
     const mine=m.von===meN;
     return `<div class="msg${mine?' me':''}"><div class="mh">${esc(m.von||'?')} · ${zeit}</div>${esc(m.text)}${link}${ack}</div>`;
@@ -3106,13 +3116,20 @@ async function zuordUrgenz(){
    ohne Zusage bleiben offen und gehen in die nächste Runde. */
 let DISPO_R=null, DISPO_ANT=[], __dispoLoading=false;
 let DISPO_SEL={analyst:{},berater:{}}; // Abend-Zuteilung: angeklickte Personen je Rolle (überlebt Re-Render)
+function dispoPending(){ // dealId|rolle → noch nicht angenommene Zuordnungs-Nachricht (kommt wieder in den Abend-Topf)
+  const p={};
+  zuordOffen().forEach(m=>{if(m.dealId)p[m.dealId+'|'+(m.art==='beratung-zuord'?'berater':'analyst')]=m;});
+  return p;
+}
 function dispoOffeneTermine(){
+  const pend=dispoPending();
   const out=[];
   state.deals.forEach(d=>{
     if(d.status!=='open'||(d.quelle||'')==='Recruiting')return;
     const ort=((d.notizen||'').indexOf('CENSA-Büro')>=0)?'CENSA Büro, 1230 Wien':(d.bezirk||[d.plz,d.ort].filter(Boolean).join(' ')||'Wien/NÖ');
-    if((d.datumAG||'').trim()&&!(d.analyst||'').trim())out.push({tid:d.id+'_ag',rolle:'analyst',wann:d.datumAG,ort:ort});
-    if((d.datumBG||'').trim()&&!(d.berater||'').trim())out.push({tid:d.id+'_bg',rolle:'berater',wann:d.datumBG,ort:ort});
+    const frei=rolle=>!(d[rolle]||'').trim()||!!pend[d.id+'|'+rolle]; // leer ODER zugeteilt-aber-nicht-angenommen
+    if((d.datumAG||'').trim()&&frei('analyst'))out.push({tid:d.id+'_ag',rolle:'analyst',wann:d.datumAG,ort:ort,warte:pend[d.id+'|analyst']?(pend[d.id+'|analyst'].ackWer||''):''});
+    if((d.datumBG||'').trim()&&frei('berater'))out.push({tid:d.id+'_bg',rolle:'berater',wann:d.datumBG,ort:ort,warte:pend[d.id+'|berater']?(pend[d.id+'|berater'].ackWer||''):''});
   });
   return out;
 }
@@ -3177,13 +3194,21 @@ async function dispoZuteilen(){
   const mx=dispoMatrix();
   const termine=(DISPO_R.termine||[]);
   const erg=dispoFair(termine,mx);
+  const pend=dispoPending();
   let n=0;
   for(const tid of Object.keys(erg.zu)){
     const t=termine.find(x=>x.tid===tid);
     const d=state.deals.find(x=>x.id===tid.replace(/_(ag|bg)$/,''));
     if(!t||!d)continue;
     const feld=t.rolle;
-    if((d[feld]||'').trim())continue; // wurde inzwischen manuell besetzt
+    const alt=(d[feld]||'').trim();
+    const pm=pend[d.id+'|'+feld];
+    if(alt&&!pm)continue; // fest besetzt (angenommen oder manuell) – nicht anrühren
+    if(alt&&pm){ // nicht angenommene Zuordnung ersetzen: alte Aufgabe schließen
+      if(chatCol){try{await chatCol.doc(pm._id).update({needAck:false,ersetzt:erg.zu[tid]});}catch(e){}}
+      pm.needAck=false;
+      histAdd(d,'Abend-Verteilung: nicht angenommene Zuordnung ('+alt+') neu vergeben');
+    }
     d[feld]=erg.zu[tid];
     histAdd(d,'Abend-Verteilung: '+(feld==='analyst'?'Analyst':'Berater')+' → '+erg.zu[tid]+' (hat zugesagt)');
     if(!externCal(d,feld)){ // intern: Einladung + Info (Zusage liegt ja bereits vor)
@@ -3213,7 +3238,7 @@ function dispoPanel(){
       const pers=TEAM.filter(m=>hasRole(m,rolle));
       const rows=ts.slice(0,30).map(t=>{
         const d=state.deals.find(x=>x.id===t.tid.replace(/_(ag|bg)$/,''));
-        return `<div class="gl" ${d?`data-id="${esc(d.id)}"`:'style="cursor:default"'}><span class="gn">${esc(d?(d.name||d.org||'—'):'—')}</span><span class="ph">${esc(t.wann||'')} · ${esc(t.ort||'')}</span></div>`;
+        return `<div class="gl" ${d?`data-id="${esc(d.id)}"`:'style="cursor:default"'}><span class="gn">${esc(d?(d.name||d.org||'—'):'—')}</span><span class="ph">${esc(t.wann||'')} · ${esc(t.ort||'')}</span>${t.warte?`<span class="tg od">⏳ ${esc(t.warte)} hat noch nicht angenommen – wird neu vergeben</span>`:''}</div>`;
       }).join('')+(ts.length>30?`<div class="ph" style="padding:4px 2px">… und ${ts.length-30} weitere</div>`:'');
       const selObj=DISPO_SEL[rolle]||{};
       const chips=pers.map(m=>{const on=!!selObj[m.name];return `<button class="mini-btn" data-dsp="${rolle}" data-dsname="${esc(m.name)}" style="${on?'background:var(--brand);border-color:var(--brand);color:#fff':''}">${on?'✓':'👤'} ${esc(m.name)}</button>`;}).join('');
@@ -3224,7 +3249,7 @@ function dispoPanel(){
       ${blocks}
       <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)">
         <button class="btn pri" id="dsStart" ${offene.length?'':'disabled'}>🌙 Fair ausschreiben – Runde starten (${offene.length} Termine)</button>
-        <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Zuteilen oben: mehrere Namen = faire Aufteilung (chronologisch, jeder etwa gleich viele; die Vorschau kommt vor dem Bestätigen). Je Termin gibt es die Aufgabe zum Annehmen, Externe bekommen sofort die Kalender-Einladung. Runde = alle wählen am Handy „kann / kann nicht", danach fair zuteilen.</div>
+        <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Zuteilen oben: mehrere Namen = faire Aufteilung (chronologisch, jeder etwa gleich viele; die Vorschau kommt vor dem Bestätigen). Je Termin gibt es die Aufgabe zum Annehmen, Externe bekommen sofort die Kalender-Einladung. Noch nicht angenommene Zuordnungen kommen automatisch wieder in den Topf (⏳) – beim Neu-Vergeben wird die alte Aufgabe geschlossen. Runde = alle wählen am Handy „kann / kann nicht", danach fair zuteilen.</div>
       </div></div>`;
   }
   const mx=dispoMatrix();
@@ -3241,7 +3266,7 @@ function dispoPanel(){
   const rowFor=t=>{
     const e=mx[t.tid]||{ja:[],nein:[]};
     const d=state.deals.find(x=>x.id===t.tid.replace(/_(ag|bg)$/,''));
-    return `<div class="gl" ${d?`data-id="${esc(d.id)}"`:'style="cursor:default"'}><span class="gn">${esc(d?(d.name||d.org||'—'):'—')}</span><span class="ph">${t.rolle==='berater'?'BG':'AG'} · ${esc(t.wann||'')} · ${esc(t.ort||'')}</span><span class="tg" style="background:var(--good);color:#fff">✓ ${e.ja.length}</span>${e.ja.length?`<span class="ph">${e.ja.map(esc).join(', ')}</span>`:''}<span class="tg od">✗ ${e.nein.length}</span></div>`;
+    return `<div class="gl" ${d?`data-id="${esc(d.id)}"`:'style="cursor:default"'}><span class="gn">${esc(d?(d.name||d.org||'—'):'—')}</span><span class="ph">${t.rolle==='berater'?'BG':'AG'} · ${esc(t.wann||'')} · ${esc(t.ort||'')}</span>${t.warte?`<span class="tg od">⏳ ${esc(t.warte)}?</span>`:''}<span class="tg" style="background:var(--good);color:#fff">✓ ${e.ja.length}</span>${e.ja.length?`<span class="ph">${e.ja.map(esc).join(', ')}</span>`:''}<span class="tg od">✗ ${e.nein.length}</span></div>`;
   };
   const tAG=termine.filter(t=>t.rolle==='analyst'),tBG=termine.filter(t=>t.rolle==='berater');
   const rows=(tAG.length?`<div style="font-size:12px;font-weight:700;margin:4px 0">📊 Analysen (${tAG.length})</div><div class="st-list">${tAG.map(rowFor).join('')}</div>`:'')
