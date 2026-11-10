@@ -332,7 +332,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="10.11-I";
+const APP_VERSION="10.11-J";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1809,7 +1809,8 @@ function renderSteuerung(){
         ${names.map(n=>{const p=per[n]||{logins:0,days:{},last:''};const c=call[n]||{n:0,term:0,min:0};const mem=TEAM.find(x=>x.name===n);return `<tr style="cursor:default"><td><b>${esc(n)}</b></td><td>${esc(mem?mem.rolle:'—')}</td><td>${fmtLast(p.last)}</td><td class="tnum">${Object.keys(p.days).length}</td><td class="tnum">${p.logins}</td><td class="tnum">${c.n}</td><td class="tnum">${c.term}</td><td class="tnum">${Math.round(c.min)}</td></tr>`;}).join('')}
         </tbody></table></div></div>`;
     })()}
-    ${ehgPanel()}
+    ${zvgPanel()}
+    ${baumPanel()}
     ${unterlagenPanel()}
     ${teamPanel()}
     <div class="panel"><h3>Telefonisten · offene Anruf-Leads</h3><div class="st-list">${teGroups.length?teGroups.map(([t,list])=>{const wv=list.filter(d=>daysUntil(d.wiedervorlage)!=null&&daysUntil(d.wiedervorlage)<=0).length;return `<details class="grp"><summary>${esc(t)}<span class="cnt">${list.length} offen${wv?` · <span style="color:var(--warn)">${wv} Rückrufe fällig</span>`:''}</span></summary><div class="inner">${list.slice(0,40).map(glItem).join('')}</div></details>`;}).join(''):'<div class="empty-col">Keine offenen Anruf-Leads.</div>'}</div></div>
@@ -1891,6 +1892,12 @@ function renderSteuerung(){
     const id=b.dataset.ehgbook;
     const dEl=host.querySelector('input[data-ehgd="'+id+'"]'),zEl=host.querySelector('select[data-ehgz="'+id+'"]');
     ehgBook(id,dEl?dEl.value:'',zEl?zEl.value:'');
+  }));
+  host.querySelectorAll('[data-zvgbook]').forEach(b=>b.addEventListener('click',()=>{
+    const id=b.dataset.zvgbook;
+    const dEl=host.querySelector('input[data-zvgd="'+id+'"]'),zEl=host.querySelector('select[data-zvgz="'+id+'"]');
+    const aEl=host.querySelector('input[data-zvga="'+id+'"]'),eEl=host.querySelector('input[data-zvge="'+id+'"]'),tEl=host.querySelector('input[data-zvgt="'+id+'"]');
+    zvgBook(id,dEl?dEl.value:'',zEl?zEl.value:'',aEl?aEl.value.trim():'',eEl?eEl.value.trim():'',tEl?tEl.value.trim():'');
   }));
   const sr=host.querySelector('#statReset');
   if(sr)sr.addEventListener('click',async()=>{
@@ -3384,7 +3391,96 @@ function dispoPanel(){
     </div>
     <div style="font-size:11px;color:var(--ink-3);margin-top:6px">Fair heißt: knappe Termine zuerst vergeben, und es bekommt immer die Person mit den wenigsten Terminen dieser Runde. Zugeteilte bekommen automatisch die Kalender-Einladung (samt Kunde); Termine ohne Zusage bleiben offen – einfach danach eine neue Runde starten. <b>Solange diese Runde läuft, ist die Namens-Schnellzuteilung ausgeblendet</b> – nach „⚖️ Jetzt fair zuteilen" oder „Runde verwerfen" ist sie sofort wieder da (Runden älter als 48 Std räumen sich von selbst weg).</div></div>`;
 }
+/* 🎯 Zielvereinbarungsgespräche (v10.11-J, Melanies Ansage 10.11.2026):
+   JEDEN Monat je GP, in der Woche des Produktionsschlusses (9./10.):
+   AGT-Ziel pro Woche + EH-Ziel im Monat (eigen + Team) festlegen und den
+   Termin wie beim EHG für beide einbuchen. EHG-Panel ist vorerst raus. */
+function isoLokal(d){return d.getFullYear()+'-'+calPad(d.getMonth()+1)+'-'+calPad(d.getDate());}
+function zvgPanel(){
+  if(!isMelanie())return '';
+  if(MODE!=='db'||!TEAM.length)return '';
+  const gps=TEAM.filter(m=>!hasRole(m,'admin'));
+  if(!gps.length)return '';
+  const now=new Date();
+  const monKey=now.getFullYear()+'-'+calPad(now.getMonth()+1);
+  const neunte=new Date(now.getFullYear(),now.getMonth(),9);
+  const wStart=new Date(neunte.getTime()-((neunte.getDay()+6)%7)*86400000); // Montag der Produktionsschluss-Woche
+  const defDate=isoLokal(new Date(Math.max(wStart.getTime(),now.getTime()+86400000)));
+  const zopts=(()=>{let o='<option value="">Uhrzeit…</option>';for(let h=7;h<=21;h++)for(let q=0;q<60;q+=15)o+=`<option>${calPad(h)}:${calPad(q)}</option>`;return o;})();
+  const rows=gps.map(m=>{
+    const z=(m.ziele&&m.ziele.monat===monKey)?m.ziele:null;
+    const st=z?`<span class="tg" style="background:var(--good);color:#fff">✓ vereinbart: ${esc(z.agt||0)} AGT/Wo · ${esc(z.ehE||0)} EH eigen · ${esc(z.ehT||0)} EH Team</span>`:'<span class="tg od">fällig – Produktionsschluss-Woche ab '+esc(isoLokal(wStart).split('-').reverse().join('.'))+'</span>';
+    return `<div class="gl" style="cursor:default;flex-wrap:wrap"><span class="gn">${esc(m.name)}</span>${st}
+      <input type="number" min="0" data-zvga="${esc(m.id)}" placeholder="AGT/Woche" title="Ziel: Analysetermine pro Woche" style="width:100px" value="${z?esc(z.agt):''}">
+      <input type="number" min="0" data-zvge="${esc(m.id)}" placeholder="EH eigen/Monat" title="Ziel: eigene Einheiten im Monat" style="width:125px" value="${z?esc(z.ehE):''}">
+      <input type="number" min="0" data-zvgt="${esc(m.id)}" placeholder="EH Team/Monat" title="Ziel: Einheiten der eigenen Linie im Monat" style="width:125px" value="${z?esc(z.ehT):''}">
+      <input type="date" data-zvgd="${esc(m.id)}" style="width:140px" value="${defDate}"><select data-zvgz="${esc(m.id)}" style="width:auto">${zopts}</select>
+      <button class="mini-btn" data-zvgbook="${esc(m.id)}">📅 ZVG einbuchen + Ziele speichern</button></div>`;
+  }).join('');
+  return `<div class="panel"><h3>🎯 Zielvereinbarungsgespräche <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— jeden Monat je GP, in der Woche des Produktionsschlusses (9./10.): AGT-Ziel pro Woche + EH im Monat (eigen + Team) festlegen · der Termin landet bei euch beiden im Wochenplan</span></h3><div class="st-list">${rows}</div></div>`;
+}
+async function zvgBook(id,dateStr,zeit,agt,ehE,ehT){
+  const mm=TEAM.find(x=>x.id===id);if(!mm)return;
+  if(!dateStr){toast('Bitte zuerst ein Datum wählen');return;}
+  if(!zeit){toast('Bitte eine Uhrzeit wählen');return;}
+  if(agt===''&&ehE===''&&ehT===''){toast('Bitte mindestens ein Ziel eintragen (AGT/Woche oder EH)');return;}
+  if(MODE!=='db'||!wocheCol||!teamCol){toast('Nur online möglich');return;}
+  const ziele={monat:dateStr.slice(0,7),agt:parseFloat(agt)||0,ehE:parseFloat(ehE)||0,ehT:parseFloat(ehT)||0};
+  const dt=new Date(dateStr+'T00:00:00');
+  const wk=wkKeyOf(dt);
+  const tag=(dt.getDay()+6)%7;
+  const mk=name=>({wk,name,tag,zeit,art:'MGT',kunde:'Zielvereinbarung '+(name===mm.name?'mit '+chatName():'mit '+mm.name),ort:'',status:'',ts:new Date().toISOString()});
+  try{
+    const b=firebase.firestore().batch();
+    const i1='w'+Date.now().toString(36)+'za',i2='w'+Date.now().toString(36)+'zb';
+    b.set(wocheCol.doc(i1),mk(mm.name));
+    b.set(wocheCol.doc(i2),mk(chatName()));
+    b.update(teamCol.doc(mm.id),{zvg:dateStr,ziele:ziele});
+    await b.commit();
+    mm.zvg=dateStr;mm.ziele=ziele;
+    if(wk===WOCHE_WK){WOCHE.push(Object.assign({_id:i1},mk(mm.name)));WOCHE.push(Object.assign({_id:i2},mk(chatName())));}
+    chatSys('🎯 Zielvereinbarung eingebucht: '+mm.name+' & '+chatName()+' am '+dateStr.split('-').reverse().join('.')+' um '+zeit+' – Monatsziel: '+ziele.agt+' AGT/Woche · '+ziele.ehE+' EH eigen · '+ziele.ehT+' EH Team. Bitte bestätigen!',null,mm.name);
+    toast('🎯 Eingebucht + Ziele gespeichert – steht bei euch beiden im Wochenplan, '+mm.name+' wurde informiert');
+    renderSteuerung();
+  }catch(e){toast('Einbuchen fehlgeschlagen'+(e&&e.code?' ('+e.code+')':''));}
+}
+function baumPanel(){ // 🌳 Team-Linien: Hierarchie aus „direkte Führungskraft" + Monats-Ist je Person und Linie
+  if(!isAdmin()||MODE!=='db'||!TEAM.length)return '';
+  const now=new Date();
+  const monKey=now.getFullYear()+'-'+calPad(now.getMonth()+1);
+  const inM=ds=>{const dt=parseTermin(ds);return !!(dt&&dt.getMonth()===now.getMonth()&&dt.getFullYear()===now.getFullYear());};
+  const ist={};TEAM.forEach(m=>ist[m.name]={ag:0,bg:0});
+  state.deals.forEach(d=>{
+    if((d.quelle||'')==='Recruiting')return;
+    const an=canonName(d.analyst||''),be=canonName(d.berater||'');
+    if(an&&ist[an]&&inM(d.datumAG))ist[an].ag++;
+    if(be&&ist[be]&&inM(d.datumBG))ist[be].bg++;
+  });
+  const kids={};TEAM.forEach(m=>{const f=canonName(m.fk||'');if(f)(kids[f]=kids[f]||[]).push(m);});
+  const names=new Set(TEAM.map(m=>m.name));
+  const roots=TEAM.filter(m=>!(m.fk||'').trim()||!names.has(canonName(m.fk||'')));
+  const linie=(m,seen)=>{ // Person + komplette Downline (Zyklus-Schutz)
+    if(seen.has(m.id))return [];
+    seen.add(m.id);
+    const out=[m];(kids[m.name]||[]).forEach(c=>out.push(...linie(c,seen)));
+    return out;
+  };
+  const row=(m,tiefe,seen)=>{
+    if(seen.has(m.id))return '';
+    seen.add(m.id);
+    const i=ist[m.name]||{ag:0,bg:0};
+    const z=(m.ziele&&m.ziele.monat===monKey)?m.ziele:null;
+    const ln=linie(m,new Set());
+    const lAg=ln.reduce((s,x)=>s+((ist[x.name]||{}).ag||0),0),lBg=ln.reduce((s,x)=>s+((ist[x.name]||{}).bg||0),0);
+    return `<div class="gl" style="cursor:default;flex-wrap:wrap;margin-left:${Math.min(tiefe,4)*22}px">${tiefe?'<span class="ph">↳</span>':''}<span class="gn">${esc(m.name)}</span><span class="ph">${esc(m.rolle||'')}</span>${z?`<span class="tg">🎯 ${esc(z.agt||0)} AGT/Wo · ${esc(z.ehE||0)} EH eigen · ${esc(z.ehT||0)} EH Team</span>`:'<span class="ph">— kein Monatsziel —</span>'}<span class="tg" style="background:var(--brand);color:#fff">Monat: AG ${i.ag} · BG ${i.bg}</span>${ln.length>1?`<span class="tg">Linie (${ln.length-1} GP): AG ${lAg} · BG ${lBg}</span>`:''}</div>`
+      +(kids[m.name]||[]).map(c=>row(c,tiefe+1,seen)).join('');
+  };
+  const seen=new Set();
+  const body=roots.map(r=>row(r,0,seen)).join('');
+  return `<div class="panel"><h3>🌳 Team-Linien <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— direkte und indirekte GPs (aus „Führungskraft" in Team &amp; Zugänge) · je Person das Monatsziel aus dem ZVG + Termine diesen Monat, je Linie die Summe</span></h3><div class="st-list">${body||'<div class="empty-col">In Team &amp; Zugänge bei jedem Mitglied die direkte Führungskraft wählen – dann baut sich der Baum automatisch.</div>'}</div></div>`;
+}
 function ehgPanel(){
+  return ''; // vorerst raus (Melanies Ansage 10.11.2026) – das ZVG-Panel übernimmt; zum Reaktivieren diese Zeile löschen
   if(!isMelanie())return '';
   if(MODE!=='db'||!TEAM.length)return '';
   const today=todayStr();
