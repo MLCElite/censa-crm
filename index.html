@@ -332,7 +332,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="09.11-B";
+const APP_VERSION="10.11-A";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1922,15 +1922,33 @@ function renderSteuerung(){
     DISPO_R=null;DISPO_ANT=[];render();toast('Runde verworfen');
   });
   host.querySelectorAll('[data-dscopy]').forEach(b=>b.addEventListener('click',()=>{try{navigator.clipboard.writeText(b.dataset.dscopy);toast('🔗 Link kopiert – einfach in die Nachricht einfügen');}catch(e){prompt('Link kopieren:',b.dataset.dscopy);}}));
-  host.querySelectorAll('[data-dsalle]').forEach(b=>b.addEventListener('click',async()=>{
-    const rolle=b.dataset.dsalle,name=b.dataset.dsname;
-    const ts=dispoOffeneTermine().filter(t=>t.rolle===rolle);
+  host.querySelectorAll('[data-dsp]').forEach(b=>b.addEventListener('click',()=>{
+    const rolle=b.dataset.dsp,name=b.dataset.dsname;
+    const s=DISPO_SEL[rolle]=DISPO_SEL[rolle]||{};
+    s[name]=!s[name];
+    const on=!!s[name];
+    b.style.background=on?'var(--brand)':'';b.style.borderColor=on?'var(--brand)':'';b.style.color=on?'#fff':'';
+    b.textContent=(on?'✓ ':'👤 ')+name;
+    const n=Object.keys(s).filter(k=>s[k]).length;
+    const go=host.querySelector('[data-dsgo="'+rolle+'"]');
+    if(go){go.disabled=!n;const sp=go.querySelector('[data-dsn]');if(sp)sp.textContent=n;}
+  }));
+  host.querySelectorAll('[data-dsgo]').forEach(b=>b.addEventListener('click',async()=>{
+    const rolle=b.dataset.dsgo;
     const typ=rolle==='analyst'?'Analysen':'Beratungen';
+    const sel=TEAM.filter(m=>hasRole(m,rolle)&&(DISPO_SEL[rolle]||{})[m.name]).map(m=>m.name);
+    if(!sel.length){toast('Bitte zuerst die Namen anklicken, die Termine bekommen sollen');return;}
+    const ts=dispoOffeneTermine().filter(t=>t.rolle===rolle);
     if(!ts.length){toast('Keine offenen '+typ+' mehr');markDirty('steuerung');render();return;}
-    if(!confirm('Alle '+ts.length+' offenen '+typ+' an '+name+' zuteilen?\n\n'+(isExternName(name)?'Extern: Kalender-Einladungen gehen sofort raus (samt Kunde).':name+' bekommt je Termin eine Aufgabe zum Annehmen (Urgenz nach 3 Std läuft automatisch).')))return;
+    ts.sort((a,b2)=>{const pa=parseTermin(a.wann),pb=parseTermin(b2.wann);return (pa?pa.getTime():9e15)-(pb?pb.getTime():9e15);});
+    const load={};sel.forEach(n=>load[n]=0);
+    const plan=ts.map(t=>{const c=[...sel].sort((x,y)=>(load[x]-load[y])||COLL.compare(x,y));load[c[0]]++;return {t:t,name:c[0]};});
+    const vorschau=sel.map(n=>n+': '+load[n]).join(' · ');
+    if(!confirm(ts.length+' offene '+typ+(sel.length>1?' fair aufteilen auf:\n\n':' komplett zuteilen an:\n\n')+vorschau+'\n\nJede Person bekommt je Termin eine Aufgabe zum Annehmen (Urgenz nach 3 Std läuft automatisch; Externe sofort die Kalender-Einladung).'))return;
     b.disabled=true;b.textContent='Speichert…';
     const ge=[];
-    ts.forEach(t=>{
+    plan.forEach(p=>{
+      const t=p.t,name=p.name;
       const d=state.deals.find(x=>x.id===t.tid.replace(/_(ag|bg)$/,''));
       if(!d||(d[t.rolle]||'').trim())return;
       d[t.rolle]=name;d.geprueft=true;
@@ -1942,8 +1960,9 @@ function renderSteuerung(){
       ge.push(d);
     });
     const ok=await dbPersistMany(ge);
-    chatSys('🌙 Abend-Verteilung (Sammel): '+ge.length+' '+typ+' → '+name+'.');
-    toast(ok?('✓ '+ge.length+' '+typ+' → '+name):'Speichern fehlgeschlagen – bitte Seite neu laden und prüfen');
+    chatSys('🌙 Abend-Verteilung (Sammel): '+ge.length+' '+typ+' verteilt – '+vorschau+'.');
+    DISPO_SEL[rolle]={};
+    toast(ok?('✓ '+ge.length+' '+typ+' verteilt: '+vorschau):'Speichern fehlgeschlagen – bitte Seite neu laden und prüfen');
     markDirty('steuerung');render();
   }));
   wireTeamPanel(host);
@@ -3086,6 +3105,7 @@ async function zuordUrgenz(){
    wenigsten hat, zuerst; knappe Termine zuerst) → Kalender-Einladungen; Termine
    ohne Zusage bleiben offen und gehen in die nächste Runde. */
 let DISPO_R=null, DISPO_ANT=[], __dispoLoading=false;
+let DISPO_SEL={analyst:{},berater:{}}; // Abend-Zuteilung: angeklickte Personen je Rolle (überlebt Re-Render)
 function dispoOffeneTermine(){
   const out=[];
   state.deals.forEach(d=>{
@@ -3195,14 +3215,16 @@ function dispoPanel(){
         const d=state.deals.find(x=>x.id===t.tid.replace(/_(ag|bg)$/,''));
         return `<div class="gl" ${d?`data-id="${esc(d.id)}"`:'style="cursor:default"'}><span class="gn">${esc(d?(d.name||d.org||'—'):'—')}</span><span class="ph">${esc(t.wann||'')} · ${esc(t.ort||'')}</span></div>`;
       }).join('')+(ts.length>30?`<div class="ph" style="padding:4px 2px">… und ${ts.length-30} weitere</div>`:'');
-      const chips=pers.map(m=>`<button class="mini-btn" data-dsalle="${rolle}" data-dsname="${esc(m.name)}">👤 ${esc(m.name)}</button>`).join('');
-      return `<div class="ehgt" style="margin:10px 0 6px">${bl[1]} (${ts.length})</div>${ts.length?`<div class="st-list">${rows}</div><div style="font-size:12px;color:var(--ink-2);margin:7px 0 4px">Alle ${ts.length} ${bl[2]} mit einem Klick zuteilen an:</div><div style="display:flex;gap:6px;flex-wrap:wrap">${chips||'<span class="ph">Niemand mit dieser Rolle in Team &amp; Zugänge</span>'}</div>`:`<div class="empty-col">Keine offenen ${bl[2]} (mit Datum, ohne Zuständigen).</div>`}`;
+      const selObj=DISPO_SEL[rolle]||{};
+      const chips=pers.map(m=>{const on=!!selObj[m.name];return `<button class="mini-btn" data-dsp="${rolle}" data-dsname="${esc(m.name)}" style="${on?'background:var(--brand);border-color:var(--brand);color:#fff':''}">${on?'✓':'👤'} ${esc(m.name)}</button>`;}).join('');
+      const selN=pers.filter(m=>selObj[m.name]).length;
+      return `<div class="ehgt" style="margin:10px 0 6px">${bl[1]} (${ts.length})</div>${ts.length?`<div class="st-list">${rows}</div><div style="font-size:12px;color:var(--ink-2);margin:7px 0 4px">Wer soll sie bekommen? Namen anklicken – einen oder MEHRERE (wer z. B. keine GmbHs macht, bleibt einfach ab):</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:7px">${chips||'<span class="ph">Niemand mit dieser Rolle in Team &amp; Zugänge</span>'}</div><button class="btn pri" data-dsgo="${rolle}" ${selN?'':'disabled'}>⚖ ${ts.length} ${bl[2]} zuteilen (<span data-dsn="${rolle}">${selN}</span> gewählt)</button>`:`<div class="empty-col">Keine offenen ${bl[2]} (mit Datum, ohne Zuständigen).</div>`}`;
     }).join('');
-    return `<div class="panel"><h3>🌙 Abend-Verteilung <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— getrennt nach Analysen und Beratungen: ALLE einem Namen zuteilen (1 Klick) ODER fair ausschreiben („kann / kann nicht" am Handy)</span></h3>
+    return `<div class="panel"><h3>🌙 Abend-Verteilung <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— getrennt nach Analysen und Beratungen: Namen anklicken (einen oder mehrere) und zuteilen – 1 Name = alle an ihn, mehrere = fair aufgeteilt; ODER fair ausschreiben („kann / kann nicht")</span></h3>
       ${blocks}
       <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)">
         <button class="btn pri" id="dsStart" ${offene.length?'':'disabled'}>🌙 Fair ausschreiben – Runde starten (${offene.length} Termine)</button>
-        <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Runde = alle Analysten/Berater wählen am Handy „kann / kann nicht", danach fair zuteilen. Bei der 1-Klick-Zuteilung bekommt die Person je Termin eine Aufgabe zum Annehmen (Externe sofort die Kalender-Einladung).</div>
+        <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Zuteilen oben: mehrere Namen = faire Aufteilung (chronologisch, jeder etwa gleich viele; die Vorschau kommt vor dem Bestätigen). Je Termin gibt es die Aufgabe zum Annehmen, Externe bekommen sofort die Kalender-Einladung. Runde = alle wählen am Handy „kann / kann nicht", danach fair zuteilen.</div>
       </div></div>`;
   }
   const mx=dispoMatrix();
