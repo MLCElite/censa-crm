@@ -332,7 +332,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="13.11-A";
+const APP_VERSION="13.11-B";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1656,6 +1656,51 @@ async function undoMerge(id){ // ↩ letzte Zusammenführung rückgängig: Basis
   render();
   return true;
 }
+function repListe(){ // 🔙 Zusammenführungen OHNE Sicherung (vor v13.11-A): aus den Verlaufs-Einträgen rekonstruierbar
+  const out=[];
+  const T=['mag','dr','ing','msc','bsc','mba','herr','frau','dipl','fh','jun','sen'];
+  const toks=s=>new Set(String(s||'').toLowerCase().replace(/\(.*?\)/g,' ').replace(/[^a-zäöüß ]/g,' ').split(/\s+/).filter(w=>w.length>=2&&!T.includes(w)));
+  const GRENZE=Date.now()-30*864e5;
+  state.deals.forEach(d=>{
+    (d.hist||[]).forEach(h=>{
+      const m=/zusammengeführt \((.+)$/.exec(h.txt||'');
+      if(!m||!/^🔗/.test(h.txt||''))return;
+      const ts=h.ts||'';
+      if(!ts||new Date(ts).getTime()<GRENZE)return;
+      if((d.repHist||[]).includes(ts))return; // schon repariert
+      if((d.mergeUndo||[]).some(u=>Math.abs(new Date(u.ts)-new Date(ts))<300000))return; // hat echte Sicherung → ↩ im Kunden
+      const names=m[1].replace(/\)\s*$/,'').split(', ').map(s=>s.trim()).filter(s=>s.length>=3);
+      if(!names.length)return;
+      const bt=toks(d.name);
+      const verdaechtig=names.some(n=>{const nt=toks(n);if(!nt.size||!bt.size)return true;const kl=nt.size<=bt.size?nt:bt,gr=nt.size<=bt.size?bt:nt;return ![...kl].every(w=>gr.has(w));});
+      out.push({id:d.id,ts,base:d.name||d.org||'—',names,verdaechtig});
+    });
+  });
+  out.sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));
+  return out.slice(0,50);
+}
+async function repRestore(baseId,histTs,names){ // legt die weggelöschten Kunden als eigene Datensätze neu an (Firma/Adresse/Telefon vom verbliebenen Kunden)
+  const base=state.deals.find(x=>x.id===baseId);if(!base)return false;
+  const neu=[];
+  for(const nm of names){
+    const d=blank();
+    d.name=nm;
+    d.org=base.org||'';d.telefon=base.telefon||'';d.kundentyp=base.kundentyp||'GmbH';
+    d.strasse=base.strasse||'';d.plz=base.plz||'';d.ort=base.ort||'';d.bezirk=base.bezirk||'';d.branche=base.branche||'';d.quelle=base.quelle||'';
+    d.notizen='↩ Wiederhergestellt ('+fmtD()+') nach fehlerhafter Zusammenführung mit „'+(base.name||base.org||'—')+'" – Firma/Adresse/Telefon von dort übernommen, bitte prüfen. Frühere Anrufe/Notizen stehen gesammelt bei „'+(base.name||base.org||'—')+'".';
+    histAdd(d,'↩ Wiederhergestellt (Duplikat-Reparatur)');
+    neu.push(d);
+  }
+  const alle=[base,...neu];
+  alle.forEach(x=>{x.keinDup=[...new Set([...(x.keinDup||[]),...alle.map(y=>y.id).filter(y=>y!==x.id)])];});
+  base.repHist=[...(base.repHist||[]),histTs];
+  histAdd(base,'↩ Duplikat-Reparatur: '+names.join(', ')+' wieder als eigene Kunden angelegt');
+  state.deals.push(...neu);
+  const ok=await dbPersistMany(alle);
+  try{chatSys('↩ Duplikat-Reparatur: '+names.join(', ')+' wieder als eigene Kunden angelegt (getrennt von „'+(base.name||base.org||'—')+'").',base);}catch(e){}
+  if(typeof markDirty==='function'){markDirty('liste');markDirty('pipe');}
+  return ok!==false;
+}
 async function openDupCheck(){
   try{
   // === AUTOMATIK: sichere Duplikate sofort zusammenführen ===
@@ -1693,11 +1738,17 @@ async function openDupCheck(){
   const m=document.getElementById('modal');m.classList.add('wide');
   const anz=groups.reduce((s,g)=>s+g.length,0);
   const autoHtml=auto.length?`<div style="background:var(--good-bg);border:1.5px solid var(--good);border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12.5px"><b style="color:var(--good)">🔗 Automatisch zusammengeführt (${auto.length}):</b>${auto.join('')}</div>`:`<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12.5px">Keine eindeutigen Duplikate (mehr) – alles, was sicher zusammengehört, ist bereits vereint ✔</div>`;
+  const reps=repListe();
+  const repHtml=reps.length?`<div style="background:var(--warn-bg);border:1.5px solid var(--warn);border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12.5px">
+    <b style="color:var(--warn)">🔙 Frühere Zusammenführungen (letzte 30 Tage, ohne Sicherung):</b> Wurden hier fälschlich VERSCHIEDENE Kunden vereint, legt „↩ Wieder anlegen" sie als eigene Kunden neu an (Firma/Adresse/Telefon werden vom verbliebenen Kunden übernommen; frühere Anrufe/Notizen bleiben gesammelt bei ihm).
+    ${reps.map((r,i)=>`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:5px 0;border-top:1px solid var(--line-2);padding-top:5px">${fmtD(r.ts)} · <b>${esc(r.base)}</b> <span style="color:var(--ink-3)">← ${esc(r.names.join(', '))}</span>${r.verdaechtig?' <span style="color:var(--warn);font-weight:700">⚠ vermutlich verschiedene Personen</span>':''}<button class="mini-btn" data-drep="${i}" style="margin-left:auto">↩ Wieder anlegen (${r.names.length})</button></div>`).join('')}
+  </div>`:'';
   m.innerHTML=`<h2>🔍 Duplikat-Check</h2>
+    ${repHtml}
     ${autoHtml}
     <div class="sub">${groups.length?groups.length+' Zweifelsfall-Gruppe'+(groups.length>1?'n':'')+' ('+anz+' Datensätze) übrig – hier war die Automatik bewusst vorsichtig (gleicher Nachname, aber andere Vornamen/Nummern). Anhaken, was wirklich dieselbe Person ist, dann zusammenführen.':'Keine Zweifelsfälle übrig – alles sauber ✔'}</div>
     <div class="repwrap">${groups.slice(0,60).map(g=>`<div class="rep"><div class="rh">${esc(g[0].name||g[0].org||'—')}<span style="color:var(--ink-3);font-weight:600">· ${g.length} Einträge</span><button class="mini-btn" style="margin-left:auto;border-color:var(--brand);color:var(--brand-ink);font-weight:800" data-dmerge="1">🔗 Angehakte zusammenführen</button></div>
-      ${g.map(d=>`<div class="gl" style="border:0;border-bottom:1px solid var(--line-2);border-radius:0" data-id="${d.id}"><input type="checkbox" class="dupcb" data-did="${d.id}" checked style="width:17px;height:17px;accent-color:var(--brand);flex:0 0 auto;cursor:pointer"><span class="gn">${esc(d.name||'—')}</span><span class="ph">${esc(d.org||'')}</span><span class="ph tnum">${esc(d.telefon||'— kein Tel —')}</span><span class="tg">${esc(d.stage)}${d.status!=='open'?' · '+esc(d.status):''}</span><span class="ph">${esc([d.telefonist&&'T:'+d.telefonist,d.analyst&&'A:'+d.analyst,d.berater&&'B:'+d.berater].filter(Boolean).join(' '))}</span><span class="ph">${(d.calls||[]).length}☎</span><span class="ph">${esc((d.quelle||'').slice(0,18))}</span></div>`).join('')}
+      ${g.map(d=>`<div class="gl" style="border:0;border-bottom:1px solid var(--line-2);border-radius:0" data-id="${d.id}"><input type="checkbox" class="dupcb" data-did="${d.id}" ${g.some(o=>o!==d&&(((d.keinDup||[]).includes(o.id))||((o.keinDup||[]).includes(d.id))))?'':'checked'} style="width:17px;height:17px;accent-color:var(--brand);flex:0 0 auto;cursor:pointer"><span class="gn">${esc(d.name||'—')}</span><span class="ph">${esc(d.org||'')}</span><span class="ph tnum">${esc(d.telefon||'— kein Tel —')}</span><span class="tg">${esc(d.stage)}${d.status!=='open'?' · '+esc(d.status):''}</span><span class="ph">${esc([d.telefonist&&'T:'+d.telefonist,d.analyst&&'A:'+d.analyst,d.berater&&'B:'+d.berater].filter(Boolean).join(' '))}</span><span class="ph">${(d.calls||[]).length}☎</span><span class="ph">${esc((d.quelle||'').slice(0,18))}</span></div>`).join('')}
     </div>`).join('')}${groups.length>60?'<div class="empty-col">… und '+(groups.length-60)+' weitere Gruppen – nach dem Aufräumen erneut öffnen.</div>':''}</div>
     <div class="modal-foot"><button class="btn pri" id="m-close">Fertig</button></div>`;
   document.getElementById('ov').classList.add('show');
@@ -1708,6 +1759,15 @@ async function openDupCheck(){
     ev.stopPropagation();b.disabled=true;b.textContent='Trenne …';
     const ok=await undoMerge(b.dataset.dundo);
     if(ok)openDupCheck();else{b.disabled=false;b.textContent='↩ Falsch – wieder trennen';}
+  }));
+  m.querySelectorAll('[data-drep]').forEach(b=>b.addEventListener('click',async ev=>{
+    ev.stopPropagation();
+    const r=reps[+b.dataset.drep];if(!r)return;
+    if(!confirm('Diese '+r.names.length+' wieder als EIGENE Kunden anlegen?\n\n• '+r.names.join('\n• ')+'\n\nSie bekommen Firma, Adresse und Telefonnummer von „'+r.base+'" (bitte danach prüfen). „'+r.base+'" selbst bleibt unverändert.'))return;
+    b.disabled=true;b.textContent='Lege an …';
+    const ok=await repRestore(r.id,r.ts,r.names);
+    toast(ok?('↩ Wieder angelegt: '+r.names.join(', ')):'Wieder anlegen fehlgeschlagen');
+    openDupCheck();
   }));
   m.querySelectorAll('[data-dmerge]').forEach(b=>b.addEventListener('click',async ev=>{
     ev.stopPropagation();
