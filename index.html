@@ -332,7 +332,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="10.11-L";
+const APP_VERSION="13.11-A";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1602,6 +1602,9 @@ async function mergeDeals(ids){
   const score=d=>(d.calls||[]).length*3+(d.hist||[]).length*2+(d.uebergabe?20:0)+(d.status==='won'?100:d.status==='open'?50:0)+Object.values(d).filter(v=>v&&typeof v==='string').length;
   ds.sort((a,b)=>score(b)-score(a));
   const base=ds[0],rest=ds.slice(1);
+  // ↩ Sicherung VOR jeder Änderung (13.11.): Originalzustände aufheben, damit eine Zusammenführung rückgängig gemacht werden kann
+  const sich=o=>{const c=JSON.parse(JSON.stringify(o));delete c.mergeUndo;return c;};
+  const undoEintrag={ts:new Date().toISOString(),von:chatName()||'?',base:sich(base),rest:rest.map(sich)};
   const FILL=['org','telefon','email','geb','strasse','plz','ort','bezirk','branche','telefonist','analyst','berater','datumAG','datumBG','eh','wiedervorlage','briefing','potenzial','umsatz','gewinn','anlage','sachanlage','finanzanlage','finanzJahr','website','maGroesse','quelle'];
   rest.forEach(o=>{
     FILL.forEach(f=>{if(o[f]&&!base[f])base[f]=o[f];});
@@ -1620,9 +1623,38 @@ async function mergeDeals(ids){
   });
   base.calls.sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
   histAdd(base,'🔗 '+rest.length+' Duplikat'+(rest.length>1?'e':'')+' zusammengeführt ('+rest.map(o=>o.name||o.org||o.id).join(', ')+')');
+  base.mergeUndo=[...(base.mergeUndo||[]),undoEintrag].slice(-2);
   await dbPersist(base);
   for(const o of rest){state.deals=state.deals.filter(x=>x.id!==o.id);await dbRemove(o.id);}
   return base;
+}
+async function undoMerge(id){ // ↩ letzte Zusammenführung rückgängig: Basis auf Vorher-Zustand, gelöschte Kunden neu anlegen (gleiche IDs)
+  const d=state.deals.find(x=>x.id===id);
+  const list=(d&&d.mergeUndo)||[];
+  if(!list.length){toast('Für diesen Kunden ist keine Zusammenführung zum Rückgängigmachen gespeichert');return false;}
+  const u=list[list.length-1];
+  const namen=[u.base,...u.rest].map(o=>'• '+(o.name||o.org||'—')+(o.telefon?' ('+o.telefon+')':''));
+  if(!confirm('Letzte Zusammenführung (vom '+fmtD(u.ts)+') rückgängig machen?\n\nStellt diese '+(1+u.rest.length)+' Kunden wieder GETRENNT her:\n'+namen.join('\n')+'\n\nACHTUNG: Was SEIT der Zusammenführung bei diesem Kunden eingetragen wurde (Anrufe, Notizen, Termine), geht dabei verloren – bei Bedarf vorher herauskopieren!'))return false;
+  const restored=JSON.parse(JSON.stringify(u.base));
+  restored.mergeUndo=list.slice(0,-1);
+  histAdd(restored,'↩ Zusammenführung vom '+fmtD(u.ts)+' rückgängig gemacht ('+u.rest.length+' Kunde'+(u.rest.length>1?'n':'')+' wiederhergestellt)');
+  // Merker „gehören NICHT zusammen": Automatik darf diese Kunden nie wieder von selbst vereinen
+  const alleIds=[restored.id,...u.rest.map(o=>o.id)];
+  restored.keinDup=[...new Set([...(restored.keinDup||[]),...alleIds.filter(x=>x!==restored.id)])];
+  const bi=state.deals.findIndex(x=>x.id===id);
+  if(bi>=0)state.deals[bi]=restored;else state.deals.push(restored);
+  await dbPersist(restored);
+  for(const o of u.rest){
+    const cp=JSON.parse(JSON.stringify(o));
+    cp.keinDup=[...new Set([...(cp.keinDup||[]),...alleIds.filter(x=>x!==cp.id)])];
+    if(!state.deals.find(x=>x.id===cp.id))state.deals.push(cp);
+    await dbPersist(cp);
+  }
+  toast('↩ Wieder getrennt: '+[u.base,...u.rest].map(o=>o.name||o.org||'—').join(' · '));
+  try{chatSys('↩ Zusammenführung rückgängig gemacht: '+[u.base,...u.rest].map(o=>o.name||o.org).filter(Boolean).join(', ')+' sind wieder getrennte Kunden.',restored);}catch(e){}
+  if(typeof markDirty==='function'){markDirty('liste');markDirty('pipe');}
+  render();
+  return true;
 }
 async function openDupCheck(){
   try{
@@ -1635,22 +1667,32 @@ async function openDupCheck(){
   for(const g of dupGroups()){
     const par={};const fnd=x=>{while(par[x]!==x)x=par[x]=par[par[x]];return x;};const uni=(a,b)=>{a=fnd(a);b=fnd(b);if(a!==b)par[b]=a;};
     g.forEach(d=>par[d.id]=d.id);
+    // Gleiche Nummer allein reicht NICHT mehr (13.11., Melanies Fall: Firmen-Zentralnummer = 3 echte Kunden!) –
+    // bei gleicher Nummer wird nur automatisch vereint, wenn auch die NAMEN zusammenpassen (Teilmenge) bzw. ohne Namen die Firma.
+    const passt=(a,b)=>{
+      const A=toksOf(a),B=toksOf(b);
+      if(A.size&&B.size){const kl=A.size<=B.size?A:B,gr=A.size<=B.size?B:A;return [...kl].every(w=>gr.has(w));}
+      if(!A.size&&!B.size){const oa=(a.org||'').toLowerCase().replace(/[^a-z0-9äöüß]/g,''),ob=(b.org||'').toLowerCase().replace(/[^a-z0-9äöüß]/g,'');return !!oa&&!!ob&&(oa.includes(ob)||ob.includes(oa));}
+      return false;
+    };
+    const dupOk=(a,b)=>!((a.keinDup||[]).includes(b.id)||(b.keinDup||[]).includes(a.id)); // nach ↩ Rückgängig: nie wieder automatisch vereinen
     const byTel={};
-    g.forEach(d=>{const t=(d.telefon||'').replace(/\D/g,'');if(t.length>=9){const k=t.slice(-9);if(byTel[k])uni(byTel[k],d.id);else byTel[k]=d.id;}});
+    g.forEach(d=>{const t=(d.telefon||'').replace(/\D/g,'');if(t.length>=9){const k=t.slice(-9);if(byTel[k]){if(passt(byTel[k],d)&&dupOk(byTel[k],d))uni(byTel[k].id,d.id);}else byTel[k]=d;}});
     for(let i=0;i<g.length;i++)for(let j=i+1;j<g.length;j++){
+      if(!dupOk(g[i],g[j]))continue;
       const A=toksOf(g[i]),B=toksOf(g[j]);if(!A.size||!B.size)continue;
       const kl=A.size<=B.size?A:B,gr=A.size<=B.size?B:A;
       if([...kl].every(w=>gr.has(w)))uni(g[i].id,g[j].id);
     }
     const cl={};g.forEach(d=>{const r=fnd(d.id);(cl[r]=cl[r]||[]).push(d);});
     for(const c of Object.values(cl)){
-      if(c.length>1){const b=await mergeDeals(c.map(x=>x.id));if(b)auto.push(esc(b.name||b.org||'—')+' <span style="color:var(--ink-3)">('+c.length+' Einträge → 1)</span>');}
+      if(c.length>1){const b=await mergeDeals(c.map(x=>x.id));if(b)auto.push('<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:3px 0">'+esc(b.name||b.org||'—')+' <span style="color:var(--ink-3)">('+c.length+' Einträge → 1)</span><button class="mini-btn" data-dundo="'+b.id+'" style="margin-left:auto">↩ Falsch – wieder trennen</button></div>');}
     }
   }
   const groups=dupGroups(); // was jetzt noch übrig ist = echte Zweifelsfälle
   const m=document.getElementById('modal');m.classList.add('wide');
   const anz=groups.reduce((s,g)=>s+g.length,0);
-  const autoHtml=auto.length?`<div style="background:var(--good-bg);border:1.5px solid var(--good);border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12.5px"><b style="color:var(--good)">🔗 Automatisch zusammengeführt (${auto.length}):</b><br>${auto.join('<br>')}</div>`:`<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12.5px">Keine eindeutigen Duplikate (mehr) – alles, was sicher zusammengehört, ist bereits vereint ✔</div>`;
+  const autoHtml=auto.length?`<div style="background:var(--good-bg);border:1.5px solid var(--good);border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12.5px"><b style="color:var(--good)">🔗 Automatisch zusammengeführt (${auto.length}):</b>${auto.join('')}</div>`:`<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12.5px">Keine eindeutigen Duplikate (mehr) – alles, was sicher zusammengehört, ist bereits vereint ✔</div>`;
   m.innerHTML=`<h2>🔍 Duplikat-Check</h2>
     ${autoHtml}
     <div class="sub">${groups.length?groups.length+' Zweifelsfall-Gruppe'+(groups.length>1?'n':'')+' ('+anz+' Datensätze) übrig – hier war die Automatik bewusst vorsichtig (gleicher Nachname, aber andere Vornamen/Nummern). Anhaken, was wirklich dieselbe Person ist, dann zusammenführen.':'Keine Zweifelsfälle übrig – alles sauber ✔'}</div>
@@ -1662,6 +1704,11 @@ async function openDupCheck(){
   m.querySelector('#m-close').addEventListener('click',closeModal);
   m.querySelectorAll('[data-id]').forEach(el=>el.addEventListener('click',()=>openModal(el.dataset.id)));
   m.querySelectorAll('.dupcb').forEach(cb=>cb.addEventListener('click',ev=>ev.stopPropagation()));
+  m.querySelectorAll('[data-dundo]').forEach(b=>b.addEventListener('click',async ev=>{
+    ev.stopPropagation();b.disabled=true;b.textContent='Trenne …';
+    const ok=await undoMerge(b.dataset.dundo);
+    if(ok)openDupCheck();else{b.disabled=false;b.textContent='↩ Falsch – wieder trennen';}
+  }));
   m.querySelectorAll('[data-dmerge]').forEach(b=>b.addEventListener('click',async ev=>{
     ev.stopPropagation();
     const grpEl=b.closest('.rep');
@@ -3895,6 +3942,7 @@ function openModal(id){
       <button class="ob nichts" data-o="nichterreicht"><span class="d"></span>n.a. – nicht abgehoben</button>
       <button class="ob weg" data-o="keininteresse"><span class="d"></span>Kein Interesse</button></div></div>`:''}
     ${(!isNew&&isAdmin()&&d.geprueft===false)?`<div style="background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 13px;margin-bottom:13px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b>📥 Posteingang</b> – für das Team noch unsichtbar.<button class="btn" id="m-frei" style="padding:6px 12px;font-size:12.5px">✓ Prüfen &amp; freigeben</button></div>`:''}
+    ${(!isNew&&isAdmin()&&(d.mergeUndo||[]).length)?`<div style="background:var(--surface-2);border:1.5px solid var(--line);border-radius:10px;padding:10px 13px;margin-bottom:13px;font-size:12.5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>🔗 Hier wurden Kunden zusammengeführt (${fmtD(d.mergeUndo[d.mergeUndo.length-1].ts)}: ${esc((d.mergeUndo[d.mergeUndo.length-1].rest||[]).map(o=>o.name||o.org||'—').join(', ').slice(0,120))})</span><button class="btn" id="m-undoMerge" style="padding:6px 12px;font-size:12.5px;margin-left:auto">↩ Rückgängig – wieder trennen</button></div>`:''}
     <div class="stgs" id="m-stagepick">${(()=>{const SHORT=['Neu','Bearbeitung','AG terminiert','Analyse & Doku','BG terminiert','Beratung'];const cur=STAGES.indexOf(d.stage);return STAGES.map((s,i)=>`<button type="button" class="stg${i===cur?' on':(cur>=0&&i<cur?' done':'')}" data-s="${esc(s)}" title="${esc(s)}"><i>${(cur>=0&&i<cur)?'✓':(i+1)}</i>${SHORT[i]}</button>`).join('');})()}</div>
     <div class="grid2">
       <div class="fld"><label>Kundentyp</label><select id="m-typ"><option${d.kundentyp==='Privat'?' selected':''}>Privat</option><option${d.kundentyp==='GmbH'?' selected':''}>GmbH</option></select></div>
@@ -4371,6 +4419,7 @@ function openModal(id){
     terminStage(d);
     terminEvents();zuordEvents();persist();closeModal();toast('Gespeichert');});
   const mst=m.querySelector('#m-save-top');if(mst)mst.addEventListener('click',()=>m.querySelector('#m-save').click());
+  const umB=m.querySelector('#m-undoMerge');if(umB)umB.addEventListener('click',async()=>{umB.disabled=true;const ok=await undoMerge(d.id);if(ok)closeModal();else umB.disabled=false;});
   m.querySelector('#m-won').addEventListener('click',()=>{collect();d.status='won';chatSys('🏆 Gewonnen: '+(d.name||d.org||'—'),d);
     const sd=new Date(Date.now()+14*86400000).toISOString().slice(0,10);
     d.wiedervorlage=sd;d.notizen=('SERVICETERMIN (Pflicht) bis '+sd.split('-').reverse().join('.')+' | '+(d.notizen||'')).trim(' |');
