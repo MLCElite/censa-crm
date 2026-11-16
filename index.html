@@ -278,6 +278,7 @@
     <button data-tab="chat">Chat</button>
   </div>
   <div class="spacer"></div>
+  <div class="kpi hide" id="gcalBadge" title="Auf diesem Gerät ist Google noch nicht verbunden – ohne Verbindung kommen deine Kalender-Termine (und die daraus angelegten Leads) nicht ins CRM" style="cursor:pointer;background:var(--brand);color:#fff">📅 Google auf diesem Gerät verbinden</div>
   <div class="kpi hide" id="todoBadge" title="Deine offenen Aufgaben" style="cursor:pointer;background:var(--warn-bg);color:var(--warn)"></div>
   <div class="kpi" id="meBadge"></div>
   <div class="kpi" id="dbState" title="Datenbank-Status">⏳ verbinde…</div>
@@ -332,7 +333,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="14.11-A";
+const APP_VERSION="16.11-A";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -668,6 +669,7 @@ function render(){
   document.getElementById('kpiDials').textContent=dialsToday();
   Object.keys(RENDERERS).forEach(k=>__dirty[k]=true);
   renderTab(activeTab());
+  try{updateTodoBadge();}catch(e){}
   save();
 }
 let __rT=null; // Live-Sync-Ereignisse buendeln (eine Neuzeichnung statt vieler)
@@ -2418,19 +2420,40 @@ async function chatDecline(id){
   updateTodoBadge();updateChatLog();render();
   toast('Abgelehnt – der Admin wurde informiert und ordnet neu zu');
 }
+/* v16.11-A (Melanies Ärgernis 16.11. nach Wechsel Laptop→iPad: „ich sehe keine Aufgaben mehr"):
+   1) Aufgaben-Button erscheint auch, wenn es HEUTE Termine gibt (nicht nur bei offenen Bestätigungen).
+   2) Ist Google auf DIESEM Gerät nicht verbunden (Token liegt nur lokal im Browser), zeigt der Kopf
+      „📅 Google auf diesem Gerät verbinden" – 1 Tipp verbindet und holt die Termine + Leads sofort. */
+function gcalVerbunden(){return !!__gcalTok&&Date.now()<__gcalExp-60000;}
+function todayTermine(){
+  const me=chatName();if(!me)return [];
+  const start=wkStart(0);
+  const ti=Math.floor((new Date().setHours(0,0,0,0)-start.getTime())/86400000);
+  return autoEntries(me,start).filter(e=>e.tag===ti).sort((a,b)=>(a.zeit||'').localeCompare(b.zeit||''));
+}
 function updateTodoBadge(){
+  const gb=document.getElementById('gcalBadge');
+  if(gb)gb.classList.toggle('hide',!(GCAL_CLIENT_ID&&MODE==='db'&&chatName()&&!gcalVerbunden()));
   const el=document.getElementById('todoBadge');if(!el)return;
   const n=myAcksOpen().length;
-  el.classList.toggle('hide',!n);
-  el.innerHTML='📌 Aufgaben <b>'+n+'</b>';
+  let h=0;try{h=todayTermine().length;}catch(e){}
+  el.classList.toggle('hide',!n&&!h);
+  el.innerHTML=n?('📌 Aufgaben <b>'+n+'</b>'+(h?' · 📅 heute '+h:'')):('📅 Heute <b>'+h+'</b> Termin'+(h===1?'':'e'));
+}
+async function gcalConnectHere(){
+  try{await gcalToken();}
+  catch(e){toast(e&&e.message?e.message:'Verbindung fehlgeschlagen – Popups erlauben und nochmal versuchen');updateTodoBadge();return false;}
+  updateTodoBadge();
+  const s=wkStart(0),wk=wkKeyOf(s);
+  try{if(WOCHE_WK!==wk)await loadWoche(wk);await gcalSync(s,wk,chatName());}catch(e){}
+  render();
+  return true;
 }
 function openTodo(force){
   const acks=myAcksOpen();
   if(!force&&!acks.length)return;
   const me=chatName();
-  const start=wkStart(0);
-  const todayIdx=Math.floor((new Date().setHours(0,0,0,0)-start.getTime())/86400000);
-  const heute=autoEntries(me,start).filter(e=>e.tag===todayIdx).sort((a,b)=>(a.zeit||'').localeCompare(b.zeit||''));
+  const heute=todayTermine();
   const od=isAdmin()?[]:visibleDeals().filter(d=>d.status==='open'&&isOverdue(d));
   const m=document.getElementById('modal');m.classList.remove('wide');
   m.innerHTML=`<h2>📌 Deine offenen Aufgaben</h2>
@@ -2447,8 +2470,7 @@ function openTodo(force){
   const tg=m.querySelector('#td-gcal');
   if(tg)tg.addEventListener('click',()=>{
     tg.disabled=true;tg.textContent='Verbinde …';
-    gcalToken().then(()=>{toast('✅ Google-Kalender verbunden – bestätigte Termine landen ab jetzt automatisch im Kalender');openTodo(true);})
-    .catch(e=>{tg.disabled=false;tg.textContent='Jetzt verbinden';toast(e&&e.message?e.message:'Verbindung fehlgeschlagen – Popups erlauben und nochmal versuchen');});
+    gcalConnectHere().then(ok=>{if(ok)openTodo(true);else{tg.disabled=false;tg.textContent='Jetzt verbinden';}});
   });
   m.querySelectorAll('[data-tdl]').forEach(b=>b.addEventListener('click',()=>openModal(b.dataset.tdl)));
   m.querySelectorAll('[data-tda]').forEach(b=>b.addEventListener('click',async()=>{await chatAck(b.dataset.tda);openTodo(true);}));
@@ -4950,6 +4972,8 @@ document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',
   if(b.dataset.tab==='foerder')renderFoerder();
 }));
 document.getElementById('todoBadge').addEventListener('click',()=>openTodo(true));
+document.getElementById('gcalBadge').addEventListener('click',()=>{const b=document.getElementById('gcalBadge');b.textContent='📅 Verbinde …';gcalConnectHere().then(()=>{b.textContent='📅 Google auf diesem Gerät verbinden';});});
+setInterval(()=>{try{updateTodoBadge();}catch(e){}},60000); // Google-Verbindung läuft nach ~1 Std ab → Hinweis wieder zeigen
 
 /* ---------- init: Firebase Anmeldung + Datenbank ---------- */
 lsLoad();render();
