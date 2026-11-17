@@ -174,6 +174,21 @@
   .spick .chip[aria-pressed="true"]{background:var(--brand-bg);color:var(--brand-ink);border-color:transparent}
   .lead.od{border-left:3px solid var(--bad)}
   .tg.od{background:var(--bad-bg);color:var(--bad)}
+  .tg.lk-doc{background:var(--bad);color:var(--surface);font-weight:800}
+  .tg.anh{background:var(--good-bg);color:var(--good)}
+  .anf{display:flex;align-items:center;gap:11px;padding:9px 12px;background:var(--surface);border:1.5px solid var(--line);border-radius:10px;text-decoration:none;color:var(--ink)}
+  .anf:hover{border-color:var(--brand)}
+  .anf-ic{font-size:24px;line-height:1}
+  .anf-t{display:flex;flex-direction:column;min-width:0}
+  .anf-t b{font-size:13.5px;color:var(--brand-ink);word-break:break-word}
+  .anf-t small{font-size:11.5px;color:var(--ink-3)}
+  #an-state{margin-top:9px;padding:11px 13px;border-radius:11px;background:var(--warn-bg);border:2px solid var(--warn);font-size:13px;color:var(--ink)}
+  #an-state:empty{display:none}
+  .anp-h{font-size:14.5px;font-weight:800;color:var(--warn);margin-bottom:7px}
+  .anp-c{display:flex;gap:6px;flex-wrap:wrap}
+  .anp-chip{display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1.5px solid var(--line);border-radius:9px;padding:6px 6px 6px 11px;font-size:13px;font-weight:700;max-width:100%;word-break:break-word}
+  .anp-chip button{border:none;background:var(--surface-3);color:var(--ink-2);border-radius:7px;font-size:12px;font-weight:800;padding:4px 8px;cursor:pointer}
+  .anp-f{margin-top:8px;font-size:12.5px;font-weight:700;color:var(--ink-2)}
   .tg.gpb{background:var(--warn-bg);color:var(--warn)}
   .histline{font-size:11px;color:var(--ink-3);margin-top:4px}
   .gptoggle{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;cursor:pointer;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:9px 12px}
@@ -333,7 +348,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="16.11-A";
+const APP_VERSION="17.11-A";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -721,7 +736,7 @@ function renderPipeline(){
 function leadCard(d){
   const eh=ehAbschluss(d);
   const od=isOverdue(d);
-  return `<div class="lead${od?' od':''}" data-id="${d.id}"><div class="n">${esc(d.name||d.org||'—')}</div><div class="meta">${badge(d.kundentyp)}${d.geprueft===false?'<span class="tg gpb">📥 Posteingang</span>':''}${od?`<span class="tg od">überfällig</span>`:''}${(d.gp&&isAdmin())?`<span class="tg gpb">GP?</span>`:''}${d.bezirk?`<span class="tg">${esc(d.bezirk)}</span>`:''}${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''}${eh>0?`<span class="tg" style="background:var(--brand-bg);color:var(--brand-ink)">${eh.toFixed(0)} EH</span>`:''}</div>${d.telefon?`<div class="tel">${esc(d.telefon)}</div>`:''}</div>`;
+  return `<div class="lead${od?' od':''}" data-id="${d.id}"><div class="n">${esc(d.name||d.org||'—')}</div><div class="meta">${badge(d.kundentyp)}${d.geprueft===false?'<span class="tg gpb">📥 Posteingang</span>':''}${od?`<span class="tg od">überfällig</span>`:''}${(d.gp&&isAdmin())?`<span class="tg gpb">GP?</span>`:''}${d.bezirk?`<span class="tg">${esc(d.bezirk)}</span>`:''}${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''}${eh>0?`<span class="tg" style="background:var(--brand-bg);color:var(--brand-ink)">${eh.toFixed(0)} EH</span>`:''}${anhangBadge(d)}${lueckenBadge(d)}</div>${d.telefon?`<div class="tel">${esc(d.telefon)}</div>`:''}</div>`;
 }
 
 function listeDetailHtml(d){
@@ -735,7 +750,7 @@ function listeDetailHtml(d){
       ${d.telefon?`<a href="tel:${esc((d.telefon||'').replace(/[^+\d]/g,''))}" class="dv" style="color:var(--brand-ink);font-weight:700">☎ ${esc(d.telefon)}</a>`:'<span class="dv">☎ —</span>'}
       <span class="dv">✉ ${esc(d.email||'—')}</span>
       <span class="dv">📍 ${esc([d.strasse,d.plz,d.ort].filter(Boolean).join(', ')||'—')}${d.bezirk?' · '+esc(d.bezirk):''}</span>
-      <span class="dv">${badge(d.kundentyp)} ${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''} ${eh>0?`<span class="tg" style="background:var(--brand-bg);color:var(--brand-ink)">${eh.toFixed(0)} EH</span>`:''} ${naInfo(d)} ${adrBadge(d)}</span>
+      <span class="dv">${badge(d.kundentyp)} ${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''} ${eh>0?`<span class="tg" style="background:var(--brand-bg);color:var(--brand-ink)">${eh.toFixed(0)} EH</span>`:''} ${naInfo(d)} ${anhangBadge(d)} ${lueckenBadge(d)}</span>
     </div>
     <div class="dcol">
       <div class="dl">Zuteilung (sofort gespeichert)</div>
@@ -763,8 +778,9 @@ function renderListe(){
   const host=document.getElementById('view-liste');
   const DS=visibleDeals();
   if(!DS.length){host.innerHTML=emptyState();wireEmpty(host);return;}
-  const q=(host.__q||'').toLowerCase(),ft=host.__typ||'',fq=host.__quelle||'',fb=host.__bez||'',fte=host.__telf||'',fan=host.__an||'',fbe=host.__be||'',fbr=host.__br||'';
+  const q=(host.__q||'').toLowerCase(),ft=host.__typ||'',fq=host.__quelle||'',fb=host.__bez||'',fte=host.__telf||'',fan=host.__an||'',fbe=host.__be||'',fbr=host.__br||'',flk=host.__lk||'';
   let rows=DS.filter(d=>{
+    if(flk){const L=leadLuecken(d);if(flk==='doc'?!L.doc:!L.length)return false;}
     if(ft&&d.kundentyp!==ft)return false;
     if(fq&&d.quelle!==fq)return false;
     if(fb&&(d.bezirk||'')!==fb)return false;
@@ -793,6 +809,7 @@ function renderListe(){
     <select id="fBe"><option value="">Alle Berater</option><option value="__frei__"${fbe==='__frei__'?' selected':''}>— FREI (ohne Berater) —</option>${berater.map(x=>`<option${fbe===x?' selected':''}>${esc(x)}</option>`).join('')}</select>
     <select id="fTyp"><option value="">Alle Kundentypen</option><option${ft==='Privat'?' selected':''}>Privat</option><option${ft==='GmbH'?' selected':''}>GmbH</option></select>
     <select id="fQuelle"><option value="">Alle Quellen</option>${quellen.map(x=>`<option${fq===x?' selected':''}>${esc(x)}</option>`).join('')}</select>
+    <select id="fLk" title="Zeigt nur Kunden, bei denen noch Infos fehlen"><option value="">Vollständig + unvollständig</option><option value="any"${flk==='any'?' selected':''}>⚠ Infos fehlen</option><option value="doc"${flk==='doc'?' selected':''}>📄🎙 Analyse-PDF / Sprachnachricht fehlt</option></select>
     ${isAdmin()?`<span style="display:inline-flex;gap:6px;align-items:center;margin-left:auto">
       <select id="asgRole" style="min-width:0"><option value="telefonist">→ Telefonist</option><option value="analyst">→ Analyst</option><option value="berater">→ Berater</option></select>
       <input id="asgName" list="asgList" placeholder="Name" style="min-width:0;width:120px">
@@ -805,7 +822,7 @@ function renderListe(){
   <div class="tablewrap"><table><thead><tr>
     ${['name','kundentyp','telefon','bezirk','branche','ort','quelle','stage','telefonist','analyst','berater'].map(c=>`<th data-c="${c}">${({name:'Name',kundentyp:'Typ',telefon:'Telefon',bezirk:'Gebiet',branche:'Branche',ort:'Ort',quelle:'Quelle',stage:'Phase',telefonist:'Telefonist',analyst:'Analyst',berater:'Berater'})[c]}</th>`).join('')}
   </tr></thead><tbody>
-    ${show.map(d=>`<tr data-id="${d.id}"${host.__openId===d.id?' style="background:var(--brand-bg)"':''}><td><b>${esc(d.name||d.org||'—')}</b></td><td>${badge(d.kundentyp)}</td><td class="tnum">${esc(d.telefon)}</td><td>${esc(d.bezirk||'')}</td><td>${esc(d.branche||'')}</td><td>${esc(d.ort)}</td><td>${esc(d.quelle)}</td><td ${stCls(d)}>${d.status==='won'?'Gewonnen':d.status==='lost'?'Verloren':esc(d.stage)}</td><td>${esc(d.telefonist||'')}</td><td>${esc(d.analyst)}</td><td>${esc(d.berater)}</td></tr>${host.__openId===d.id?listeDetailHtml(d):''}`).join('')}
+    ${show.map(d=>`<tr data-id="${d.id}"${host.__openId===d.id?' style="background:var(--brand-bg)"':''}><td><b>${esc(d.name||d.org||'—')}</b>${(()=>{const L=leadLuecken(d);const n=(d.analyse||[]).length;return (n?` <span class="tg anh" title="${n} Datei(en) angehängt">📎 ${n}</span>`:'')+(L.doc?` <span class="tg lk-doc" title="Es fehlt: ${esc(L.map(x=>x.t).join(', '))}">${L.filter(x=>x.doc).map(x=>LK_IC[x.k]).join('')} fehlt</span>`:(L.length?` <span class="tg od" title="Es fehlt: ${esc(L.map(x=>x.t).join(', '))}">⚠ ${L.length}</span>`:''));})()}</td><td>${badge(d.kundentyp)}</td><td class="tnum">${esc(d.telefon)}</td><td>${esc(d.bezirk||'')}</td><td>${esc(d.branche||'')}</td><td>${esc(d.ort)}</td><td>${esc(d.quelle)}</td><td ${stCls(d)}>${d.status==='won'?'Gewonnen':d.status==='lost'?'Verloren':esc(d.stage)}</td><td>${esc(d.telefonist||'')}</td><td>${esc(d.analyst)}</td><td>${esc(d.berater)}</td></tr>${host.__openId===d.id?listeDetailHtml(d):''}`).join('')}
   </tbody></table></div>
   ${rows.length>show.length?`<div style="padding:10px 0"><button class="btn" id="fMore">➕ ${Math.min(500,rows.length-show.length)} weitere anzeigen (${rows.length-show.length} noch nicht geladen)</button></div>`:''}`;
   host.querySelector('#fSearch').addEventListener('input',e=>{host.__q=e.target.value;host.__max=200;clearTimeout(host.__qT);host.__qT=setTimeout(()=>{const pos=e.target.selectionStart;renderListe();const np=host.querySelector('#fSearch');if(np){np.focus();np.setSelectionRange(pos,pos);}},160);});
@@ -838,6 +855,7 @@ function renderListe(){
   });
   host.querySelector('#fTyp').addEventListener('change',e=>{host.__typ=e.target.value;renderListe();});
   host.querySelector('#fQuelle').addEventListener('change',e=>{host.__quelle=e.target.value;renderListe();});
+  host.querySelector('#fLk').addEventListener('change',e=>{host.__lk=e.target.value;host.__max=200;renderListe();});
   host.querySelectorAll('th').forEach(th=>th.addEventListener('click',()=>{const c=th.dataset.c;if(sortCol===c)sortDir*=-1;else{sortCol=c;sortDir=1;}renderListe();}));
   if(!host.__wired){host.__wired=true;host.addEventListener('click',e=>{ // EIN Sammel-Hörer statt eines pro Zeile
     if(e.target.closest('#fMore')){host.__max=(host.__max||200)+500;renderListe();return;}
@@ -1296,7 +1314,7 @@ function dialerCard(d){
   return `<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:22px 24px;max-width:640px">
     <div style="font-size:23px;font-weight:800;letter-spacing:-.4px">${esc(d.name||d.org||'—')}</div>
     ${d.org&&d.name!==d.org?`<div style="font-size:13px;color:var(--ink-2)">${esc(d.org)}</div>`:''}
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${badge(d.kundentyp)}${(d.gp&&isAdmin())?'<span class="tg gpb">GP?</span>':''}${d.bezirk?`<span class="tg">${esc(d.bezirk)}</span>`:''}${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''}${isOverdue(d)?'<span class="tg od">überfällig</span>':''}${naInfo(d)}${adrBadge(d)}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${badge(d.kundentyp)}${(d.gp&&isAdmin())?'<span class="tg gpb">GP?</span>':''}${d.bezirk?`<span class="tg">${esc(d.bezirk)}</span>`:''}${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''}${isOverdue(d)?'<span class="tg od">überfällig</span>':''}${naInfo(d)}${anhangBadge(d)}${lueckenBadge(d)}</div>
     <div style="display:flex;align-items:center;gap:13px;margin:16px 0;padding:14px 16px;background:var(--surface-2);border:1px solid var(--line);border-radius:12px">
       <div id="t-telnum" title="Doppelklick = Nummer kopieren" style="font-size:21px;font-weight:800;flex:1;cursor:copy;user-select:all" class="tnum">${esc(d.telefon||'— keine Nummer —')}</div>
       ${d.telefon?`<a class="btn pri" id="t-call" href="tel:${esc(tel)}" style="font-size:15px;padding:11px 20px">☎ Anrufen</a>`:''}
@@ -2437,8 +2455,13 @@ function updateTodoBadge(){
   const el=document.getElementById('todoBadge');if(!el)return;
   const n=myAcksOpen().length;
   let h=0;try{h=todayTermine().length;}catch(e){}
-  el.classList.toggle('hide',!n&&!h);
-  el.innerHTML=n?('📌 Aufgaben <b>'+n+'</b>'+(h?' · 📅 heute '+h:'')):('📅 Heute <b>'+h+'</b> Termin'+(h===1?'':'e'));
+  let f=0;try{f=myLuecken().list.length;}catch(e){}
+  el.classList.toggle('hide',!n&&!h&&!f);
+  const parts=[];
+  if(n)parts.push('📌 Aufgaben <b>'+n+'</b>');
+  if(h)parts.push(n?('📅 heute '+h):('📅 Heute <b>'+h+'</b> Termin'+(h===1?'':'e')));
+  if(f)parts.push('🧩 Infos fehlen <b>'+f+'</b>');
+  el.innerHTML=parts.join(' · ');
 }
 async function gcalConnectHere(){
   try{await gcalToken();}
@@ -2455,6 +2478,7 @@ function openTodo(force){
   const me=chatName();
   const heute=todayTermine();
   const od=isAdmin()?[]:visibleDeals().filter(d=>d.status==='open'&&isOverdue(d));
+  const lk=myLuecken();const LKMAX=30;
   const m=document.getElementById('modal');m.classList.remove('wide');
   m.innerHTML=`<h2>📌 Deine offenen Aufgaben</h2>
     <div class="sub">${acks.length?(acks.length+' Bestätigung'+(acks.length>1?'en':'')+' offen – bitte kurz abarbeiten'):'Alles bestätigt 👍'}</div>
@@ -2463,6 +2487,8 @@ function openTodo(force){
       const canDec=(a.art==='beratung-zuord'||a.art==='analyse-zuord')&&personNames(me).includes((a.ackWer||'').trim().toLowerCase());
       return `<div class="ehrow" style="flex-wrap:wrap"><span class="nm" style="min-width:220px;white-space:normal">${zeit?zeit+' · ':''}${esc(a.text)}</span>${a.dealId?`<button class="mini-btn" data-tdl="${esc(a.dealId)}">Lead öffnen</button>`:''}<button class="mini-btn" style="border-color:var(--good);color:var(--good);font-weight:700" data-tda="${esc(a._id||'')}">✔ Annehmen</button>${canDec?`<button class="mini-btn" style="border-color:var(--bad);color:var(--bad)" data-tdd="${esc(a._id||'')}">✖ Ablehnen</button>`:''}</div>`;}).join('')}
     ${heute.length?`<div class="ehgt" style="margin-top:14px">📅 Deine Termine heute</div>${heute.map(e=>`<div class="ehrow"><span class="wart" style="background:${WARTC[e.art]||'var(--ink-3)'}">${esc(e.art)}</span><b>${esc(e.zeit)}</b><span class="nm">${esc(e.kunde)}</span><button class="mini-btn" data-tdl="${esc(e.dealId)}">Lead</button></div>`).join('')}`:''}
+    ${lk.list.length?`<div class="ehgt" style="margin-top:14px">🧩 Hier fehlen noch Infos: <span style="color:var(--bad)">${lk.list.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— bitte nach und nach ergänzen</span></div>${lk.list.slice(0,LKMAX).map(x=>`<div class="ehrow"><span class="nm"><b>${esc(x.d.name||x.d.org||'—')}</b>${(isAdmin()&&(x.d.analyst||'').trim())?` <span style="color:var(--ink-3);font-weight:500">· Analyst: ${esc(x.d.analyst)}</span>`:''}</span><span style="display:flex;gap:5px;flex-wrap:wrap">${lueckenBadge(x.d)}</span><button class="mini-btn" data-tdl="${esc(x.d.id)}">Lead öffnen</button></div>`).join('')}${lk.list.length>LKMAX?`<div style="font-size:12px;color:var(--ink-3);margin:4px 0">… und ${lk.list.length-LKMAX} weitere – alle findest du unter „Liste" mit dem Filter „⚠ Infos fehlen".</div>`:''}`:''}
+    ${lk.kalt?`<div style="font-size:12px;color:var(--ink-3);margin-top:8px">Außerdem ${lk.kalt} Lead${lk.kalt===1?'':'s'} ohne Termin, bei ${lk.kalt===1?'dem':'denen'} Telefon oder Adresse fehlt – in Pipeline und Liste am ⚠ erkennbar.</div>`:''}
     ${od.length?`<div class="ehgt" style="margin-top:14px">⏰ Überfällige Wiedervorlagen: <span style="color:var(--bad)">${od.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— siehe Telefon/Pipeline</span></div>`:''}
     <div class="modal-foot"><button class="btn${acks.length?'':' pri'}" id="m-close">${acks.length?'Später':'Los geht’s'}</button></div>`;
   document.getElementById('ov').classList.add('show');
@@ -4020,6 +4046,78 @@ function naInfo(d){const na=(d.calls||[]).filter(c=>c.outcome==='nichterreicht')
 // Lead ohne Adresse ist fatal (Melanies Regel 31.10.) – Badge überall, wo gearbeitet wird
 function adrFehlt(d){return !((d.strasse||'').trim()&&((d.plz||'')+(d.ort||'')).trim());}
 function adrBadge(d){return adrFehlt(d)?'<span class="tg od" title="Straße + PLZ/Ort bitte beim nächsten Kontakt erfragen und eintragen!">📍 Adresse fehlt</span>':'';}
+/* v17.11-A (Melanies Ansage 17.11.): Fehlende Infos sind bei JEDEM in seinem CRM sichtbar, damit die
+   Daten nach und nach vollständig werden. Was „fehlt", hängt davon ab, wie weit der Kunde ist:
+   – immer: Telefon, Adresse
+   – ab Termin (AG/BG eingetragen oder Phase ≥ „Analysetermin vereinbart"): + E-Mail, Ansprechpartner
+   – Analyse durchgeführt (Phase ≥ „Analyse & Doku" ODER AG-Termin liegt >2 Std zurück): + Analyse-PDF,
+     Sprachnachricht, Geburtsdatum
+   Nur OFFENE Kunden (nicht gewonnen/verloren), nicht Posteingang, nicht Recruiting. */
+function anaTyp(a){ // Anhang: 'audio' (Sprachnachricht) oder 'doc' (PDF/Foto) – alte Einträge am Dateinamen erkennen
+  if(a&&a.typ)return a.typ;
+  const n=((a&&a.name)||'').toLowerCase();
+  return (/sprachn|sprachmemo|voice|audio|ptt-/.test(n)||/\.(webm|m4a|mp3|ogg|oga|opus|wav|aac|amr|3gp|caf|wma|flac)$/.test(n))?'audio':'doc';
+}
+function terminVorbei(s){ // wie parseTermin, aber OHNE den „Datum ohne Jahr → nächstes Jahr"-Sprung
+  s=(s||'').trim();if(!s)return false;
+  const m=/(\d{1,2})\.(\d{1,2})\.?\s*(\d{2,4})?\D*?(?:(\d{1,2})[:.h](\d{2}))?\s*$/.exec(s)||/(\d{1,2})\.(\d{1,2})\.?\s*(\d{2,4})?(?:\D+?(\d{1,2})[:.h](\d{2}))?/.exec(s);
+  if(!m)return false;
+  const now=new Date();
+  let y=m[3]?parseInt(m[3],10):now.getFullYear();if(y<100)y+=2000;
+  const mo=parseInt(m[2],10)-1,da=parseInt(m[1],10);
+  if(mo<0||mo>11||da<1||da>31)return false;
+  const hh=m[4]!=null?parseInt(m[4],10):9,mi=m[5]!=null?parseInt(m[5],10):0;
+  const alt=now.getTime()-new Date(y,mo,da,hh,mi).getTime();
+  if(alt<2*3600000)return false; // Termin liegt in der Zukunft oder läuft gerade
+  return m[3]?true:alt<=150*86400000; // ohne Jahr und >5 Monate „alt" = gemeint ist ein Termin im NÄCHSTEN Jahr
+}
+function analyseStand(d){ // was liegt zur Analyse schon vor?
+  const A=d.analyse||[],U=d.uebergabe||{};
+  const docs=A.filter(a=>anaTyp(a)==='doc'&&!a.vm).length,aud=A.filter(a=>anaTyp(a)==='audio').length;
+  const zsm=((U.zsm||'')+'').trim().length>=20; // schriftliche Zusammenfassung in der Übergabe „ersetzt die Sprachnachricht"
+  return {docs:docs,aud:aud,pdf:docs>0||!!U.pdfOk,sprach:aud>0||!!U.sprachOk||zsm,sprachWie:aud>0?'datei':(U.sprachOk?'haken':(zsm?'text':''))};
+}
+function analyseErfolgt(d){return d.status==='open'&&(STAGES.indexOf(d.stage)>=3||terminVorbei(d.datumAG));}
+function leadLuecken(d){
+  const L=[];L.aktiv=false;L.doc=false;
+  if(!d||d.status!=='open'||d.geprueft===false||(d.quelle||'')==='Recruiting')return L;
+  L.aktiv=STAGES.indexOf(d.stage)>=2||!!(d.datumAG||'').trim()||!!(d.datumBG||'').trim();
+  const erf=analyseErfolgt(d);
+  if(erf){
+    const st=analyseStand(d);
+    if(!st.pdf)L.push({k:'pdf',t:'Analyse-PDF',doc:1});
+    if(!st.sprach)L.push({k:'sprach',t:'Sprachnachricht',doc:1});
+  }
+  if(!(d.telefon||'').trim())L.push({k:'tel',t:'Telefon'});
+  if(L.aktiv&&!(d.email||'').trim())L.push({k:'email',t:'E-Mail'});
+  if(adrFehlt(d))L.push({k:'adr',t:'Adresse'});
+  if(L.aktiv&&(d.org||'').trim()&&(!(d.name||'').trim()||nameEq(d.name,d.org)))L.push({k:'name',t:'Ansprechpartner'});
+  if(erf&&!(d.geb||'').trim())L.push({k:'geb',t:'Geburtsdatum'});
+  L.doc=L.some(x=>x.doc);
+  return L;
+}
+const LK_IC={pdf:'📄',sprach:'🎙',tel:'☎',email:'✉',adr:'📍',name:'👤',geb:'🎂'};
+function lueckenBadge(d){ // Badge überall, wo gearbeitet wird (Pipeline-Karte, Liste, Telefon)
+  const L=leadLuecken(d);if(!L.length)return '';
+  const doc=L.filter(x=>x.doc),rest=L.filter(x=>!x.doc);
+  return doc.map(x=>'<span class="tg lk-doc" title="Analyse ist durchgeführt – bitte im Kunden unter „📤 Analyse abgeben" hochladen">'+LK_IC[x.k]+' '+x.t+' fehlt</span>').join('')
+    +(rest.length?'<span class="tg od" title="Bitte beim nächsten Kontakt erfragen und im Kunden eintragen">⚠ fehlt: '+rest.map(x=>x.t).join(' · ')+'</span>':'');
+}
+function anhangBadge(d){const n=(d.analyse||[]).length;return n?'<span class="tg anh" title="'+n+(n===1?' Datei':' Dateien')+' beim Kunden angehängt">📎 '+n+(n===1?' Datei':' Dateien')+'</span>':'';}
+function myLuecken(){ // für Aufgaben-Fenster + Kopf-Badge: Kunden mit Termin/Analyse, bei denen etwas fehlt
+  const admin=isAdmin(),me=chatName(),my=me?personNames(me):[];
+  const hit=x=>my.includes((x||'').trim().toLowerCase());
+  const list=[];let kalt=0;
+  visibleDeals().forEach(d=>{
+    let L=leadLuecken(d);if(!L.length)return;
+    if(!L.aktiv){kalt++;return;}
+    // Analyse-Unterlagen sind Sache des Analysten (und der Admins) – Telefonist/Berater sehen sie nur am Badge
+    if(!admin&&(d.analyst||'').trim()&&!hit(d.analyst)){const R=L.filter(x=>!x.doc);R.aktiv=true;R.doc=false;L=R;if(!L.length)return;}
+    list.push({d:d,L:L});
+  });
+  list.sort((a,b)=>((b.L.doc?1:0)-(a.L.doc?1:0))||(b.L.length-a.L.length));
+  return {list:list,kalt:kalt};
+}
 function openModal(id){
   const d=id?state.deals.find(x=>x.id===id):blank();
   if(id&&!d){toast('Lead nicht gefunden oder für dich nicht sichtbar');return;}
@@ -4046,6 +4144,8 @@ function openModal(id){
       <button class="ob weg" data-o="keininteresse"><span class="d"></span>Kein Interesse</button></div></div>`:''}
     ${(!isNew&&isAdmin()&&d.geprueft===false)?`<div style="background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 13px;margin-bottom:13px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b>📥 Posteingang</b> – für das Team noch unsichtbar.<button class="btn" id="m-frei" style="padding:6px 12px;font-size:12.5px">✓ Prüfen &amp; freigeben</button></div>`:''}
     ${(!isNew&&isAdmin()&&(d.mergeUndo||[]).length)?`<div style="background:var(--surface-2);border:1.5px solid var(--line);border-radius:10px;padding:10px 13px;margin-bottom:13px;font-size:12.5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>🔗 Hier wurden Kunden zusammengeführt (${fmtD(d.mergeUndo[d.mergeUndo.length-1].ts)}: ${esc((d.mergeUndo[d.mergeUndo.length-1].rest||[]).map(o=>o.name||o.org||'—').join(', ').slice(0,120))})</span><button class="btn" id="m-undoMerge" style="padding:6px 12px;font-size:12.5px;margin-left:auto">↩ Rückgängig – wieder trennen</button></div>`:''}
+    ${(()=>{if(isNew)return '';const L=leadLuecken(d);if(!L.length)return '';
+      return `<div id="m-luecken" style="background:var(--bad-bg);border:1.5px solid var(--bad);border-radius:10px;padding:10px 13px;margin-bottom:13px;font-size:13px;display:flex;align-items:center;gap:7px;flex-wrap:wrap"><b style="color:var(--bad)">⚠ Hier fehlt noch:</b>${L.map(x=>`<button type="button" class="mini-btn" data-lk="${x.k}" style="border-color:var(--bad);color:var(--bad);font-size:12.5px">${LK_IC[x.k]} ${x.t}</button>`).join('')}<span style="color:var(--ink-3);font-size:11.5px">– antippen springt zur Stelle</span></div>`;})()}
     <div class="stgs" id="m-stagepick">${(()=>{const SHORT=['Neu','Bearbeitung','AG terminiert','Analyse & Doku','BG terminiert','Beratung'];const cur=STAGES.indexOf(d.stage);return STAGES.map((s,i)=>`<button type="button" class="stg${i===cur?' on':(cur>=0&&i<cur?' done':'')}" data-s="${esc(s)}" title="${esc(s)}"><i>${(cur>=0&&i<cur)?'✓':(i+1)}</i>${SHORT[i]}</button>`).join('');})()}</div>
     <div class="grid2">
       <div class="fld"><label>Kundentyp</label><select id="m-typ"><option${d.kundentyp==='Privat'?' selected':''}>Privat</option><option${d.kundentyp==='GmbH'?' selected':''}>GmbH</option></select></div>
@@ -4107,18 +4207,24 @@ function openModal(id){
     </div>
     <div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--brand);border-radius:12px" id="m-analysesec">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">📤 Analyse abgeben <span style="font-weight:500;color:var(--ink-2);font-size:12px">– PDF/Fotos + Sprachnotiz landen direkt hier beim Kunden (statt in WhatsApp)</span></div>
-      ${(d.analyse&&d.analyse.length)?`<div style="font-size:12.5px;margin:6px 0;display:flex;flex-direction:column;gap:3px">${(()=>{
+      ${(()=>{if(isNew)return '';const st=analyseStand(d),erf=analyseErfolgt(d);
+        const pill=(ok,ic,txt,extra)=>`<span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:800;padding:6px 13px;border-radius:20px;${ok?'background:var(--good-bg);color:var(--good)':(erf?'background:var(--bad);color:var(--surface)':'background:var(--surface-3);color:var(--ink-2)')}">${ic} ${txt} ${ok?'✓'+(extra||''):(erf?'FEHLT':'– noch offen')}</span>`;
+        return `<div style="display:flex;gap:7px;flex-wrap:wrap;margin:7px 0 9px">${pill(st.pdf,'📄','Analyse-PDF',st.docs?'':' (lt. Übergabe)')}${pill(st.sprach,'🎙','Sprachnachricht',st.sprachWie==='text'?' (schriftlich in der Übergabe)':st.sprachWie==='haken'?' (lt. Übergabe)':'')}</div>`;})()}
+      ${(d.analyse&&d.analyse.length)?`<div style="font-size:14px;font-weight:800;margin:4px 0 6px">📎 ${d.analyse.length} ${d.analyse.length===1?'Datei':'Dateien'} angehängt</div><div style="margin:0 0 9px;display:flex;flex-direction:column;gap:6px">${(()=>{
         const ords=[];(d.analyse||[]).forEach(a=>{if(a.ordner&&!ords.some(o=>o.url===a.ordner))ords.push({url:a.ordner,von:a.von||''});});
-        return ords.map(o=>`<div>📂 <a href="${esc(o.url)}" target="_blank" rel="noopener" style="color:var(--brand-ink);font-weight:800">Kunden-Ordner im Drive${o.von?' von '+esc(o.von):''}</a> <span style="color:var(--ink-3)">· zum Teilen einfach diesen Link weitergeben</span></div>`).join('');
-      })()}${d.analyse.map(a=>`<div>📎 <a href="${esc(a.url)}" target="_blank" rel="noopener" style="color:var(--brand-ink);font-weight:700">${esc(a.name)}</a> <span style="color:var(--ink-3)">· ${esc(a.von||'')}${a.ts?' · '+esc(new Date(a.ts).toLocaleDateString('de-AT')):''}</span></div>`).join('')}</div>`:''}
+        return ords.map(o=>`<a class="anf" href="${esc(o.url)}" target="_blank" rel="noopener"><span class="anf-ic">📂</span><span class="anf-t"><b>Kunden-Ordner im Drive${o.von?' von '+esc(o.von):''}</b><small>zum Teilen einfach diesen Link weitergeben</small></span></a>`).join('');
+      })()}${d.analyse.map(a=>`<a class="anf" href="${esc(a.url)}" target="_blank" rel="noopener"><span class="anf-ic">${anaTyp(a)==='audio'?'🎙':(/\.(jpe?g|png|heic|webp)$/i.test(a.name||'')?'🖼':'📄')}</span><span class="anf-t"><b>${esc(a.name)}</b><small>${anaTyp(a)==='audio'?'Sprachnachricht':(a.vm?'Vollmacht':'Dokument')} · ${esc(a.von||'')}${a.ts?' · '+esc(new Date(a.ts).toLocaleDateString('de-AT')):''}</small></span></a>`).join('')}</div>`:''}
       <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:6px">
         <input type="file" id="an-file" accept="application/pdf,image/*" multiple style="display:none">
         <input type="file" id="an-scan" accept="image/*" capture="environment" style="display:none">
         <button type="button" class="btn" id="an-pick">📄 PDF / Foto wählen</button>
         <button type="button" class="btn" id="an-scanbtn" title="Öffnet am Handy direkt die Kamera – jede Seite einzeln abfotografieren, die Scans sammeln sich">📷 Scannen</button>
         <button type="button" class="btn" id="an-rec">🎙️ Sprachnotiz aufnehmen</button>
-        <span id="an-state" style="font-size:12px;color:var(--ink-2)"></span>
+        <input type="file" id="an-audio" multiple style="display:none">
+        <button type="button" class="btn" id="an-audiobtn" title="Schon aufgenommene Sprachnachricht vom Handy auswählen (WhatsApp, Sprachmemos, Diktiergerät …)">🎵 Sprachnachricht hochladen</button>
       </div>
+      <div id="an-state"></div>
+      <div style="font-size:11.5px;color:var(--ink-2);margin-top:6px">🎵 <b>Sprachnachricht schon am Handy?</b> In WhatsApp oder Sprachmemos auf „Teilen → In Dateien sichern", dann hier „Sprachnachricht hochladen" antippen und die Datei auswählen.</div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:7px">
         <input id="an-note" placeholder="Kurznotiz zur Übergabe (optional)" style="flex:1;min-width:170px;padding:8px 10px;font-size:12.5px">
         <button type="button" class="btn pri" id="an-send">📤 Abgeben</button>
@@ -4257,15 +4363,41 @@ function openModal(id){
     });};
   const persist=()=>{histDiff();if(isNew&&!state.deals.includes(d))state.deals.unshift(d);dbPersist(d);render();};
   const callMeta=()=>{const dur=m.querySelector('#m-dur'),no=m.querySelector('#m-cnote');const o={};if(dur&&dur.value)o.dur=parseFloat(dur.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
+  m.querySelectorAll('[data-lk]').forEach(b=>b.addEventListener('click',()=>{
+    const id=({tel:'m-tel',email:'m-email',adr:'m-str',name:'m-name',geb:'m-geb',pdf:'m-analysesec',sprach:'m-analysesec'})[b.dataset.lk];
+    const el=id?m.querySelector('#'+id):null;if(!el)return;
+    let p=el.parentElement;while(p&&p!==m){if(p.tagName==='DETAILS')p.open=true;p=p.parentElement;}
+    el.scrollIntoView({block:'center',behavior:'smooth'});
+    if(el.focus&&/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))setTimeout(()=>el.focus({preventScroll:true}),250);
+  }));
   const anSec=m.querySelector('#m-analysesec');
   if(anSec){
     const fIn=anSec.querySelector('#an-file'),scIn=anSec.querySelector('#an-scan'),anSt=anSec.querySelector('#an-state');
     let recBlob=null,rec=null,recChunks=[];
     const selFiles=[];let scanN=0; // Dateien sammeln sich über mehrere Auswahlen/Scans hinweg
-    const anTxt=()=>{const sc=selFiles.filter(f=>f.__scan).length,an=selFiles.length-sc;const t=[];
-      if(sc)t.push('📷 '+sc+' Scan-Seite'+(sc===1?'':'n')+' → wird beim Abgeben 1 PDF');
-      if(an)t.push(an+(an===1?' Datei':' Dateien'));
-      if(recBlob)t.push('Sprachnotiz ✓');anSt.textContent=t.join(' · ');};
+    // v17.11-A: gut sichtbare Auswahl-Box (statt kleiner grauer Zeile) – jede Datei einzeln, mit ✕ zum Entfernen
+    const anTxt=()=>{const sc=selFiles.filter(f=>f.__scan).length;
+      const chip=(label,key)=>'<span class="anp-chip">'+esc(label)+'<button type="button" data-anx="'+key+'" title="Entfernen">✕</button></span>';
+      const chips=[];
+      if(sc)chips.push(chip('📷 '+sc+' Scan-Seite'+(sc===1?'':'n')+' → wird beim Abgeben 1 PDF','scan'));
+      selFiles.forEach((f,i)=>{if(!f.__scan)chips.push(chip((f.__audio?'🎵 ':'📄 ')+(f.name||'Datei'),'f'+i));});
+      if(recBlob)chips.push(chip('🎙️ Sprachnotiz (Aufnahme)','rec'));
+      const n=(sc?1:0)+selFiles.filter(f=>!f.__scan).length+(recBlob?1:0);
+      anSt.innerHTML=chips.length?('<div class="anp-h">📎 '+n+(n===1?' Datei':' Dateien')+' ausgewählt – noch NICHT gespeichert</div><div class="anp-c">'+chips.join('')+'</div><div class="anp-f">👉 Jetzt auf „📤 Abgeben" drücken – erst dann ist es beim Kunden gespeichert.</div>'):'';};
+    anSt.addEventListener('click',ev=>{const x=ev.target.closest('[data-anx]');if(!x)return;const k=x.dataset.anx;
+      if(k==='rec'){recBlob=null;const rb=anSec.querySelector('#an-rec');if(rb)rb.textContent='🎙️ Sprachnotiz aufnehmen';}
+      else if(k==='scan'){if(!confirm('Alle Scan-Seiten verwerfen?'))return;for(let i=selFiles.length-1;i>=0;i--)if(selFiles[i].__scan)selFiles.splice(i,1);}
+      else selFiles.splice(parseInt(k.slice(1),10),1);
+      anTxt();});
+    // 🎵 Schon vorhandene Sprachnachricht vom Handy (WhatsApp .opus/.ogg, Sprachmemos .m4a, …) – bewusst OHNE
+    // accept-Filter: iPhones grauen sonst unbekannte Audio-Formate aus. PDF/Foto hier erwischt → normales Dokument.
+    const auIn=anSec.querySelector('#an-audio');
+    anSec.querySelector('#an-audiobtn').addEventListener('click',()=>auIn.click());
+    auIn.addEventListener('change',()=>{Array.from(auIn.files||[]).forEach(f=>{
+      const t=(f.type||'').toLowerCase(),nm=(f.name||'').toLowerCase();
+      if(!(t.includes('pdf')||/^image\//.test(t)||/\.(pdf|jpe?g|png|heic|webp)$/.test(nm)))f.__audio=true;
+      selFiles.push(f);});
+      auIn.value='';anTxt();});
     const grab=(inp,scan)=>{Array.from(inp.files||[]).forEach(f=>{
       if(scan){scanN++;const ext=((f.name||'').split('.').pop()||'jpg').toLowerCase();
         try{f=new File([f],'Scan '+todayStr().split('-').reverse().join('.')+' Nr.'+scanN+'.'+ext,{type:f.type});}catch(_){}
@@ -4302,7 +4434,7 @@ function openModal(id){
       if(rec&&rec.state==='recording'){rec.stop();await new Promise(r=>setTimeout(r,400));}
       let files=selFiles.slice();
       const note=anSec.querySelector('#an-note').value.trim();
-      if(!files.length&&!recBlob&&!note){toast('Bitte PDF/Foto wählen, scannen, Sprachnotiz aufnehmen oder Notiz schreiben');return;}
+      if(!files.length&&!recBlob&&!note){toast('Bitte PDF/Foto wählen, scannen, Sprachnachricht aufnehmen/hochladen oder Notiz schreiben');return;}
       collect(); // bei neuen Kunden: Formularstand übernehmen, BEVOR Dateiname/Anlage daraus gebaut wird
       if(!((d.name||'')+(d.org||'')).trim()){toast('Bitte zuerst Name oder Firma eintragen – dann abgeben');return;}
       b.disabled=true;b.textContent='⏳ Startet …';
@@ -4345,8 +4477,8 @@ function openModal(id){
           b.textContent='⏳ Kunden-Ordner …';
           const lf=await driveLeadFolder(tok,kurz,d); // je Kunde ein eigener, teilbarer Ordner (Assistenz=schreiben, Analyst/Berater=lesen)
           let upI=0;const upN=files.length+(recBlob?1:0);
-          for(const f of files){upI++;b.textContent='⏳ Lade hoch ('+upI+'/'+upN+') …';neu.push(Object.assign(await driveUpload(tok,f,kurz+' – '+f.name,lf.id),{von:who,ts:new Date().toISOString(),ordner:lf.url}));}
-          if(recBlob){upI++;b.textContent='⏳ Lade hoch ('+upI+'/'+upN+') …';const ext=(recBlob.type||'').includes('mp4')?'m4a':'webm';neu.push(Object.assign(await driveUpload(tok,recBlob,kurz+' – Sprachnotiz '+tag+'.'+ext,lf.id),{von:who,ts:new Date().toISOString(),ordner:lf.url}));}
+          for(const f of files){upI++;b.textContent='⏳ Lade hoch ('+upI+'/'+upN+') …';neu.push(Object.assign(await driveUpload(tok,f,kurz+(f.__audio?' – Sprachnachricht '+tag+' – ':' – ')+f.name,lf.id),{von:who,ts:new Date().toISOString(),ordner:lf.url,typ:f.__audio?'audio':'doc'}));}
+          if(recBlob){upI++;b.textContent='⏳ Lade hoch ('+upI+'/'+upN+') …';const ext=(recBlob.type||'').includes('mp4')?'m4a':'webm';neu.push(Object.assign(await driveUpload(tok,recBlob,kurz+' – Sprachnotiz '+tag+'.'+ext,lf.id),{von:who,ts:new Date().toISOString(),ordner:lf.url,typ:'audio'}));}
         }
         collect();
         neu.forEach(x=>{if(/vollmacht/i.test(x.name||''))x.vm=1;}); // Vollmacht am Dateinamen erkennen
