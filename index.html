@@ -192,6 +192,9 @@
   .lmore>summary{cursor:pointer;font-size:11.5px;color:var(--ink-3);list-style:none}
   .lmore>summary::-webkit-details-marker{display:none}
   .lbody>*{margin-bottom:12px}
+  .lnotes{display:flex;flex-direction:column;gap:9px}
+  .lnotes .fld{margin-bottom:0}
+  .lnotes textarea{resize:vertical;line-height:1.45;min-height:46px}
   /* ===== v19.11-C: Kunden-Fenster passt am Laptop/PC auf EINE Seite – breites Fenster, Inhalt in Spalten, kompakte Abstände ===== */
   @media (min-width:761px){
     .ov:has(#m-ltabs){padding:12px 12px}
@@ -207,12 +210,9 @@
     #modal:has(#m-ltabs) .lbody{column-count:3;column-gap:14px}
     #modal:has(#m-ltabs) .lbody>*{break-inside:avoid;margin:0 0 10px!important}
     #modal:has(#m-ltabs) .lbody .grid2{gap:7px 9px}
-    #modal:has(#m-ltabs) .lbody>.grid2{break-inside:auto} /* Feld-Block darf sich auf zwei Spalten verteilen – gleicht die Spaltenhöhen aus */
-    #modal:has(#m-ltabs) .lbody>.grid2>*{break-inside:avoid}
     #modal:has(#m-ltabs) .fld{margin-bottom:0;gap:3px}
     #modal:has(#m-ltabs) .fld label{font-size:10.5px}
     #modal:has(#m-ltabs) .lbody input,#modal:has(#m-ltabs) .lbody select,#modal:has(#m-ltabs) .lbody textarea{padding:6px 9px;font-size:13px;border-radius:8px}
-    #modal:has(#m-ltabs) .lbody textarea{min-height:0}
     #modal:has(#m-ltabs) details.sec>summary{padding:7px 11px}
     #modal:has(#m-ltabs) .callbar{padding:9px 11px;margin:0 0 10px}
     #modal:has(#m-ltabs) .callbar .top{margin-bottom:7px}
@@ -242,7 +242,6 @@
     #modal:has(#m-ltabs) #m-analysesec>div[style*="font-size:14px"]{display:none}
     #modal:has(#m-ltabs) #eh-tot-s{font-size:12px!important}
     #modal:has(#m-ltabs) #eh-tot-s span{white-space:nowrap}
-    #modal:has(#m-ltabs) .lbody textarea{height:50px}
     #modal:has(#m-ltabs) #m-analysesec>div:has(>#an-pick){display:grid!important;grid-template-columns:1fr 1fr;gap:5px!important}
     #modal:has(#m-ltabs) #m-analysesec>div:has(>#an-pick) .btn{justify-content:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-size:10.8px;padding:5px 3px;gap:3px;letter-spacing:-.1px}
     #modal:has(#m-ltabs) #m-potsec .ehadd{gap:5px}
@@ -541,7 +540,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-F";
+const APP_VERSION="19.11-G";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -866,6 +865,15 @@ function fmtEH(x){return x.toFixed(1).replace('.',',');}
    des Analysten. Quelle: die EH-Schätzung im Kunden (⚡ Schnell-Schätzung); fehlt sie, die Potenzial-Spanne
    „mtl. Min–Max" aus der Übergabe (Mittelwert, als Veranlagung 30 J lt. IVP-Tabelle gerechnet).
    Das CRM kann die Sprachnachricht NICHT selbst verstehen – der Analyst trägt die Schätzung nach dem Upload ein. */
+/* v19.11-G: Kurzformen für die Potenzial-Schätzung (Melanies Ansage) – Standard-DURCHSCHNITT je Sparte als Monatsprämie.
+   Die Werte sind Annahmen und hier an EINER Stelle änderbar; im Kunden gilt ein eingetragener Betrag vor dem Standard. */
+const POT_STD={
+  uv:{n:'UV',k:'unfall_gen',b:25},
+  kv:{n:'KV',k:'kv_gen',b:80},
+  abl:{n:'Ableben',k:'ableben_dialog',b:30,lz:30},
+  hh:{n:'HH',k:'hh_gen',b:25},
+  rs:{n:'RS',k:'rs_gen',b:25}
+};
 function ehPotenzial(d){
   const sch=((d&&d.ehS)||[]).reduce((x,it)=>x+calcEH(it),0);
   if(sch>0)return {eh:sch,q:'s'};
@@ -2423,6 +2431,11 @@ function wireTeamPanel(host){
     if(TEAM.some(x=>other(x)&&(x.email||'').toLowerCase()===email)){toast('E-Mail ist schon einem Zugang zugeordnet');return;}
     const id2=TM_EDIT||('m'+Math.random().toString(36).slice(2,10));
     const mem={id:id2,name,rolle,email,tel:normTel(host.querySelector('#tmTel').value.trim()),alias:host.querySelector('#tmAlias').value.trim()};
+    const wgT=(host.querySelector('#tmWgTag')||{value:''}).value,wgZ=((host.querySelector('#tmWgZeit')||{value:''}).value||'').trim();
+    if(wgT!==''&&wgZ){mem.wgTag=+wgT;mem.wgZeit=wgZ;}
+    const alt0=TM_EDIT?TEAM.find(x=>x.id===TM_EDIT):null;
+    if(alt0&&alt0.tg)mem.tg=alt0.tg; // Telegram-Verknüpfung beim Bearbeiten behalten
+    if(alt0&&alt0.wgSent&&mem.wgTag===alt0.wgTag&&mem.wgZeit===alt0.wgZeit)mem.wgSent=alt0.wgSent;
     const fkEl=host.querySelector('#tmFk');mem.fk=fkEl?((fkEl.value||'').trim()===name?'':(fkEl.value||'').trim()):''; // direkte Führungskraft (nie sich selbst)
     const war=!!TM_EDIT;
     const vorher=war?TEAM.find(x=>x.id===TM_EDIT):null;
@@ -2446,6 +2459,15 @@ function wireTeamPanel(host){
     try{localStorage.setItem('censa_tg_token',t.trim());}catch(e){}
     toast('🤖 Bot verbunden – jetzt schreibt jedes Teammitglied dem Bot einmal /start, dann „Anmeldungen abholen" klicken');
     renderSteuerung();
+  });
+  const twn=host.querySelector('#tmWgNow');
+  if(twn)twn.addEventListener('click',async()=>{
+    const ziel=TEAM.filter(mm=>mm.tg);
+    if(!ziel.length){toast('Noch niemand mit Telegram verbunden');return;}
+    if(!confirm('Wochen-Übersicht (Termine + liegen gebliebene Kunden) JETZT per Telegram senden an:\n\n'+ziel.map(x=>x.name).join(', ')+' ?'))return;
+    twn.disabled=true;let ok=0;
+    for(const mm of ziel){if(await tgSend(mm.tg,wgText(mm,wgNaechstes(mm,new Date()))))ok++;}
+    twn.disabled=false;toast('🤖 '+ok+' von '+ziel.length+' Wochen-Übersichten verschickt');
   });
   const tp=host.querySelector('#tmTgPull');
   if(tp)tp.addEventListener('click',async()=>{
@@ -2708,7 +2730,7 @@ function updateTodoBadge(){
   if(h)parts.push(n?('📅 heute '+h):('📅 Heute <b>'+h+'</b> Termin'+(h===1?'':'e')));
   if(f)parts.push('🧩 Infos fehlen <b>'+f+'</b>');
   let lg=0;try{lg=liegenGeblieben().length;}catch(e){}
-  if(lg)parts.push('🕰 liegen geblieben <b>'+lg+'</b>');
+  if(lg)parts.push((isAdmin()?'🕰 liegen geblieben <b>':'🕰 bitte bearbeiten <b>')+lg+'</b>');
   el.classList.toggle('hide',!n&&!h&&!f&&!lg);
   el.innerHTML=parts.join(' · ');
 }
@@ -2723,7 +2745,7 @@ async function gcalConnectHere(){
 }
 function openTodo(force){
   const acks=myAcksOpen();
-  if(!force&&!acks.length)return;
+  if(!force&&!acks.length&&(isAdmin()||!liegenGeblieben().length))return; // eigene liegen gebliebene Kunden öffnen das Aufgaben-Fenster ebenfalls
   const me=chatName();
   const heute=todayTermine();
   const od=isAdmin()?[]:visibleDeals().filter(d=>d.status==='open'&&isOverdue(d));
@@ -2738,7 +2760,7 @@ function openTodo(force){
       return `<div class="ehrow" style="flex-wrap:wrap"><span class="nm" style="min-width:220px;white-space:normal">${zeit?zeit+' · ':''}${esc(a.text)}</span>${a.dealId?`<button class="mini-btn" data-tdl="${esc(a.dealId)}">Lead öffnen</button>`:''}<button class="mini-btn" style="border-color:var(--good);color:var(--good);font-weight:700" data-tda="${esc(a._id||'')}">✔ Annehmen</button>${canDec?`<button class="mini-btn" style="border-color:var(--bad);color:var(--bad)" data-tdd="${esc(a._id||'')}">✖ Ablehnen</button>`:''}</div>`;}).join('')}
     ${heute.length?`<div class="ehgt" style="margin-top:14px">📅 Deine Termine heute</div>${heute.map(e=>`<div class="ehrow"><span class="wart" style="background:${WARTC[e.art]||'var(--ink-3)'}">${esc(e.art)}</span><b>${esc(e.zeit)}</b><span class="nm">${esc(e.kunde)}</span><button class="mini-btn" data-tdl="${esc(e.dealId)}">Lead</button></div>`).join('')}`:''}
     ${lk.list.length?`<div class="ehgt" style="margin-top:14px">🧩 Hier fehlen noch Infos: <span style="color:var(--bad)">${lk.list.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— bitte nach und nach ergänzen</span></div>${lk.list.slice(0,LKMAX).map(x=>`<div class="ehrow"><span class="nm"><b>${esc(x.d.name||x.d.org||'—')}</b>${(isAdmin()&&(x.d.analyst||'').trim())?` <span style="color:var(--ink-3);font-weight:500">· Analyst: ${esc(x.d.analyst)}</span>`:''}</span><span style="display:flex;gap:5px;flex-wrap:wrap">${lueckenBadge(x.d)}</span><button class="mini-btn" data-tdl="${esc(x.d.id)}">Lead öffnen</button></div>`).join('')}${lk.list.length>LKMAX?`<div style="font-size:12px;color:var(--ink-3);margin:4px 0">… und ${lk.list.length-LKMAX} weitere – alle findest du unter „Liste" mit dem Filter „⚠ Infos fehlen".</div>`:''}`:''}
-    ${lgl.length?`<div class="ehgt" style="margin-top:14px">🕰 Ohne Datum und seit über 2 Wochen nicht bearbeitet: <span style="color:var(--bad)">${lgl.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— wer dran ist, steht dabei</span></div>${lgl.slice(0,LKMAX).map(x=>`<div class="ehrow"><span class="nm"><b>${esc(x.d.name||x.d.org||'—')}</b> <span style="color:var(--ink-3);font-weight:500">· ${esc(x.d.stage)}</span></span><span class="tg" style="background:var(--brand-bg);color:var(--brand-ink);font-weight:800">${ROLLE_IC[x.z.rolle]} ${esc(x.z.name||('kein '+ROLLE_LBL[x.z.rolle]))}</span><span class="tg od">${x.tage>=0?('seit '+x.tage+' Tagen'):'kein Datum bekannt'}</span><button class="mini-btn" data-tdl="${esc(x.d.id)}">Lead öffnen</button></div>`).join('')}${lgl.length>LKMAX?`<div style="font-size:12px;color:var(--ink-3);margin:4px 0">… und ${lgl.length-LKMAX} weitere.</div>`:''}`:''}
+    ${lgl.length?`<div class="ehgt" style="margin-top:14px">${isAdmin()?'🕰 Ohne Datum und seit über 2 Wochen nicht bearbeitet:':'🕰 Deine Aufgabe – seit über 2 Wochen nichts passiert:'} <span style="color:var(--bad)">${lgl.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— ${isAdmin()?'wer dran ist, steht dabei':'bleibt hier, bis du den Kunden bearbeitest oder ein Datum / eine Wiedervorlage einträgst'}</span></div>${lgl.slice(0,LKMAX).map(x=>`<div class="ehrow"><span class="nm"><b>${esc(x.d.name||x.d.org||'—')}</b> <span style="color:var(--ink-3);font-weight:500">· ${esc(x.d.stage)}</span></span><span class="tg" style="background:var(--brand-bg);color:var(--brand-ink);font-weight:800">${ROLLE_IC[x.z.rolle]} ${esc(x.z.name||('kein '+ROLLE_LBL[x.z.rolle]))}</span><span class="tg od">${x.tage>=0?('seit '+x.tage+' Tagen'):'kein Datum bekannt'}</span><button class="mini-btn" data-tdl="${esc(x.d.id)}">Lead öffnen</button></div>`).join('')}${lgl.length>LKMAX?`<div style="font-size:12px;color:var(--ink-3);margin:4px 0">… und ${lgl.length-LKMAX} weitere.</div>`:''}`:''}
     ${lk.kalt?`<div style="font-size:12px;color:var(--ink-3);margin-top:8px">Außerdem ${lk.kalt} Lead${lk.kalt===1?'':'s'} ohne Termin, bei ${lk.kalt===1?'dem':'denen'} Telefon oder Adresse fehlt – in Pipeline und Liste am ⚠ erkennbar.</div>`:''}
     ${od.length?`<div class="ehgt" style="margin-top:14px">⏰ Überfällige Wiedervorlagen: <span style="color:var(--bad)">${od.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— siehe Telefon/Pipeline</span></div>`:''}
     <div class="modal-foot"><button class="btn${acks.length?'':' pri'}" id="m-close">${acks.length?'Später':'Los geht’s'}</button></div>`;
@@ -3216,8 +3238,86 @@ async function gcalInsert(title,dt,durMin,desc,loc,attendees){
    Berater ein (Lead-Detail oder Tages-Dispo), ist das ENTSCHIEDEN – Termin sofort aus dem
    Kalender des Zuordnenden buchen (Einladung an Analyst/Berater + Kunde + Office),
    KEIN Annehmen-Workflow mehr → der Termin ist damit auch raus aus der Abend-Verteilung. */
+/* v19.11-G (Melanies Ansage 19.11.): Analysten UND Berater bekommen per Telegram
+   (a) sofort eine Info, wenn ihnen ein Termin zugeteilt wird – Berater haben (noch) keinen CRM-Zugang, darum
+       steht alles Nötige in der Nachricht;
+   (b) vor ihrem Wochengespräch mit Melanie eine Übersicht ihrer Termine der kommenden Woche + liegen gebliebene Kunden.
+   Versand läuft aus dem Browser, in dem der Bot-Token hinterlegt ist (Melanies Gerät) – es gibt keinen eigenen Server. */
+const WG_TAGE=['Mo','Di','Mi','Do','Fr','Sa','So'];
+function tgInfo(name,text){
+  const mm=teamByAnyName(name);
+  if(!tgToken()||!mm||!mm.tg)return Promise.resolve(false);
+  return tgSend(mm.tg,text);
+}
+function tgTermin(d,role,name){ // „Neuer Termin für dich"
+  name=(name||'').trim();if(!name)return;
+  const an=role==='analyst';
+  const wann=((an?d.datumAG:d.datumBG)||'').trim();
+  const adr=[d.strasse,[d.plz,d.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ')||((d.notizen||'').indexOf('CENSA-Büro')>=0?'CENSA Büro, 1230 Wien':'');
+  const mgt=((an?d.mgtAG:d.mgtBG)||'').trim();
+  const pot=ehPotenzial(d);
+  const z=['📅 CENSA – neuer Termin für dich: '+(an?'ANALYSE':'BERATUNG')+((!an&&(d.bgDone||[]).length)?' (Folge-BG)':''),
+    'Kunde: '+(d.name||d.org||'—')+((d.org&&d.org!==d.name)?' ('+d.org+')':''),
+    'Wann: '+(wann||'Termin wird noch eingetragen'),
+    adr?('Wo: '+adr):'',
+    d.telefon?('Tel: '+d.telefon):'',
+    (!an&&(d.analyst||'').trim())?('Analyst: '+d.analyst):'',
+    mgt?('MGT dabei: '+mgt):'',
+    (!an&&pot.eh>0)?('🎯 Potenzial ≈ '+fmtEH(pot.eh)+' EH'):'',
+    (d.briefing||'').trim()?('Briefing: '+d.briefing.trim().slice(0,400)):''].filter(Boolean);
+  tgInfo(name,z.join('\n')).then(ok=>{if(ok)toast('🤖 Telegram-Info an '+name+' verschickt');});
+}
+function wgNaechstes(mm,now){ // nächster Wochengespräch-Zeitpunkt der Person (oder null)
+  if(mm.wgTag===undefined||mm.wgTag===null||mm.wgTag===''||!/^\d{1,2}:\d{2}$/.test(mm.wgZeit||''))return null;
+  const hm=mm.wgZeit.split(':').map(Number);
+  const mo=wkStart(0); // Montag dieser Woche
+  let t=new Date(mo.getFullYear(),mo.getMonth(),mo.getDate()+(+mm.wgTag),hm[0],hm[1]);
+  if(t.getTime()<=now.getTime())t=new Date(mo.getFullYear(),mo.getMonth(),mo.getDate()+7+(+mm.wgTag),hm[0],hm[1]);
+  return t;
+}
+function wgText(mm,M){ // Wochen-Übersicht für eine Person; M = Zeitpunkt des Wochengesprächs (oder null = ab heute)
+  const von=new Date();von.setHours(0,0,0,0);
+  const basis=M||von;
+  const mo=new Date(basis.getFullYear(),basis.getMonth(),basis.getDate()-((basis.getDay()+6)%7)); // Montag der Gesprächs-Woche
+  const bis=new Date(mo.getFullYear(),mo.getMonth(),mo.getDate()+14); // bis Ende der FOLGEWOCHE
+  const zeilen=[];
+  [0,1].forEach(w=>{
+    const st=new Date(mo.getFullYear(),mo.getMonth(),mo.getDate()+7*w);
+    wDedupe(autoEntries(mm.name,st).filter(e=>!e.mitschau)).forEach(e=>{
+      const tag=new Date(st.getFullYear(),st.getMonth(),st.getDate()+e.tag);
+      if(tag<von||tag>=bis)return;
+      const d=state.deals.find(x=>x.id===e.dealId);
+      const pot=(d&&e.art==='BG')?ehPotenzial(d):{eh:0};
+      zeilen.push({t:tag.getTime(),z:e.zeit,txt:WG_TAGE[(tag.getDay()+6)%7]+' '+fmtDM(tag)+' '+e.zeit+' · '+e.art+' · '+e.kunde+(e.ort?' · '+e.ort:'')+(pot.eh>0?' · 🎯 ≈ '+fmtEH(pot.eh)+' EH':'')});
+    });
+  });
+  zeilen.sort((a,b)=>(a.t-b.t)||a.z.localeCompare(b.z));
+  const pn=personNames(mm.name);
+  const lg=liegenAlle().filter(x=>pn.includes((x.z.name||'').trim().toLowerCase()));
+  return ['🗓 CENSA – deine Termine bis '+fmtDM(new Date(bis.getTime()-86400000))+(M?' (vor dem Wochengespräch am '+WG_TAGE[(M.getDay()+6)%7]+' '+fmtDM(M)+' '+calPad(M.getHours())+':'+calPad(M.getMinutes())+')':''),
+    zeilen.length?zeilen.map(x=>'• '+x.txt).join('\n'):'• keine Termine eingetragen',
+    lg.length?('\n🕰 Bitte dranbleiben – seit über 2 Wochen nichts passiert:\n'+lg.slice(0,12).map(x=>'• '+(x.d.name||x.d.org||'—')+' ('+x.d.stage+(x.tage>=0?', seit '+x.tage+' Tagen':'')+')').join('\n')+(lg.length>12?'\n… und '+(lg.length-12)+' weitere':'')):''].filter(Boolean).join('\n');
+}
+let __wgBusy=false;
+async function wgCheck(){ // automatisch: innerhalb von 24 Std VOR dem Wochengespräch, einmal je Gespräch
+  if(__wgBusy||MODE!=='db'||!isAdmin()||!tgToken()||!teamCol)return;
+  __wgBusy=true;
+  try{
+    const now=new Date();
+    for(const mm of TEAM){
+      if(!mm.tg)continue;
+      const M=wgNaechstes(mm,now);if(!M)continue;
+      const key=M.getFullYear()+'-'+calPad(M.getMonth()+1)+'-'+calPad(M.getDate());
+      if(mm.wgSent===key||M.getTime()-now.getTime()>24*3600000)continue;
+      if(await tgSend(mm.tg,wgText(mm,M))){mm.wgSent=key;try{await teamCol.doc(mm.id).update({wgSent:key});}catch(e){}
+        chatSys('🤖 Wochen-Erinnerung per Telegram an '+mm.name+' verschickt (Wochengespräch '+WG_TAGE[+mm.wgTag]+' '+mm.wgZeit+')');}
+    }
+  }catch(e){}
+  __wgBusy=false;
+}
 function zuordDirekt(d,role){
   const name=((role==='analyst'?d.analyst:d.berater)||'').trim();
+  tgTermin(d,role,name);
   const pm=dispoPending()[d.id+'|'+role]; // alte offene „bitte annehmen"-Aufgabe? → mitschließen, sonst bleibt der Termin in der Abend-Verteilung
   if(pm){if(chatCol){try{chatCol.doc(pm._id).update({needAck:false,ersetzt:name});}catch(e){}}pm.needAck=false;}
   const nm=d.name||d.org||'—';
@@ -3269,6 +3369,7 @@ function externCal(d,role){
     window.open(calGoogle(title,dt,det,loc,[d.email,mail,OFFICE_MAIL]),'_blank');
     toast('📅 Kalender-Tab geöffnet – auf „Speichern" klicken, dann bekommen '+name+' und der Kunde die Einladung');
   }
+  tgTermin(d,role,name);
   return true;
 }
 /* v18.11-C (Melanies Meldung 18.11.: „Termin steht doppelt/dreifach im Wochenplan"):
@@ -3766,7 +3867,7 @@ function teamPanel(){
   const ed=TM_EDIT?TEAM.find(x=>x.id===TM_EDIT):null;
   const rChk=['telefonist','analyst','berater','assistenz','admin'].map(x=>`<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:pointer"><input type="checkbox" class="tmR" value="${x}"${ed&&hasRole(ed,x)?' checked':(!ed&&x==='telefonist'?' checked':'')} style="width:14px;height:14px;accent-color:var(--brand)">${x.charAt(0).toUpperCase()+x.slice(1)}</label>`).join('');
   return `<div class="panel"><h3>Team &amp; Zugänge <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— jedes Mitglied meldet sich mit E-Mail + Passwort an und sieht nur die eigenen zugeteilten, freigegebenen Leads. Das Passwort legst du in der Firebase-Konsole an (Authentication → Users → Add user, gleiche E-Mail).</span></h3>
-    <div class="st-list">${TEAM.length?TEAM.map(mm=>`<div class="gl" style="cursor:default;flex-wrap:wrap${TM_EDIT===mm.id?';border-color:var(--brand)':''}"><span class="gn">${esc(mm.name)}</span><span class="ph">${esc(mm.rolle)}</span>${mm.fk?`<span class="tg">🧭 GP von ${esc(mm.fk)}</span>`:''}${mm.tg?'<span class="tg" style="background:var(--good);color:#fff">🤖 Telegram ✓</span>':''}<span class="ph">${esc(mm.email||'— keine E-Mail —')}</span><span class="ph tnum">${esc(mm.tel||'—')}</span>${mm.alias?`<span class="ph">alias: ${esc(mm.alias)}</span>`:''}${mm.tel?`<button class="mini-btn" data-waid="${esc(mm.id)}" title="Zugangsdaten per WhatsApp schicken – das Passwort wird abgefragt und nicht gespeichert">📲 Zugang senden</button>`:''}<button class="mini-btn" data-edid="${esc(mm.id)}">✏️ Bearbeiten</button><button class="mini-btn" data-rmid="${esc(mm.id)}" style="color:var(--bad)">Entfernen</button></div>`).join(''):'<div class="empty-col">Noch keine Zugänge – lege zuerst deinen eigenen Admin-Zugang an (mit deiner Anmelde-E-Mail).</div>'}</div>
+    <div class="st-list">${TEAM.length?TEAM.map(mm=>`<div class="gl" style="cursor:default;flex-wrap:wrap${TM_EDIT===mm.id?';border-color:var(--brand)':''}"><span class="gn">${esc(mm.name)}</span><span class="ph">${esc(mm.rolle)}</span>${mm.fk?`<span class="tg">🧭 GP von ${esc(mm.fk)}</span>`:''}${mm.tg?'<span class="tg" style="background:var(--good);color:#fff">🤖 Telegram ✓</span>':''}${(mm.wgTag!==undefined&&mm.wgTag!==''&&mm.wgTag!==null&&mm.wgZeit)?`<span class="tg" title="Wochengespräch – davor geht die Termin-Erinnerung per Telegram raus">🗓 ${WG_TAGE[+mm.wgTag]} ${esc(mm.wgZeit)}</span>`:''}<span class="ph">${esc(mm.email||'— keine E-Mail —')}</span><span class="ph tnum">${esc(mm.tel||'—')}</span>${mm.alias?`<span class="ph">alias: ${esc(mm.alias)}</span>`:''}${mm.tel?`<button class="mini-btn" data-waid="${esc(mm.id)}" title="Zugangsdaten per WhatsApp schicken – das Passwort wird abgefragt und nicht gespeichert">📲 Zugang senden</button>`:''}<button class="mini-btn" data-edid="${esc(mm.id)}">✏️ Bearbeiten</button><button class="mini-btn" data-rmid="${esc(mm.id)}" style="color:var(--bad)">Entfernen</button></div>`).join(''):'<div class="empty-col">Noch keine Zugänge – lege zuerst deinen eigenen Admin-Zugang an (mit deiner Anmelde-E-Mail).</div>'}</div>
     ${ed?`<div style="margin-top:10px;font-size:12.5px;font-weight:700;color:var(--brand-ink)">✏️ Du bearbeitest gerade: ${esc(ed.name)}</div>`:''}
     <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:8px;align-items:center">
       <input id="tmName" placeholder="Name" style="width:150px" value="${esc(ed?ed.name:'')}">
@@ -3775,12 +3876,17 @@ function teamPanel(){
       <input id="tmTel" placeholder="Handy (für WhatsApp-Info)" style="width:170px" value="${esc(ed?(ed.tel||''):'')}">
       <input id="tmAlias" placeholder="Auch bekannt als … (z. B. CEVIK M., kommagetrennt)" style="width:280px" title="Weitere Schreibweisen des Namens in den Lead-Daten" value="${esc(ed?(ed.alias||''):'')}">
       <select id="tmFk" style="width:230px" title="Direkte Führungskraft (Upline) – daraus ergibt sich, wer direkter und wer indirekter GP ist">${(()=>{const cur=ed?(ed.fk||''):'';let o=`<option value=""${!cur?' selected':''}>— direkte Führungskraft —</option>`;TEAM.filter(x=>!ed||x.id!==ed.id).map(x=>x.name).sort(COLL.compare).forEach(n=>o+=`<option${n===cur?' selected':''}>${esc(n)}</option>`);if(cur&&!TEAM.some(x=>x.name===cur))o+=`<option selected>${esc(cur)}</option>`;return o;})()}</select>
+      <span style="display:inline-flex;gap:5px;align-items:center" title="Wochengespräch mit Melanie: In den 24 Stunden davor bekommt die Person per Telegram ihre Termine der kommenden Woche">
+        <select id="tmWgTag" style="width:auto">${(()=>{const cur=(ed&&ed.wgTag!==undefined&&ed.wgTag!==null)?String(ed.wgTag):'';return '<option value="">🗓 Wochengespräch: —</option>'+WG_TAGE.map((t,i)=>`<option value="${i}"${cur===String(i)?' selected':''}>🗓 ${t}</option>`).join('');})()}</select>
+        <input id="tmWgZeit" type="time" style="width:112px" value="${esc(ed?(ed.wgZeit||''):'')}">
+      </span>
       <button class="btn${ed?' pri':''}" id="tmAdd">${ed?'💾 Änderungen speichern':'+ Zugang anlegen'}</button>
       ${ed?'<button class="btn" id="tmCancel">Abbrechen</button>':''}
       <button class="btn" id="tmMerge" title="Vereinheitlicht in ALLEN Kunden die Schreibweisen von Telefonist/Analyst/Berater auf die Team-Namen (nutzt Name + Aliase)">🧹 Schreibweisen zusammenführen</button>
       <a class="btn pri" href="https://console.firebase.google.com/project/censa-crm/authentication/users" target="_blank" rel="noopener" title="Hier legst du für neue Mitarbeiter E-Mail + Passwort an (Add user) und setzt Passwörter zurück">🔑 Mitarbeiter-Konten anlegen (Firebase)</a>
       <a class="btn" href="https://console.cloud.google.com/auth/audience?project=censa-crm" target="_blank" rel="noopener" title="PFLICHT für Kalender/Drive/Gmail: neue Mitarbeiter hier unter „Testnutzer" mit ihrer Gmail-Adresse eintragen – sonst kommt „Zugriff blockiert"">📅 Google-Testnutzer eintragen (Kalender/Drive/Gmail)</a>
       <button class="btn" id="tmTg" title="Für den automatischen Abend-Verteilungs-Versand: In Telegram @BotFather öffnen → /newbot → Namen vergeben → den Token hier einfügen (bleibt nur auf diesem Gerät)">🤖 Telegram-Bot ${tgToken()?'✓ (Token ändern)':'verbinden'}</button>
+      ${tgToken()?'<button class="btn" id="tmWgNow" title="Schickt JETZT allen mit Telegram ihre Termine der kommenden Woche (unabhängig vom Wochengespräch)">🗓 Wochen-Erinnerungen jetzt senden</button>':''}
       ${tgToken()?'<button class="btn" id="tmTgPull" title="Jedes Teammitglied schreibt dem Bot einmal /start – dann hier abholen und der Person zuordnen">🤖 Anmeldungen abholen &amp; zuordnen</button>':''}
     </div>
     ${(window.TG_PEND&&TG_PEND.length)?`<div class="ehgt" style="margin-top:10px">🤖 Telegram-Anmeldungen – Person zuordnen</div><div class="st-list">${TG_PEND.map((u,i)=>`<div class="gl" style="cursor:default;flex-wrap:wrap"><span class="gn">${esc(u.name)}</span><span class="ph">${u.user?'@'+esc(u.user):'—'}</span><select data-tgsel="${i}" style="width:auto"><option value="">Teammitglied…</option>${TEAM.map(x=>`<option${splitAliases(x).some(a=>(u.name||'').toLowerCase().indexOf(a.split(' ')[0])>=0)?' selected':''}>${esc(x.name)}</option>`).join('')}</select><button class="mini-btn" data-tgzu="${i}">✔ Zuordnen</button></div>`).join('')}</div>`:''}</div>`;
@@ -4034,6 +4140,7 @@ async function dispoZuteilen(){
         gcalInsert((feld==='analyst'?'Analyse: ':'Beratung: ')+(d.name||d.org||'Kunde'),dt,60,'Tel: '+(d.telefon||'-')+(d.briefing?' | '+d.briefing:''),[d.strasse,d.plz,d.ort].filter(Boolean).join(', '),[d.email,mail,OFFICE_MAIL]);
       }
       chatSys('🌙 Zugeteilt nach Zusage: '+(d.name||d.org||'—')+' → '+erg.zu[tid]+' ('+(feld==='analyst'?'Analyse':'Beratung')+')',d);
+      tgTermin(d,feld,erg.zu[tid]);
     }
     dbPersist(d);n++;
   }
@@ -4587,8 +4694,7 @@ function hatDatum(d){ // „Info auf ein Datum oder einen Zeitraum": Wiedervorla
   const kommt=x=>{const v=(x||'').trim();return !!v&&!!parseTermin(v)&&!terminVorbei(v);};
   return kommt(d.datumAG)||kommt(d.datumBG);
 }
-function liegenGeblieben(){ // nur für Admins: Kunden in Arbeit, ohne Datum, seit >14 Tagen unbearbeitet
-  if(!isAdmin())return [];
+function liegenAlle(){ // alle Kunden in Arbeit, ohne Datum, seit >14 Tagen unbearbeitet – mit dem, der dran ist
   const now=Date.now(),out=[];
   state.deals.forEach(d=>{
     if(d.status!=='open'||d.geprueft===false||(d.quelle||'')==='Recruiting')return;
@@ -4601,6 +4707,13 @@ function liegenGeblieben(){ // nur für Admins: Kunden in Arbeit, ohne Datum, se
   });
   out.sort((a,b)=>COLL.compare(a.z.name||'~',b.z.name||'~')||(b.tage-a.tage));
   return out;
+}
+function liegenGeblieben(){ // v19.11-G: Admin sieht ALLE, jede andere Person ihre eigenen (bei denen sie dran ist) – als Aufgabe, bis erledigt
+  const alle=liegenAlle();
+  if(isAdmin())return alle;
+  const me=chatName();if(!me)return [];
+  const pn=personNames(me);
+  return alle.filter(x=>pn.includes((x.z.name||'').trim().toLowerCase()));
 }
 function myLuecken(){ // für Aufgaben-Fenster + Kopf-Badge: Kunden mit Termin/Analyse, bei denen etwas fehlt
   const admin=isAdmin(),me=chatName(),my=me?personNames(me):[];
@@ -4714,8 +4827,6 @@ function openModal(id){
         </div>
         <div style="font-size:11px;color:var(--ink-3);margin-top:4px">Beide bleiben in EINEM Kunden („Familie") – Analysen, Termine und Auskünfte laufen gemeinsam.</div>
       </details>
-      <div class="fld full tb tb-tel tb-an"><label>Briefing für den Analysten <span style="font-weight:500;color:var(--ink-3)">— Branche, jung/alt, Alleinentscheider, was wurde besprochen</span></label><textarea id="m-brief" rows="2" placeholder="Branche, jung/alt, Alleinentscheider, was wurde besprochen">${esc(d.briefing||'')}</textarea></div>
-      <div class="fld full"><label>Notizen</label><textarea id="m-notiz" rows="3">${esc(d.notizen)}</textarea></div>
     </div>
     ${/* v19.11-D: Reihenfolge im Analyst-Reiter: 1. Analyst/Berater + Termine · 2. Analyse & Sprachnachricht · 3. Auskunftsvollmacht · 4. Potenzial */''}
     <div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--brand);border-radius:12px" id="m-analysesec" class="tb tb-an">
@@ -4746,6 +4857,10 @@ function openModal(id){
       <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Dateien werden über deinen Google-Zugang im Kunden-Ordner unter „CENSA Analysen" gespeichert – beim ersten Mal fragt Google einmal um Erlaubnis. Team-Mitglieder mit Rolle „Assistenz" können Berechnungen direkt in den Ordner legen; Analyst &amp; Berater sehen ihn automatisch in ihrem Drive unter „Für mich freigegeben".${isNew?' · 💾 Beim Abgeben wird der neue Kunde automatisch mit angelegt.':''}</div>
       </details>
     </div>
+    <div class="lnotes">
+      <div class="fld full tb tb-tel tb-an"><label>Briefing für den Analysten <span style="font-weight:500;color:var(--ink-3)">— Branche, jung/alt, Alleinentscheider, was wurde besprochen</span></label><textarea id="m-brief" rows="2" placeholder="Branche, jung/alt, Alleinentscheider, was wurde besprochen">${esc(d.briefing||'')}</textarea></div>
+      <div class="fld full"><label>Notizen</label><textarea id="m-notiz" rows="3">${esc(d.notizen)}</textarea></div>
+    </div>
     ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px" id="m-anstsec" class="tb tb-an">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">📧 Auskunftsvollmacht an Anstalten</div>
       <div id="ast-chips" style="display:flex;flex-wrap:wrap;gap:5px;margin:6px 0 5px"></div>
@@ -4774,6 +4889,9 @@ function openModal(id){
         <button type="button" class="mini-btn" data-q="bav">+ BAV §3</button>
         <input class="num" id="q-summe" type="number" placeholder="Zielsumme €" style="width:118px">
         <button type="button" class="mini-btn" data-q="gg">+ Golden Gates</button>
+      </div>
+      <div class="ehadd" style="margin-top:5px" title="Kurzformen mit Standard-Durchschnitt (Monatsprämie). Steht im Feld „€ / Monat" ein Betrag, wird DER genommen.">
+        ${Object.keys(POT_STD).map(k=>`<button type="button" class="mini-btn" data-q="${k}">+ ${POT_STD[k].n} <span style="font-weight:500;color:var(--ink-3)">${POT_STD[k].b} €</span></button>`).join('')}
       </div>
       <div id="eh-vorschlag"></div>
       <div id="eh-list-s" style="margin-top:7px"></div>
@@ -4818,7 +4936,10 @@ function openModal(id){
       ${!isNew?'<button class="btn del" id="m-del">Löschen</button>':''}
     </div>`;
   document.getElementById('ov').classList.add('show');
-  const setLT=(t,merken)=>{m.dataset.lt=t;if(merken)LEAD_TAB[d.id]=t;const ak=m.querySelector('#m-akte');if(ak)ak.open=(t==='tel');m.querySelectorAll('#m-ltabs [data-lt]').forEach(b=>b.classList.toggle('on',b.dataset.lt===t));};
+  // Briefing + Notizen zeigen immer den GANZEN Text (wachsen mit, bis 260 px – danach rollt nur das Feld)
+  const growTA=()=>m.querySelectorAll('#m-brief,#m-notiz').forEach(t=>{if(!t.getClientRects().length)return;t.style.height='auto';t.style.height=Math.min(Math.max(t.scrollHeight+2,46),260)+'px';});
+  m.querySelectorAll('#m-brief,#m-notiz').forEach(t=>t.addEventListener('input',growTA));
+  const setLT=(t,merken)=>{m.dataset.lt=t;if(merken)LEAD_TAB[d.id]=t;const ak=m.querySelector('#m-akte');if(ak)ak.open=(t==='tel');setTimeout(growTA,0);m.querySelectorAll('#m-ltabs [data-lt]').forEach(b=>b.classList.toggle('on',b.dataset.lt===t));};
   m.querySelectorAll('#m-ltabs [data-lt]').forEach(b=>b.addEventListener('click',()=>setLT(b.dataset.lt,true)));
   setLT(LEAD_TAB[d.id]||leadTabDefault(d,isNew)); // gemerkt wird nur ein selbst gewählter Reiter – sonst entscheidet die Phase
   const typ=m.querySelector('#m-typ');typ.addEventListener('change',()=>{const g=typ.value!=='GmbH';m.querySelector('#m-orgwrap').classList.toggle('hide',g);m.querySelector('#m-finwrap').classList.toggle('hide',g);});
@@ -5510,6 +5631,11 @@ function wireEH(m,d){
   const addS=it=>{it.ts=it.ts||new Date().toISOString();d.ehS.push(it);if(state.deals.includes(d))dbPersist(d);paintEH(m,d);toast('Schätzung hinzugefügt: '+fmtEH(calcEH(it))+' EH');};
   m.querySelectorAll('[data-q]').forEach(b=>b.addEventListener('click',()=>{
     const q=b.dataset.q;
+    if(POT_STD[q]){ // Kurzform: eingetragener Monatsbetrag, sonst Standard-Durchschnitt
+      const st=POT_STD[q],qb=m.querySelector('#q-betrag');
+      const v=parseFloat(qb.value)||st.b;
+      addS(Object.assign({k:st.k,betrag:v,zw:'m'},st.lz?{lz:st.lz}:{}));qb.value='';return;
+    }
     if(q==='gg'){
       const s=parseFloat(m.querySelector('#q-summe').value);
       if(!s){toast('Bitte Zielsumme eingeben');return;}
@@ -5818,7 +5944,7 @@ lsLoad();render();
         zuordUrgenz(); // 3-Std-Urgenz prüfen (Admin-Sitzungen, max. alle 15 Min)
         if(isAdmin())markDirty('steuerung'); // Zuordnungs-Status-Panel aktuell halten
         updateChatLog();updateTodoBadge();
-        if(!__todoShown){__todoShown=true;if(myAcksOpen().length)openTodo();}
+        if(!__todoShown){__todoShown=true;if(myAcksOpen().length||(!isAdmin()&&liegenGeblieben().length))openTodo();}
       },err=>{});
       wocheCol=fs.collection('woche');WOCHE_WK='';
       actCol=fs.collection('activity');
@@ -5837,6 +5963,7 @@ lsLoad();render();
         if(isAdmin())markDirty('steuerung');
       },err=>{});
       setTimeout(ehgAutoRemind,5000);
+      setTimeout(wgCheck,9000);if(!window.__wgTimer)window.__wgTimer=setInterval(wgCheck,300000);
       setTimeout(inboxImport,4000);
   setTimeout(slotsCleanup,7000); // Lead-Briefkasten (Routinen/Zahlen-Läufe) automatisch übernehmen
   setTimeout(gebietFill,15000); // Gebiete (Bundesland/Wien-Bezirk) für Bestandskunden ohne Bezirk nachtragen
