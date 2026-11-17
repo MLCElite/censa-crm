@@ -181,6 +181,8 @@
   .tg.od{background:var(--bad-bg);color:var(--bad)}
   .tg.lk-doc{background:var(--bad);color:var(--surface);font-weight:800}
   .tg.anh{background:var(--good-bg);color:var(--good)}
+  .tg.pot{background:var(--brand-bg);color:var(--brand-ink);font-weight:800}
+  .wpot{margin:-2px 0 10px;padding:9px 13px;border-radius:11px;background:var(--brand-bg);color:var(--brand-ink);font-size:13px}
   .anf{display:flex;align-items:center;gap:11px;padding:9px 12px;background:var(--surface);border:1.5px solid var(--line);border-radius:10px;text-decoration:none;color:var(--ink)}
   .anf:hover{border-color:var(--brand)}
   .anf-ic{font-size:24px;line-height:1}
@@ -455,7 +457,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="18.11-E";
+const APP_VERSION="18.11-F";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -776,6 +778,42 @@ function calcEH(it){const p=PRODMAP[it.k];if(!p)return 0;const b=parseFloat(it.b
  let j=b*(it.zw==='j'?1:12);if(p.tax4)j*=0.96;if(p.lz)j*=(parseFloat(it.lz)||p.lz);return j/p.div;}
 function ehAbschluss(d){return (d.ehA||[]).reduce((s,it)=>s+calcEH(it),0);}
 function fmtEH(x){return x.toFixed(1).replace('.',',');}
+/* v18.11-F (Melanies Ansage 18.11.): Potenzial-EH je Kunde – Grundlage für die Berater-Zuteilung und das EH-Ziel
+   des Analysten. Quelle: die EH-Schätzung im Kunden (⚡ Schnell-Schätzung); fehlt sie, die Potenzial-Spanne
+   „mtl. Min–Max" aus der Übergabe (Mittelwert, als Veranlagung 30 J lt. IVP-Tabelle gerechnet).
+   Das CRM kann die Sprachnachricht NICHT selbst verstehen – der Analyst trägt die Schätzung nach dem Upload ein. */
+function ehPotenzial(d){
+  const sch=((d&&d.ehS)||[]).reduce((x,it)=>x+calcEH(it),0);
+  if(sch>0)return {eh:sch,q:'s'};
+  const U=(d&&d.uebergabe)||{};const mn=parseFloat(U.potMinM)||0,mx=parseFloat(U.potMaxM)||0;
+  const m=(mn&&mx)?(mn+mx)/2:(mx||mn);
+  if(m>0)return {eh:calcEH({k:'lv_oebv',betrag:m,zw:'m',lz:30}),q:'u'};
+  return {eh:0,q:''};
+}
+function ehAnteil(d,person){ // Anteil der Person in % – wie im EH-Rechner: Berater 50, Analyst 50 (25 mit Telefonist), Telefonist 25 wenn beteiligt
+  const pn=personNames(person),hit=x=>pn.includes((x||'').trim().toLowerCase());
+  let a=0;if(hit(d.berater))a+=50;if(hit(d.analyst))a+=d.telBeteiligt?25:50;if(d.telBeteiligt&&hit(d.telefonist))a+=25;
+  return Math.min(100,a);
+}
+function potBadge(d){const p=ehPotenzial(d);return p.eh>0?'<span class="tg pot" title="Potenzial-Schätzung des Analysten'+(p.q==='u'?' (aus der Übergabe gerechnet)':'')+'">🎯 ≈ '+fmtEH(p.eh)+' EH</span>':'';}
+function wPotLine(e,person){ // Zeile im Wochenplan-Eintrag (nur BG)
+  const d=state.deals.find(x=>x.id===e.dealId);if(!d)return '';
+  const p=ehPotenzial(d);
+  if(!(p.eh>0))return '<div class="wsub" style="color:var(--warn);font-weight:700">🎯 Potenzial noch nicht geschätzt</div>';
+  const a=ehAnteil(d,person);
+  return '<div class="wsub" style="color:var(--brand-ink);font-weight:800;font-size:11.5px">🎯 Potenzial ≈ '+fmtEH(p.eh)+' EH'+((a>0&&a<100)?' · Anteil ≈ '+fmtEH(p.eh*a/100):'')+'</div>';
+}
+function wPotTage(list,person){ // je Wochentag: Potenzial-Anteil der Person aus ihren BG-Terminen (jeder Kunde 1×, ohne abgesagt/verschoben)
+  const tage=[0,0,0,0,0,0,0];const seen=new Set();let n=0,ges=0,offen=0;
+  list.forEach(e=>{
+    if(!e.auto||e.art!=='BG'||e.status==='cancelled'||e.status==='moved'||seen.has(e.dealId))return;
+    const d=state.deals.find(x=>x.id===e.dealId);if(!d)return;
+    seen.add(e.dealId);n++;
+    const p=ehPotenzial(d);
+    if(p.eh>0){ges+=p.eh;const a=p.eh*ehAnteil(d,person)/100;if(e.tag>=0&&e.tag<7)tage[e.tag]+=a;}else offen++;
+  });
+  return {tage:tage,ant:tage.reduce((x,y)=>x+y,0),ges:ges,n:n,offen:offen,ids:seen};
+}
 
 /* ---------- render ---------- */
 /* Tempo: es wird NUR die sichtbare Ansicht gebaut. Alle anderen merken sich per
@@ -843,7 +881,7 @@ function renderPipeline(){
 function leadCard(d){
   const eh=ehAbschluss(d);
   const od=isOverdue(d);
-  return `<div class="lead${od?' od':''}" data-id="${d.id}"><div class="n">${esc(d.name||d.org||'—')}</div><div class="meta">${badge(d.kundentyp)}${d.geprueft===false?'<span class="tg gpb">📥 Posteingang</span>':''}${od?`<span class="tg od">überfällig</span>`:''}${(d.gp&&isAdmin())?`<span class="tg gpb">GP?</span>`:''}${d.bezirk?`<span class="tg">${esc(d.bezirk)}</span>`:''}${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''}${eh>0?`<span class="tg" style="background:var(--brand-bg);color:var(--brand-ink)">${eh.toFixed(0)} EH</span>`:''}${anhangBadge(d)}${lueckenBadge(d)}</div>${d.telefon?`<div class="tel">${esc(d.telefon)}</div>`:''}</div>`;
+  return `<div class="lead${od?' od':''}" data-id="${d.id}"><div class="n">${esc(d.name||d.org||'—')}</div><div class="meta">${badge(d.kundentyp)}${d.geprueft===false?'<span class="tg gpb">📥 Posteingang</span>':''}${od?`<span class="tg od">überfällig</span>`:''}${(d.gp&&isAdmin())?`<span class="tg gpb">GP?</span>`:''}${d.bezirk?`<span class="tg">${esc(d.bezirk)}</span>`:''}${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''}${eh>0?`<span class="tg" style="background:var(--brand-bg);color:var(--brand-ink)">${eh.toFixed(0)} EH</span>`:potBadge(d)}${anhangBadge(d)}${lueckenBadge(d)}</div>${d.telefon?`<div class="tel">${esc(d.telefon)}</div>`:''}</div>`;
 }
 
 function listeDetailHtml(d){
@@ -2009,7 +2047,7 @@ function renderSteuerung(){
     return r(a)-r(b)||a.m.dt-b.m.dt;
   });
   const dRow=(x,role,names)=>{const d=x.d,mm=x.m,rot=!!(mm.urg||mm.neu);
-    return `<div class="gl" style="cursor:default;flex-wrap:wrap${rot?';border:1.5px solid var(--bad);background:var(--bad-bg,rgba(220,60,60,.08))':''}">${mm.urg?`<span class="tg" style="background:var(--bad);color:#fff;font-weight:800">🔴 ${mm.urg}</span>`:(mm.neu?`<span class="tg" style="background:var(--bad);color:#fff;font-weight:800">🆕 NEU</span>`:'')}<span class="gn" style="cursor:pointer" data-open="${d.id}">${esc(d.name||d.org||'—')}</span>${adrBadge(d)}<span class="ph tnum"${mm.urg?' style="color:var(--bad);font-weight:800"':''}>${esc((role==='analyst'?d.datumAG:d.datumBG)||d.wiedervorlage||'— Termin fehlt —')}</span><select data-dsel="${d.id}" style="width:150px;padding:5px 8px;font-size:12px"><option value="">wählen…</option>${names.map(n=>`<option>${esc(n)}</option>`).join('')}</select><button class="mini-btn" data-dispo="${d.id}" data-role="${role}">Zuordnen</button></div>`;};
+    return `<div class="gl" style="cursor:default;flex-wrap:wrap${rot?';border:1.5px solid var(--bad);background:var(--bad-bg,rgba(220,60,60,.08))':''}">${mm.urg?`<span class="tg" style="background:var(--bad);color:#fff;font-weight:800">🔴 ${mm.urg}</span>`:(mm.neu?`<span class="tg" style="background:var(--bad);color:#fff;font-weight:800">🆕 NEU</span>`:'')}<span class="gn" style="cursor:pointer" data-open="${d.id}">${esc(d.name||d.org||'—')}</span>${adrBadge(d)}${role==='berater'?(potBadge(d)||'<span class="tg" title="Der Analyst hat noch kein Potenzial geschätzt">🎯 offen</span>')+(((d.uebergabe||{}).prio==='hot')?'<span class="tg" style="background:var(--bad-bg);color:var(--bad);font-weight:800">🔴 heiß</span>':''):''}<span class="ph tnum"${mm.urg?' style="color:var(--bad);font-weight:800"':''}>${esc((role==='analyst'?d.datumAG:d.datumBG)||d.wiedervorlage||'— Termin fehlt —')}</span><select data-dsel="${d.id}" style="width:150px;padding:5px 8px;font-size:12px"><option value="">wählen…</option>${names.map(n=>`<option>${esc(n)}</option>`).join('')}</select><button class="mini-btn" data-dispo="${d.id}" data-role="${role}">Zuordnen</button></div>`;};
   const t0=todayStr();
   const proto={};
   state.deals.forEach(d=>(d.calls||[]).forEach(c=>{
@@ -3394,11 +3432,25 @@ function teamplanHtml(start,wk){
   const ist=(list,art)=>list.filter(e=>e.art===art&&e.status==='done').length;
   const tick=n=>n?('<span class="tick">'+'|'.repeat(Math.min(n,10))+(n>10?'+'+(n-10):'')+'</span>'):'';
   let rows='';
+  const ehZ=x=>x>0?fmtEH(x):'';
+  const gesTage=[0,0,0,0,0,0,0];const gesIds=new Set();let gesOffen=0;
   names.forEach(n=>{
     arts.forEach((a,i)=>{
-      rows+='<tr>'+(i===0?`<td class="tpn" rowspan="${arts.length}">${esc(n)}</td>`:'')+`<td class="tpa">${a}</td>`+
+      rows+='<tr>'+(i===0?`<td class="tpn" rowspan="${arts.length+1}">${esc(n)}</td>`:'')+`<td class="tpa">${a}</td>`+
         WDAYS.map((_,t)=>`<td>${tick(cnt(per[n],a,t))}</td>`).join('')+
         `<td class="tnum">${cnt(per[n],a)||''}</td><td class="tnum" style="color:var(--good);font-weight:700">${ist(per[n],a)||''}</td></tr>`;
+    });
+    // 🎯 Potenzial-EH (Anteil der Person) aus den BG-Terminen dieser Woche
+    const ps=wPotTage(per[n],n);
+    rows+=`<tr><td class="tpa" title="Potenzial-EH aus den Beratungen dieser Woche – Anteil der Person" style="color:var(--brand-ink);font-weight:800;white-space:nowrap">🎯 EH</td>`+
+      ps.tage.map(x=>`<td class="tnum" style="color:var(--brand-ink);font-weight:700">${ehZ(x)}</td>`).join('')+
+      `<td class="tnum" style="color:var(--brand-ink);font-weight:800">${ehZ(ps.ant)}</td><td class="tnum" style="color:var(--warn)" title="Beratungen ohne Potenzial-Schätzung">${ps.offen?ps.offen+' offen':''}</td></tr>`;
+    // Team-Gesamt: jeder Kunde nur 1× mit dem VOLLEN Potenzial
+    per[n].forEach(e=>{
+      if(!e.auto||e.art!=='BG'||e.status==='cancelled'||e.status==='moved'||gesIds.has(e.dealId))return;
+      const d=state.deals.find(x=>x.id===e.dealId);if(!d)return;
+      gesIds.add(e.dealId);const p=ehPotenzial(d);
+      if(p.eh>0){if(e.tag>=0&&e.tag<7)gesTage[e.tag]+=p.eh;}else gesOffen++;
     });
   });
   let ges='';
@@ -3407,8 +3459,11 @@ function teamplanHtml(start,wk){
       WDAYS.map((_,t)=>{const s=names.reduce((x,n)=>x+cnt(per[n],a,t),0);return `<td class="tpg tnum">${s||''}</td>`;}).join('')+
       `<td class="tpg tnum">${names.reduce((x,n)=>x+cnt(per[n],a),0)||''}</td><td class="tpg tnum">${names.reduce((x,n)=>x+ist(per[n],a),0)||''}</td></tr>`;
   });
+  ges=ges.replace('rowspan="'+arts.length+'">GESAMT','rowspan="'+(arts.length+1)+'">GESAMT');
+  ges+=`<tr><td class="tpa" style="color:var(--brand-ink);font-weight:800;white-space:nowrap" title="Volles Potenzial aller Beratungen dieser Woche – jeder Kunde 1×">🎯 EH</td>`+gesTage.map(x=>`<td class="tpg tnum" style="color:var(--brand-ink);font-weight:800">${ehZ(x)}</td>`).join('')+
+    `<td class="tpg tnum" style="color:var(--brand-ink);font-weight:800">${ehZ(gesTage.reduce((x,y)=>x+y,0))}</td><td class="tpg tnum" style="color:var(--warn)">${gesOffen?gesOffen+' offen':''}</td></tr>`;
   return `<div class="tablewrap"><table class="tplan"><thead><tr><th style="text-align:left">Name</th><th></th>${WDAYS.map((d2,t)=>{const dd=new Date(start.getTime()+t*86400000);return `<th>${d2} ${fmtDM(dd)}</th>`;}).join('')}<th>Plan</th><th>Ist</th></tr></thead><tbody>${rows}${ges}</tbody></table></div>
-  <div style="font-size:11px;color:var(--ink-3);margin-top:8px">Plan = eingetragene Termine der Woche · Ist = davon als durchgeführt ✔ bestätigt · Ein Strich je Termin am jeweiligen Tag · AG/BG automatisch aus dem CRM, MGT/EG/KG/TG aus den persönlichen Wochenplänen</div>`;
+  <div style="font-size:11px;color:var(--ink-3);margin-top:8px">Plan = eingetragene Termine der Woche · Ist = davon als durchgeführt ✔ bestätigt · Ein Strich je Termin am jeweiligen Tag · AG/BG automatisch aus dem CRM, MGT/EG/KG/TG aus den persönlichen Wochenplänen · 🎯 EH = Potenzial-Schätzung der Beratungen dieser Woche (je Person ihr Anteil, bei GESAMT das volle Potenzial je Kunde)</div>`;
 }
 async function renderWoche(){
   const host=document.getElementById('view-woche');if(!host)return;
@@ -3430,11 +3485,13 @@ async function renderWoche(){
     </div>
     ${(__wTeam&&admin)?`<h2 style="font-size:16px;margin:4px 0 10px">Teamwochenplan · KW ${isoWeek(start)}/${String(start.getFullYear()).slice(2)} · ${fmtDM(start)}–${fmtDM(end)} · Team ${esc(chatName())}</h2>`+teamplanHtml(start,wk):
     `<h2 style="font-size:16px;margin:4px 0 10px">Wochenplan ${esc(me)} · KW ${isoWeek(start)}/${String(start.getFullYear()).slice(2)}</h2>
+    ${(()=>{const ps=wPotTage(wEntriesFor(me,start,wk),me);if(!ps.n)return '';
+      return `<div class="wpot">🎯 <b>EH-Potenzial diese Woche:</b> ${ps.n} Beratung${ps.n===1?'':'en'} · gesamt ≈ <b>${fmtEH(ps.ges)} EH</b>${ps.ant>0?` · Anteil ${esc(me)} ≈ <b>${fmtEH(ps.ant)} EH</b>`:''}${ps.offen?` · <span style="color:var(--warn);font-weight:700">${ps.offen} noch ohne Schätzung</span>`:''}</div>`;})()}
     <div class="wgrid">${WDAYS.map((d2,t)=>{
       const dd=new Date(start.getTime()+t*86400000);
       const today=new Date();today.setHours(0,0,0,0);
       const ents=wEntriesFor(me,start,wk).filter(e=>e.tag===t);
-      return `<div class="wday${dd.getTime()===today.getTime()?' today':''}"><div class="wdh">${d2} ${fmtDM(dd)}</div>${ents.map((e,i2)=>`<div class="wentry" data-wi="${e.auto?('a:'+e.dealId+':'+e.art):('m:'+e._id)}"${e.mitschau?` style="${e.dabei===0?'opacity:.55;border:1.5px dashed var(--ink-3);background:var(--surface-2)':(e.dabei===1?'border:1.5px solid var(--good)':'border:1.5px solid var(--warn);background:rgba(230,160,30,.07)')}"`:''}><button class="wdel" data-wdel="${e.auto?'':e._id}" title="${e.auto?'Automatisch aus dem CRM-Termin':(e.gcal?'Aus deinem Google Kalender (Sync)':'Eintrag löschen')}">${e.auto?'🔗':(e.gcal?'📅':'×')}</button><span class="wart" style="background:${e.mitschau&&e.dabei===0?'var(--ink-3)':(WARTC[e.art]||'var(--ink-3)')}">${esc(e.art)}</span>${e.mitschau?`<span class="tg" style="background:${e.dabei===1?'var(--good)':(e.dabei===0?'var(--ink-3)':'var(--warn)')};color:#fff;font-weight:800">${e.dabei===1?'👀 dabei':(e.dabei===0?'ohne mich':'Dabei?')}</span>`:''}<b>${esc(e.zeit)}</b> ${esc(e.kunde)}${e.ort?`<div class="wsub">${esc(e.ort)}</div>`:''}${e.mitschau?`<div style="display:flex;gap:4px;margin-top:4px"><button class="mini-btn" data-wbg="1" style="${e.dabei===1?'background:var(--good);color:#fff;font-weight:800':''}">👍 dabei</button><button class="mini-btn" data-wbg="0" style="${e.dabei===0?'background:var(--ink-3);color:#fff;font-weight:800':''}">✗ ohne mich</button></div>`:''}${(e.gcal&&(e.art==='AG'||e.art==='BG'))?`<button class="mini-btn" data-wlead="1" title="Dieser Kunde ist noch nicht im CRM – mit einem Klick als Lead anlegen (${e.art}-Termin wird gleich eingetragen)" style="display:block;width:100%;margin-top:5px;border-color:var(--brand);color:var(--brand-ink);font-weight:800">➕ Lead anlegen</button>`:''}<div class="wsts">${[['done','✔','durchgeführt'],['moved','↗','verschoben'],['cancelled','✖','abgesagt']].map(([s,ic,tt])=>`<button class="wst${e.status===s?' on '+s:''}" data-ws="${s}" title="${tt}">${ic}</button>`).join('')}</div></div>`).join('')||'<div style="font-size:11px;color:var(--ink-3);text-align:center">—</div>'}</div>`;
+      return `<div class="wday${dd.getTime()===today.getTime()?' today':''}"><div class="wdh">${d2} ${fmtDM(dd)}</div>${ents.map((e,i2)=>`<div class="wentry" data-wi="${e.auto?('a:'+e.dealId+':'+e.art):('m:'+e._id)}"${e.mitschau?` style="${e.dabei===0?'opacity:.55;border:1.5px dashed var(--ink-3);background:var(--surface-2)':(e.dabei===1?'border:1.5px solid var(--good)':'border:1.5px solid var(--warn);background:rgba(230,160,30,.07)')}"`:''}><button class="wdel" data-wdel="${e.auto?'':e._id}" title="${e.auto?'Automatisch aus dem CRM-Termin':(e.gcal?'Aus deinem Google Kalender (Sync)':'Eintrag löschen')}">${e.auto?'🔗':(e.gcal?'📅':'×')}</button><span class="wart" style="background:${e.mitschau&&e.dabei===0?'var(--ink-3)':(WARTC[e.art]||'var(--ink-3)')}">${esc(e.art)}</span>${e.mitschau?`<span class="tg" style="background:${e.dabei===1?'var(--good)':(e.dabei===0?'var(--ink-3)':'var(--warn)')};color:#fff;font-weight:800">${e.dabei===1?'👀 dabei':(e.dabei===0?'ohne mich':'Dabei?')}</span>`:''}<b>${esc(e.zeit)}</b> ${esc(e.kunde)}${e.ort?`<div class="wsub">${esc(e.ort)}</div>`:''}${(e.auto&&e.art==='BG')?wPotLine(e,me):''}${e.mitschau?`<div style="display:flex;gap:4px;margin-top:4px"><button class="mini-btn" data-wbg="1" style="${e.dabei===1?'background:var(--good);color:#fff;font-weight:800':''}">👍 dabei</button><button class="mini-btn" data-wbg="0" style="${e.dabei===0?'background:var(--ink-3);color:#fff;font-weight:800':''}">✗ ohne mich</button></div>`:''}${(e.gcal&&(e.art==='AG'||e.art==='BG'))?`<button class="mini-btn" data-wlead="1" title="Dieser Kunde ist noch nicht im CRM – mit einem Klick als Lead anlegen (${e.art}-Termin wird gleich eingetragen)" style="display:block;width:100%;margin-top:5px;border-color:var(--brand);color:var(--brand-ink);font-weight:800">➕ Lead anlegen</button>`:''}<div class="wsts">${[['done','✔','durchgeführt'],['moved','↗','verschoben'],['cancelled','✖','abgesagt']].map(([s,ic,tt])=>`<button class="wst${e.status===s?' on '+s:''}" data-ws="${s}" title="${tt}">${ic}</button>`).join('')}</div></div>`).join('')||'<div style="font-size:11px;color:var(--ink-3);text-align:center">—</div>'}</div>`;
     }).join('')}</div>
     <div class="ehsec wnew" style="margin-top:14px"><div class="ehhead">＋ Eintrag hinzufügen <span class="ehtag">MGT, EG, KG, TG, Privat – AG/BG kommen automatisch aus den Terminen</span></div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
@@ -4355,6 +4412,7 @@ function leadLuecken(d){
     const st=analyseStand(d);
     if(!st.pdf)L.push({k:'pdf',t:'Analyse-PDF',doc:1});
     if(!st.sprach)L.push({k:'sprach',t:'Sprachnachricht',doc:1});
+    if(!(ehPotenzial(d).eh>0))L.push({k:'pot',t:'Potenzial-Schätzung'});
   }
   if(!(d.telefon||'').trim())L.push({k:'tel',t:'Telefon'});
   if(L.aktiv&&!(d.email||'').trim())L.push({k:'email',t:'E-Mail'});
@@ -4364,7 +4422,7 @@ function leadLuecken(d){
   L.doc=L.some(x=>x.doc);
   return L;
 }
-const LK_IC={pdf:'📄',sprach:'🎙',tel:'☎',email:'✉',adr:'📍',name:'👤',geb:'🎂'};
+const LK_IC={pot:'🎯',pdf:'📄',sprach:'🎙',tel:'☎',email:'✉',adr:'📍',name:'👤',geb:'🎂'};
 function lueckenBadge(d){ // Badge überall, wo gearbeitet wird (Pipeline-Karte, Liste, Telefon)
   const L=leadLuecken(d);if(!L.length)return '';
   const doc=L.filter(x=>x.doc),rest=L.filter(x=>!x.doc);
@@ -4477,7 +4535,7 @@ function openModal(id){
       <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">📤 Analyse abgeben <span style="font-weight:500;color:var(--ink-2);font-size:12px">– PDF/Fotos + Sprachnotiz landen direkt hier beim Kunden (statt in WhatsApp)</span></div>
       ${(()=>{if(isNew)return '';const st=analyseStand(d),erf=analyseErfolgt(d)&&leadNeu(d);
         const pill=(ok,ic,txt,extra)=>`<span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:800;padding:6px 13px;border-radius:20px;${ok?'background:var(--good-bg);color:var(--good)':(erf?'background:var(--bad);color:var(--surface)':'background:var(--surface-3);color:var(--ink-2)')}">${ic} ${txt} ${ok?'✓'+(extra||''):(erf?'FEHLT':'– noch offen')}</span>`;
-        return `<div style="display:flex;gap:7px;flex-wrap:wrap;margin:7px 0 9px">${pill(st.pdf,'📄','Analyse-PDF',st.docs?'':' (lt. Übergabe)')}${pill(st.sprach,'🎙','Sprachnachricht',st.sprachWie==='text'?' (schriftlich in der Übergabe)':st.sprachWie==='haken'?' (lt. Übergabe)':'')}</div>`;})()}
+        return `<div style="display:flex;gap:7px;flex-wrap:wrap;margin:7px 0 9px">${pill(st.pdf,'📄','Analyse-PDF',st.docs?'':' (lt. Übergabe)')}${pill(st.sprach,'🎙','Sprachnachricht',st.sprachWie==='text'?' (schriftlich in der Übergabe)':st.sprachWie==='haken'?' (lt. Übergabe)':'')}${(()=>{const pt=ehPotenzial(d);return pill(pt.eh>0,'🎯','Potenzial'+(pt.eh>0?' ≈ '+fmtEH(pt.eh)+' EH':''),pt.q==='u'?' (aus Übergabe)':'');})()}</div>`;})()}
       ${(d.analyse&&d.analyse.length)?`<div style="font-size:14px;font-weight:800;margin:4px 0 6px">📎 ${d.analyse.length} ${d.analyse.length===1?'Datei':'Dateien'} angehängt</div><div style="margin:0 0 9px;display:flex;flex-direction:column;gap:6px">${(()=>{
         const ords=[];(d.analyse||[]).forEach(a=>{if(a.ordner&&!ords.some(o=>o.url===a.ordner))ords.push({url:a.ordner,von:a.von||''});});
         return ords.map(o=>`<a class="anf" href="${esc(o.url)}" target="_blank" rel="noopener"><span class="anf-ic">📂</span><span class="anf-t"><b>Kunden-Ordner im Drive${o.von?' von '+esc(o.von):''}</b><small>zum Teilen einfach diesen Link weitergeben</small></span></a>`).join('');
@@ -4632,7 +4690,7 @@ function openModal(id){
   const persist=()=>{histDiff();if(isNew&&!state.deals.includes(d))state.deals.unshift(d);dbPersist(d);render();};
   const callMeta=()=>{const dur=m.querySelector('#m-dur'),no=m.querySelector('#m-cnote');const o={};if(dur&&dur.value)o.dur=parseFloat(dur.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
   m.querySelectorAll('[data-lk]').forEach(b=>b.addEventListener('click',()=>{
-    const id=({tel:'m-tel',email:'m-email',adr:'m-str',name:'m-name',geb:'m-geb',pdf:'m-analysesec',sprach:'m-analysesec'})[b.dataset.lk];
+    const id=({tel:'m-tel',email:'m-email',adr:'m-str',name:'m-name',geb:'m-geb',pdf:'m-analysesec',sprach:'m-analysesec',pot:'q-betrag'})[b.dataset.lk];
     const el=id?m.querySelector('#'+id):null;if(!el)return;
     let p=el.parentElement;while(p&&p!==m){if(p.tagName==='DETAILS')p.open=true;p=p.parentElement;}
     el.scrollIntoView({block:'center',behavior:'smooth'});
@@ -4778,6 +4836,12 @@ function openModal(id){
         selFiles.length=0;recBlob=null; // erfolgreich abgegeben -> nichts „Offenes" mehr im Formular
         openModal(d.id); // Fenster bleibt offen und zeigt sofort die neuen Anlagen (Melanies Ansage 31.10.)
         const sec2=document.getElementById('m-analysesec');if(sec2)sec2.scrollIntoView({block:'center'});
+        // 🎯 Sprachnachricht da, aber noch keine Potenzial-Schätzung → direkt zum EH-Rechner führen (v18.11-F)
+        if(neu.some(x=>x.typ==='audio')&&!(ehPotenzial(d).eh>0)){
+          const qb=document.getElementById('q-betrag');
+          if(qb){const grp=qb.closest('.ehgrp');if(grp){grp.style.outline='2.5px solid var(--warn)';grp.style.outlineOffset='4px';grp.style.borderRadius='10px';}
+            setTimeout(()=>{qb.scrollIntoView({block:'center',behavior:'smooth'});toast('🎯 Sprachnachricht gespeichert – bitte jetzt kurz das Potenzial schätzen: „Sparen €/Monat" oder „Zielsumme" eintragen');},1400);}
+        }
       }catch(err){
         const msg=err&&err.message?err.message:'Speichern fehlgeschlagen – bitte noch einmal versuchen';
         toast('❌ '+msg);
