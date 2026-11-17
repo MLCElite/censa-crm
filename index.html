@@ -184,6 +184,81 @@
   .tg.pot{background:var(--brand-bg);color:var(--brand-ink);font-weight:800}
   /* v19.11-B: Reiter im Kunden-Fenster (Telefonist · Analyst · Berater) */
   .ltabs{display:flex;gap:4px;background:var(--surface-3);padding:4px;border-radius:13px;margin:0 0 13px;overflow-x:auto;scrollbar-width:none}
+  .lmore{margin-top:6px}
+  .lmore>summary{cursor:pointer;font-size:11.5px;color:var(--ink-3);list-style:none}
+  .lmore>summary::-webkit-details-marker{display:none}
+  .lbody>*{margin-bottom:12px}
+  /* ===== v19.11-C: Kunden-Fenster passt am Laptop/PC auf EINE Seite – breites Fenster, Inhalt in Spalten, kompakte Abstände ===== */
+  @media (min-width:761px){
+    .ov:has(#m-ltabs){padding:12px 12px}
+    #modal:has(#m-ltabs){max-width:min(1500px,98vw);padding:14px 18px 12px}
+    #modal:has(#m-ltabs) h2{font-size:17px;margin:0}
+    #modal:has(#m-ltabs) h2 #m-save-top{padding:6px 14px!important;font-size:13px!important}
+    #modal:has(#m-ltabs) .sub{margin:0 0 8px;font-size:12px}
+    #modal:has(#m-ltabs) .lhead{display:flex;gap:12px;align-items:center;margin:0 0 10px}
+    #modal:has(#m-ltabs) .lhead .ltabs{order:1;margin:0;flex:0 0 auto}
+    #modal:has(#m-ltabs) .lhead .ltabs button{flex:0 0 auto;padding:7px 14px}
+    #modal:has(#m-ltabs) .lhead .stgs{order:2;margin:0 0 0 auto;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+    #modal:has(#m-ltabs) #m-luecken{margin-bottom:9px!important;padding:6px 11px!important}
+    #modal:has(#m-ltabs) .lbody{column-count:3;column-gap:14px}
+    #modal:has(#m-ltabs) .lbody>*{break-inside:avoid;margin:0 0 10px!important}
+    #modal:has(#m-ltabs) .lbody .grid2{gap:7px 9px}
+    #modal:has(#m-ltabs) .fld{margin-bottom:0;gap:3px}
+    #modal:has(#m-ltabs) .fld label{font-size:10.5px}
+    #modal:has(#m-ltabs) .lbody input,#modal:has(#m-ltabs) .lbody select,#modal:has(#m-ltabs) .lbody textarea{padding:6px 9px;font-size:13px;border-radius:8px}
+    #modal:has(#m-ltabs) .lbody textarea{min-height:0}
+    #modal:has(#m-ltabs) details.sec>summary{padding:7px 11px}
+    #modal:has(#m-ltabs) .callbar{padding:9px 11px;margin:0 0 10px}
+    #modal:has(#m-ltabs) .callbar .top{margin-bottom:7px}
+    #modal:has(#m-ltabs) .lbody>[id^="m-"]:not(.grid2){padding:9px 11px!important}
+    #modal:has(#m-ltabs) .ehsec{padding:9px 11px}
+    #modal:has(#m-ltabs) .lbody .btn{padding:6px 11px;font-size:12.5px}
+    #modal:has(#m-ltabs) #ast-owa,#modal:has(#m-ltabs) #ast-mailto{padding:8px 12px!important;font-size:13px!important}
+    #modal:has(#m-ltabs) .gptoggle{padding:5px 9px;font-size:12.5px}
+    #modal:has(#m-ltabs) .anf{padding:6px 10px}
+    #modal:has(#m-ltabs) .anf-ic{font-size:19px}
+    #modal:has(#m-ltabs) #m-akte>div:last-child{max-height:170px!important}
+    #modal:has(#m-ltabs) .modal-foot{margin-top:2px}
+    /* Platz sparen: Erklärtexte neben Überschriften und Feldnamen ausblenden, Datei-Zeilen einzeilig, kleinere Status-Felder */
+    #modal:has(#m-ltabs) .lbody>[id^="m-"]>div:first-child>span{display:none}
+    #modal:has(#m-ltabs) .lbody .fld label span{display:none}
+    #modal:has(#m-ltabs) details.sec>.inner2+div[style*="font-size:11px"]{display:none}
+    #modal:has(#m-ltabs) #m-analysesec span[style*="border-radius:20px"]{font-size:11.5px!important;padding:3px 9px!important}
+    #modal:has(#m-ltabs) #m-analysesec>div[style*="font-size:14px"]{font-size:12px!important;margin:2px 0 4px!important}
+    #modal:has(#m-ltabs) #m-analysesec>div[style*="margin:7px 0 9px"]{margin:5px 0 6px!important;gap:5px!important}
+    #modal:has(#m-ltabs) .anf{padding:4px 9px;gap:8px}
+    #modal:has(#m-ltabs) .anf-ic{font-size:15px}
+    #modal:has(#m-ltabs) .anf-t{flex-direction:row;flex-wrap:nowrap;align-items:baseline;gap:8px;overflow:hidden}
+    #modal:has(#m-ltabs) .anf-t b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;min-width:40%}
+    #modal:has(#m-ltabs) .anf-t small{white-space:nowrap;flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis}
+    #modal:has(#m-ltabs) #m-analysesec>div[style*="flex-direction:column"]{gap:3px!important;margin-bottom:6px!important}
+    #modal:has(#m-ltabs) #m-analysesec .btn{padding:5px 8px;font-size:12px;gap:4px}
+    #modal:has(#m-ltabs) #ast-hints{max-height:54px;overflow-y:auto}
+    #modal:has(#m-ltabs) #m-akte>summary>span{display:none}
+    #modal:has(#m-ltabs) #m-analysesec>div[style*="font-size:14px"]{display:none}
+    #modal:has(#m-ltabs) #eh-tot-s{font-size:12px!important}
+    #modal:has(#m-ltabs) #eh-tot-s span{white-space:nowrap}
+    #modal:has(#m-ltabs) .lbody textarea{height:50px}
+    #modal:has(#m-ltabs) #m-analysesec>div:has(>#an-pick){display:grid!important;grid-template-columns:1fr 1fr;gap:5px!important}
+    #modal:has(#m-ltabs) #m-analysesec>div:has(>#an-pick) .btn{justify-content:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-size:10.8px;padding:5px 3px;gap:3px;letter-spacing:-.1px}
+    #modal:has(#m-ltabs) #m-potsec .ehadd{gap:5px}
+    #modal:has(#m-ltabs) #m-potsec #q-betrag{width:82px!important}
+    #modal:has(#m-ltabs) #m-potsec #q-summe{width:98px!important}
+    #modal:has(#m-ltabs) #m-potsec .mini-btn{padding:5px 7px;font-size:11px}
+    #modal:has(#m-ltabs) .ehrow .nm{min-width:0}
+    #modal:has(#m-ltabs) .anf-t b{font-size:12.5px}
+    #modal:has(#m-ltabs) .anf-t small{font-size:10.5px}
+    #modal:has(#m-ltabs) #ast-office{padding:5px 9px!important;margin:4px 0!important}
+    #modal:has(#m-ltabs) #ast-office span[style*="ink-3"]{display:none}
+    #modal:has(#m-ltabs) #ast-hints{font-size:11.5px!important}
+    #modal:has(#m-ltabs) #ast-hints>div{padding:0!important}
+    #modal:has(#m-ltabs) .lmore{margin-top:3px}
+    #modal:has(#m-ltabs) .ehrow{padding:4px 8px;margin-bottom:3px}
+    #modal:has(#m-ltabs) .modal-foot .btn{padding:7px 13px}
+  }
+  @media (min-width:761px) and (max-width:1099px){#modal:has(#m-ltabs) .lbody{column-count:2}}
+  @media (min-width:761px) and (max-width:1299px){.ov:has(#m-ltabs){padding:6px 8px}#modal:has(#m-ltabs){padding:11px 14px 9px}}
+  @media (min-width:1300px){#modal:has(#m-ltabs) .lbody{column-count:4}}
   .ltabs::-webkit-scrollbar{display:none}
   .ltabs button{flex:1 0 auto;border:0;background:transparent;color:var(--ink-2);font-size:13px;font-weight:700;padding:9px 12px;border-radius:10px;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:6px}
   .ltabs button.on{background:var(--brand);color:#fff;box-shadow:0 3px 10px rgba(12,128,109,.3)}
@@ -465,7 +540,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-B";
+const APP_VERSION="19.11-C";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -4509,6 +4584,17 @@ function openModal(id){
   m.innerHTML=`
     <h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${isNew?'Neuer Lead':esc(d.name||d.org||'Lead')}<button class="btn pri" id="m-save-top" style="margin-left:auto;padding:8px 18px;font-size:13.5px">💾 Speichern</button></h2>
     <div class="sub">${isNew?'Datensatz anlegen':'Status: '+(d.status==='won'?'Gewonnen':d.status==='lost'?'Verloren ('+esc(d.lostReason||'')+')':esc(d.stage))}</div>
+    ${(!isNew&&isAdmin()&&d.geprueft===false)?`<div style="background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 13px;margin-bottom:13px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b>📥 Posteingang</b> – für das Team noch unsichtbar.<button class="btn" id="m-frei" style="padding:6px 12px;font-size:12.5px">✓ Prüfen &amp; freigeben</button></div>`:''}
+    ${(!isNew&&isAdmin()&&(d.mergeUndo||[]).length)?`<div style="background:var(--surface-2);border:1.5px solid var(--line);border-radius:10px;padding:10px 13px;margin-bottom:13px;font-size:12.5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>🔗 Hier wurden Kunden zusammengeführt (${fmtD(d.mergeUndo[d.mergeUndo.length-1].ts)}: ${esc((d.mergeUndo[d.mergeUndo.length-1].rest||[]).map(o=>o.name||o.org||'—').join(', ').slice(0,120))})</span><button class="btn" id="m-undoMerge" style="padding:6px 12px;font-size:12.5px;margin-left:auto">↩ Rückgängig – wieder trennen</button></div>`:''}
+    ${(()=>{if(isNew)return '';const L=leadLuecken(d);if(!L.length)return '';
+      return `<div id="m-luecken" style="background:var(--bad-bg);border:1.5px solid var(--bad);border-radius:10px;padding:10px 13px;margin-bottom:13px;font-size:13px;display:flex;align-items:center;gap:7px;flex-wrap:wrap"><b style="color:var(--bad)">⚠ Hier fehlt noch:</b>${L.map(x=>`<button type="button" class="mini-btn" data-lk="${x.k}" style="border-color:var(--bad);color:var(--bad);font-size:12.5px">${LK_IC[x.k]} ${x.t}</button>`).join('')}<span style="color:var(--ink-3);font-size:11.5px">– antippen springt zur Stelle</span></div>`;})()}
+    <div class="lhead">
+    <div class="stgs" id="m-stagepick">${(()=>{const SHORT=['Neu','Bearbeitung','AG terminiert','Analyse & Doku','BG terminiert','Beratung'];const cur=STAGES.indexOf(d.stage);return STAGES.map((s,i)=>`<button type="button" class="stg${i===cur?' on':(cur>=0&&i<cur?' done':'')}" data-s="${esc(s)}" title="${esc(s)}"><i>${(cur>=0&&i<cur)?'✓':(i+1)}</i>${SHORT[i]}</button>`).join('');})()}</div>
+    ${(()=>{const L=isNew?[]:leadLuecken(d);const n=ks=>L.filter(x=>ks.includes(x.k)).length;
+      const tab=(k,ic,t,c)=>`<button type="button" data-lt="${k}">${ic} ${t}${c?`<span class="ltn" title="${c} Angabe${c===1?'':'n'} fehlt${c===1?'':'en'} hier">${c}</span>`:''}</button>`;
+      return `<div class="ltabs" id="m-ltabs">${tab('tel','☎','Telefonist',n(['tel','email','adr','name']))}${tab('an','📊','Analyst',n(['pdf','sprach','pot','geb']))}${tab('be','🤝','Berater',0)}</div>`;})()}
+    </div>
+    <div class="lbody">
     ${!isNew?`<div class="callbar tb tb-tel"><div class="top"><span>☎ Anrufe gesamt: </span><span class="num">${(d.calls||[]).length}</span>${naInfo(d)}${d.telefon?`<a class="btn pri" style="margin-left:auto;padding:7px 13px" href="tel:${esc((d.telefon||'').replace(/[^+\d]/g,''))}" id="m-call">☎ Anrufen</a>`:''}</div>
       <div style="display:flex;gap:7px;margin-bottom:9px;flex-wrap:wrap"><input id="m-dur" type="number" min="0" placeholder="Dauer (Min.)" style="width:110px;padding:7px 9px;font-size:12.5px"><input id="m-cnote" placeholder="Kurze Zusammenfassung des Gesprächs…" style="flex:1;min-width:180px;padding:7px 9px;font-size:12.5px"></div>
       <div class="obtns">
@@ -4516,14 +4602,6 @@ function openModal(id){
       <button class="ob rueckruf" data-o="rueckruf"><span class="d"></span>Rückruf</button>
       <button class="ob nichts" data-o="nichterreicht"><span class="d"></span>n.a. – nicht abgehoben</button>
       <button class="ob weg" data-o="keininteresse"><span class="d"></span>Kein Interesse</button></div></div>`:''}
-    ${(!isNew&&isAdmin()&&d.geprueft===false)?`<div style="background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 13px;margin-bottom:13px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b>📥 Posteingang</b> – für das Team noch unsichtbar.<button class="btn" id="m-frei" style="padding:6px 12px;font-size:12.5px">✓ Prüfen &amp; freigeben</button></div>`:''}
-    ${(!isNew&&isAdmin()&&(d.mergeUndo||[]).length)?`<div style="background:var(--surface-2);border:1.5px solid var(--line);border-radius:10px;padding:10px 13px;margin-bottom:13px;font-size:12.5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>🔗 Hier wurden Kunden zusammengeführt (${fmtD(d.mergeUndo[d.mergeUndo.length-1].ts)}: ${esc((d.mergeUndo[d.mergeUndo.length-1].rest||[]).map(o=>o.name||o.org||'—').join(', ').slice(0,120))})</span><button class="btn" id="m-undoMerge" style="padding:6px 12px;font-size:12.5px;margin-left:auto">↩ Rückgängig – wieder trennen</button></div>`:''}
-    ${(()=>{if(isNew)return '';const L=leadLuecken(d);if(!L.length)return '';
-      return `<div id="m-luecken" style="background:var(--bad-bg);border:1.5px solid var(--bad);border-radius:10px;padding:10px 13px;margin-bottom:13px;font-size:13px;display:flex;align-items:center;gap:7px;flex-wrap:wrap"><b style="color:var(--bad)">⚠ Hier fehlt noch:</b>${L.map(x=>`<button type="button" class="mini-btn" data-lk="${x.k}" style="border-color:var(--bad);color:var(--bad);font-size:12.5px">${LK_IC[x.k]} ${x.t}</button>`).join('')}<span style="color:var(--ink-3);font-size:11.5px">– antippen springt zur Stelle</span></div>`;})()}
-    <div class="stgs" id="m-stagepick">${(()=>{const SHORT=['Neu','Bearbeitung','AG terminiert','Analyse & Doku','BG terminiert','Beratung'];const cur=STAGES.indexOf(d.stage);return STAGES.map((s,i)=>`<button type="button" class="stg${i===cur?' on':(cur>=0&&i<cur?' done':'')}" data-s="${esc(s)}" title="${esc(s)}"><i>${(cur>=0&&i<cur)?'✓':(i+1)}</i>${SHORT[i]}</button>`).join('');})()}</div>
-    ${(()=>{const L=isNew?[]:leadLuecken(d);const n=ks=>L.filter(x=>ks.includes(x.k)).length;
-      const tab=(k,ic,t,c)=>`<button type="button" data-lt="${k}">${ic} ${t}${c?`<span class="ltn" title="${c} Angabe${c===1?'':'n'} fehlt${c===1?'':'en'} hier">${c}</span>`:''}</button>`;
-      return `<div class="ltabs" id="m-ltabs">${tab('tel','☎','Telefonist',n(['tel','email','adr','name']))}${tab('an','📊','Analyst',n(['pdf','sprach','pot','geb']))}${tab('be','🤝','Berater',0)}</div>`;})()}
     ${/* v19.11-A: im Analyst-Reiter stehen „Analyse abgeben" + „Potenzial schätzen" GANZ OBEN – kein langes Scrollen mehr */''}
     <div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--brand);border-radius:12px" id="m-analysesec" class="tb tb-an">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">📤 Analyse abgeben <span style="font-weight:500;color:var(--ink-2);font-size:12px">– PDF/Fotos + Sprachnotiz landen direkt hier beim Kunden (statt in WhatsApp)</span></div>
@@ -4544,12 +4622,14 @@ function openModal(id){
         <button type="button" class="btn" id="an-audiobtn" title="Schon aufgenommene Sprachnachricht vom Handy auswählen (WhatsApp, Sprachmemos, Diktiergerät …)">🎵 Sprachnachricht hochladen</button>
       </div>
       <div id="an-state"></div>
-      <div style="font-size:11.5px;color:var(--ink-2);margin-top:6px">🎵 <b>Sprachnachricht schon am Handy?</b> In WhatsApp oder Sprachmemos auf „Teilen → In Dateien sichern", dann hier „Sprachnachricht hochladen" antippen und die Datei auswählen.</div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:7px">
         <input id="an-note" placeholder="Kurznotiz zur Übergabe (optional)" style="flex:1;min-width:170px;padding:8px 10px;font-size:12.5px">
         <button type="button" class="btn pri" id="an-send">📤 Abgeben</button>
       </div>
+      <details class="lmore"><summary>ⓘ Hilfe: Sprachnachricht vom Handy, Speicherort</summary>
+      <div style="font-size:11.5px;color:var(--ink-2);margin-top:6px">🎵 <b>Sprachnachricht schon am Handy?</b> In WhatsApp oder Sprachmemos auf „Teilen → In Dateien sichern", dann hier „Sprachnachricht hochladen" antippen und die Datei auswählen.</div>
       <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Dateien werden über deinen Google-Zugang im Kunden-Ordner unter „CENSA Analysen" gespeichert – beim ersten Mal fragt Google einmal um Erlaubnis. Team-Mitglieder mit Rolle „Assistenz" können Berechnungen direkt in den Ordner legen; Analyst &amp; Berater sehen ihn automatisch in ihrem Drive unter „Für mich freigegeben".${isNew?' · 💾 Beim Abgeben wird der neue Kunde automatisch mit angelegt.':''}</div>
+      </details>
     </div>
     <div class="tb tb-an" id="m-potsec" style="margin:2px 0 12px;padding:11px 13px;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:7px">🎯 Potenzial schätzen <span style="font-weight:500;color:var(--ink-2);font-size:12px">– Sparbetrag oder Zielsumme eintragen, das CRM rechnet das EH-Ziel</span></div>
@@ -4604,6 +4684,8 @@ function openModal(id){
         </div>
         <div style="padding:0 13px 11px;font-size:11.5px;font-weight:700;color:var(--brand-ink)" id="m-bezview">${d.bezirk?'· '+esc(d.bezirk):''}</div>
       </details>
+    </div>
+    <div class="grid2">
       ${(()=>{const roleSel=(id2,label,cur,role,cls)=>`<div class="fld tb ${cls}"><label>${label}</label><select id="${id2}">${roleDropdown(role,cur)}</select></div>`;
       const mgtSel=(id2,label,cur,cls)=>{const names=TEAM.map(x=>x.name).sort(COLL.compare);let o=`<option value=""${!cur?' selected':''}>— niemand —</option>`+names.map(n=>`<option${n===cur?' selected':''}>${esc(n)}</option>`).join('');if(cur&&!names.includes(cur))o+=`<option selected>${esc(cur)}</option>`;return `<div class="fld tb ${cls}"><label>${label}</label><select id="${id2}">${o}</select></div>`;};
       return roleSel('m-telf','Telefonist',d.telefonist||'','telefonist','tb-tel')+roleSel('m-an','Analyst',d.analyst||'','analyst','tb-tel tb-an')+roleSel('m-be','Berater',d.berater||'','berater','tb-an tb-be')
@@ -4612,14 +4694,14 @@ function openModal(id){
       <div class="fld tb tb-tel"><label>Wiedervorlage</label><input type="date" id="m-wv" value="${esc(d.wiedervorlage)}"></div>
       <div class="fld tb tb-tel tb-an"><label>Analysetermin (AG)</label><input id="m-dag" value="${esc(d.datumAG||'')}" placeholder="z. B. 22.09. 14:00"></div>
       <div class="fld tb tb-an tb-be"><label>Beratungstermin (BG)</label><input id="m-dbg" value="${esc(d.datumBG||'')}" placeholder="z. B. 25.09. 10:00"></div>
-      <div class="fld full tb tb-an tb-be"><label>Termin verschoben? <span style="font-weight:500;color:var(--ink-3);text-transform:none">— setzt den Termin auf „verschoben": einfach neu terminisieren, zuordnen &amp; bestätigen – Kunde und Analyst/Berater bekommen den neuen Termin automatisch per Kalender-Einladung</span></label>
+      <div class="fld full tb tb-an tb-be"><label title="Setzt den Termin auf „verschoben": einfach neu terminisieren, zuordnen und bestätigen – Kunde und Analyst/Berater bekommen den neuen Termin automatisch per Kalender-Einladung">Termin verschoben? <span style="font-weight:500;color:var(--ink-3);text-transform:none">— danach neu terminisieren</span></label>
         <div style="display:flex;gap:7px;flex-wrap:wrap">
           <button type="button" class="mini-btn" id="cal-ag-x" style="color:var(--bad)">❗ AG abgesagt / verschoben</button>
           <button type="button" class="mini-btn" id="cal-bg-x" style="color:var(--bad)">❗ BG abgesagt / verschoben</button>
         </div>
       </div>
       ${isAdmin()?`<div class="fld tb tb-tel"><label>Potenzieller Geschäftspartner? <span style="color:var(--ink-3);font-weight:500;text-transform:none">(nur für Admins sichtbar)</span></label><label class="gptoggle"><input type="checkbox" id="m-gp" ${d.gp?'checked':''}> Ja – fürs Recruiting vormerken</label></div>`:''}
-      <div class="fld full tb tb-tel tb-an"><label>Briefing für den Analysten <span style="font-weight:500;color:var(--ink-3)">— Branche, jung/alt, Alleinentscheider, was wurde besprochen</span></label><textarea id="m-brief" rows="2">${esc(d.briefing||'')}</textarea></div>
+      <div class="fld full tb tb-tel tb-an"><label>Briefing für den Analysten <span style="font-weight:500;color:var(--ink-3)">— Branche, jung/alt, Alleinentscheider, was wurde besprochen</span></label><textarea id="m-brief" rows="2" placeholder="Branche, jung/alt, Alleinentscheider, was wurde besprochen">${esc(d.briefing||'')}</textarea></div>
       <div class="fld full"><label>Notizen</label><textarea id="m-notiz" rows="3">${esc(d.notizen)}</textarea></div>
     </div>
     ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px" id="m-anstsec" class="tb tb-an">
@@ -4634,7 +4716,7 @@ function openModal(id){
       <div id="ast-office" style="font-size:12.5px;margin:6px 0;padding:8px 11px;border-radius:9px;background:var(--surface);border:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap"></div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:8px">
         <button type="button" class="btn pri" id="ast-owa" style="font-size:14px;padding:11px 16px" title="Öffnet Outlook mit fertigem Entwurf und kopiert alle Adressen fürs Bcc-Feld">🌐 Mail in Outlook vorbereiten</button>
-        <button type="button" class="btn" id="ast-mailto" style="font-size:14px;padding:11px 16px" title="Öffnet die Mail-App dieses Geräts – Bcc, Betreff und Text sind ausgefüllt">📱 Mail-App (Bcc wird ausgefüllt)</button>
+        <button type="button" class="btn" id="ast-mailto" style="font-size:14px;padding:11px 16px" title="Öffnet die Mail-App dieses Geräts – Bcc, Betreff und Text sind ausgefüllt">📱 Mail-App</button>
       </div>
       <div id="ast-owa-liste"></div>
       <details style="margin-top:6px"><summary style="cursor:pointer;font-size:11.5px;color:var(--ink-3)">weitere Wege (Gmail, Outlook-Programm am PC)</summary>
@@ -4643,7 +4725,7 @@ function openModal(id){
           <button type="button" class="btn" id="ast-eml">💾 Outlook-Programm am PC (.eml)</button>
         </div>
       </details>
-      <div style="font-size:11px;color:var(--ink-3);margin-top:6px"><b>Eine Sammel-Mail, alle Anstalten im Bcc</b> (sie sehen einander nicht), Betreff und Text sind eure Standard-Vorlage. Die unterschriebene Vollmacht hängt ihr selbst an. Vor dem Senden: Daten auf der Vollmacht richtig und leserlich? Unterschrift drauf? Richtige Abteilung (LV ≠ Sach)? ⚠ = keine Mailadresse hinterlegt.</div>
+      <details class="lmore"><summary>ⓘ Hilfe zum Versand</summary><div style="font-size:11px;color:var(--ink-3);margin-top:6px"><b>Eine Sammel-Mail, alle Anstalten im Bcc</b> (sie sehen einander nicht), Betreff und Text sind eure Standard-Vorlage. Die unterschriebene Vollmacht hängt ihr selbst an. Vor dem Senden: Daten auf der Vollmacht richtig und leserlich? Unterschrift drauf? Richtige Abteilung (LV ≠ Sach)? ⚠ = keine Mailadresse hinterlegt.</div></details>
     </div>`:''}
     ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid ${d.auswertung&&d.auswertung.status==='offen'?'var(--bad)':'var(--line)'};border-radius:12px" id="m-auswsec" class="tb tb-be">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">🧮 Fall-Auswertung <span style="font-weight:500;color:var(--ink-2);font-size:12px">– der Berater wertet aus; der Analyst bekommt die Info automatisch als Aufgabe</span></div>
@@ -4659,19 +4741,20 @@ function openModal(id){
         <button type="button" class="btn" id="aw-fehlt" style="border-color:var(--bad);color:var(--bad)">📩 Fehlt / einholen</button>
       </div>`:''}
     </div>`:''}
-    ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px" id="m-akte">
-      <div style="font-weight:800;font-size:13.5px;margin-bottom:6px">📖 Kunden-Akte <span style="font-weight:500;color:var(--ink-2);font-size:12px">– was bisher passiert ist (${(d.hist||[]).length+(d.calls||[]).length} Einträge, neueste zuerst)</span></div>
-      <div style="max-height:260px;overflow-y:auto;font-size:12px;line-height:1.75;color:var(--ink-2)">${(()=>{
+    ${!isNew?`<details style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px" id="m-akte">
+      <summary style="font-weight:800;font-size:13.5px;cursor:pointer">📖 Kunden-Akte <span style="font-weight:500;color:var(--ink-2);font-size:12px">– ${(d.hist||[]).length+(d.calls||[]).length} Einträge, neueste zuerst</span></summary>
+      <div style="max-height:260px;overflow-y:auto;font-size:12px;line-height:1.75;color:var(--ink-2);margin-top:6px">${(()=>{
         const ic=t=>t.indexOf('☎')===0?'':(/ausgewertet/.test(t)?'🧮 ':/fehlen|einholen/i.test(t)?'📩 ':/ANGENOMMEN/.test(t)?'✅ ':/ABGELEHNT|ABGESAGT/.test(t)?'🚫 ':/Analyse abgegeben/.test(t)?'📤 ':/Übergabe/.test(t)?'📋 ':/Termin|Wiedervorlage/.test(t)?'📅 ':/Phase|Status/.test(t)?'🔁 ':/Zuordnung|Dispo|Telefonist|Analyst|Berater|Zuteilung|Aufteilen/.test(t)?'👤 ':/Förderung/.test(t)?'🎯 ':/Buchung|Website|Gründer/.test(t)?'🌐 ':/E-Mail|Briefing/.test(t)?'✉️ ':/Duplikat/.test(t)?'🔗 ':'📝 ');
         const ev=[...(d.hist||[]).map(h=>({ts:h.ts,von:h.von,txt:h.txt})),...(d.calls||[]).map(c=>({ts:c.ts,von:c.von||d.telefonist||'',txt:'☎ Anruf: '+(c.outcome||'')+(c.dur?' ('+c.dur+' Min.)':'')+(c.note?' – '+c.note:'')}))].sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));
         return ev.length?ev.map(e2=>{const t=e2.ts?new Date(e2.ts):null;const z=t?(String(t.getDate()).padStart(2,'0')+'.'+String(t.getMonth()+1).padStart(2,'0')+'.'+String(t.getFullYear()).slice(2)+' '+t.toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'})):'';return '<div style="padding:2px 0;border-bottom:1px dashed var(--line)"><span class="tnum" style="color:var(--ink-3)">'+z+'</span> · <b>'+esc(e2.von||'?')+'</b> · '+ic(e2.txt)+esc(e2.txt)+'</div>';}).join(''):'Noch nichts dokumentiert – jeder Anruf, jeder Termin, jeder Statuswechsel und jede Abgabe landet ab sofort automatisch hier.';
       })()}</div>
-    </div>`:''}
+    </details>`:''}
     <div class="ehsec tb tb-be">
       <div class="ehhead">EH-Rechner <span class="ehtag">IVP-Einheitentabelle</span></div>
       <label class="chk2"><input type="checkbox" id="eh-telb" ${d.telBeteiligt?'checked':''}> Telefonist beteiligt (Analyst 25 % statt 50 %)</label>
       <div class="ehgrp"><div class="ehgt">Abschluss (Berater)</div><div id="eh-list-a"></div><div class="ehadd" id="eh-add-a"></div></div>
       <div class="ehtot" id="eh-tot"></div>
+    </div>
     </div>
     <div class="modal-foot">
       <button class="btn pri" id="m-save">Speichern</button>
@@ -4683,7 +4766,7 @@ function openModal(id){
       ${!isNew?'<button class="btn del" id="m-del">Löschen</button>':''}
     </div>`;
   document.getElementById('ov').classList.add('show');
-  const setLT=(t,merken)=>{m.dataset.lt=t;if(merken)LEAD_TAB[d.id]=t;m.querySelectorAll('#m-ltabs [data-lt]').forEach(b=>b.classList.toggle('on',b.dataset.lt===t));};
+  const setLT=(t,merken)=>{m.dataset.lt=t;if(merken)LEAD_TAB[d.id]=t;const ak=m.querySelector('#m-akte');if(ak)ak.open=(t==='tel');m.querySelectorAll('#m-ltabs [data-lt]').forEach(b=>b.classList.toggle('on',b.dataset.lt===t));};
   m.querySelectorAll('#m-ltabs [data-lt]').forEach(b=>b.addEventListener('click',()=>setLT(b.dataset.lt,true)));
   setLT(LEAD_TAB[d.id]||leadTabDefault(d,isNew)); // gemerkt wird nur ein selbst gewählter Reiter – sonst entscheidet die Phase
   const typ=m.querySelector('#m-typ');typ.addEventListener('change',()=>{const g=typ.value!=='GmbH';m.querySelector('#m-orgwrap').classList.toggle('hide',g);m.querySelector('#m-finwrap').classList.toggle('hide',g);});
