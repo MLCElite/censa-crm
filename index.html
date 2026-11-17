@@ -457,7 +457,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="18.11-F";
+const APP_VERSION="18.11-G";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2873,40 +2873,51 @@ async function driveUpload(tok,blob,name,folderId){
 }
 /* ---------- 📧 Auskunfts-Ersuchen an Versicherungs-Anstalten (Melanies Liste 02.11.2026, „Anstalten Mailadressen.pdf") ----------
    Mail = die von Melanie markierte Hauptadresse je Anstalt; vnr = CENSA-Vermittlernummer(n) laut Liste. */
+/* v18.11-G: Adressen + Hinweise lt. Melanies Anleitung „Vollmacht richtig versenden" (Stand 18.11.2026).
+   m = Hauptadresse · cc = weitere Adressen (werden automatisch mit angeschrieben) · sp = Sparte · hint = Hinweis
+   für den Versender · alt = frühere Namen in gespeicherten Kunden · strip = vor der PDF-Erkennung ausblenden */
 const ANSTALTEN=[
- {n:'Allianz',m:'person@allianz.at',vnr:'1262733 (FLV: 826187)',rx:/allianz/i},
- {n:'Arag',m:'info@arag.at',vnr:'E7702655',rx:/\barag\b/i},
+ {n:'Allianz',m:'salessupport@allianz.at',hint:'Braucht 6 Werktage für die Auskunft',vnr:'1262733 (FLV: 826187)',rx:/allianz/i},
+ {n:'Arag',m:'info@arag.at',hint:'Schnell',vnr:'E7702655',rx:/\barag\b/i},
+ {n:'Ärzte Service',m:'m.eberle@aerzteservice.com',vnr:'',rx:/(ä|ae)rzte ?service/i},
+ {n:'BAWAG Versicherung',m:'servicecenter@bawag-versicherung.at',vnr:'',rx:/bawag[- ]?(p\.?s\.?k\.?[- ]?)?versicherung/i},
  {n:'Corum',m:'info@corum-investments.at',vnr:'',rx:/corum/i},
- {n:'D.A.S.',m:'office@das.at',vnr:'',rx:/d\.a\.s|das rechtsschutz/i},
+ {n:'D.A.S.',m:'kundenservice@das.at',vnr:'',rx:/d\.a\.s|das rechtsschutz/i},
  {n:'Dialog',m:'team-aut@dialog-leben.at',vnr:'374473',rx:/dialog[- ]?(leben|versicherung)/i},
- {n:'Donau',m:'donau@donauversicherung.at',vnr:'B90342W3',rx:/donau ?(versicherung|brokerline)/i},
- {n:'Ergo',m:'office@ergo-versicherung.at',vnr:'W003306466',rx:/\bergo\b/i},
+ {n:'Donau',m:'donau@donauversicherung.at',hint:'Langsam! Braucht 9 Werktage für die Auskunft',vnr:'B90342W3',rx:/donau ?(versicherung|brokerline)/i},
+ {n:'Ergo',m:'makler@ergo-versicherung.at',vnr:'W003306466',rx:/\bergo\b/i},
  {n:'Europa',m:'info@europa.de',vnr:'9209234 (Leben)',rx:/europa ?(leben|versicherung)/i},
- {n:'Generali',m:'office.ost.at@generali.com',vnr:'',rx:/generali/i},
- {n:'Golden Gates',m:'b.oberascher@goldengates.sale',cc:'u.erbschwendtner@goldengates.at',vnr:'GG00801',rx:/golden ?gates/i},
+ {n:'Generali',m:'office.ost.at@generali.com',cc:['loewenteam.at@generali.com'],hint:'Langsam! Braucht 8 Werktage für die Auskunft',vnr:'',rx:/generali/i},
+ {n:'Golden Gates',m:'b.oberascher@goldengates.sale',cc:['u.erbschwendtner@goldengates.at'],vnr:'GG00801',rx:/golden ?gates/i},
  {n:'Gothaer',m:'info@gothaer.at',vnr:'',rx:/gothaer/i},
- {n:'GRAWE',m:'wien@grawe.at',vnr:'1034307',rx:/grawe|grazer wechselseitige/i},
+ {n:'GRAWE',m:'eran.giuli@grawe.at',hint:'Unser Maklerbetreuer – direkt an ihn schicken, sonst schickt die GRAWE keine Auskünfte',vnr:'1034307',rx:/grawe|grazer wechselseitige/i},
  {n:'Hannoversche',m:'atservice@hannoversche.at',vnr:'VL109545-001',rx:/hannoversche/i},
- {n:'HDI',m:'office@hdi.at',vnr:'5085 (Sach) / FLV je Bundesland lt. Liste',rx:/\bhdi\b/i},
- {n:'Helvetia',m:'info@helvetia.at',vnr:'92622 (Sach) / 11866 (Leben)',rx:/helvetia/i},
+ {n:'Hanse Merkur',m:'reiseleistung@hansemerkur.at',vnr:'',rx:/hanse[- ]?merkur/i},
+ {n:'HDI Leben',m:'service@hdi-leben.at',sp:'LV',hint:'NUR für Lebensversicherungen – die HDI hat getrennte Abteilungen',vnr:'FLV je Bundesland lt. Liste',rx:/hdi[- ]?leben|hdi lebensversicherung/i},
+ {n:'HDI Sach',alt:['HDI'],m:'office@hdi.at',sp:'Sach',hint:'NUR Sachversicherung – keine LV-Vollmacht hierher senden',vnr:'5085 (Sach)',rx:/\bhdi\b/i,strip:/hdi[- ]?leben|hdi lebensversicherung/ig},
+ {n:'Helvetia',m:'pvost@helvetia.at',vnr:'92622 (Sach) / 11866 (Leben)',rx:/helvetia/i},
  {n:'Janitos',m:'versicherung@janitos.de',vnr:'81229600',rx:/janitos/i},
- {n:'Merkur',m:'merkur@merkur.at',vnr:'54337',rx:/merkur/i},
+ {n:'Merkur',m:'makooe@merkur.at',hint:'Langsam! Braucht 9 Werktage für die Auskunft',vnr:'54337',rx:/merkur/i,strip:/hanse[- ]?merkur|merkur[- ]?leben/ig},
+ {n:'Merkur Leben',m:'info@merkur-leben.at',sp:'LV',hint:'Langsam! Braucht 9 Werktage für die Auskunft',vnr:'',rx:/merkur[- ]?leben/i},
  {n:'MUKI',m:'service@muki.at',vnr:'7010221',rx:/muki/i},
- {n:'NV',m:'maklerwien@nv.at',vnr:'31296',rx:/niederösterreichische ?versicherung|\bnv\b/i},
+ {n:'NV',m:'info@nv.at',hint:'NÖ Versicherung – sehr langsam! 2 Wochen Wartezeit',vnr:'31296',rx:/niederösterreichische ?versicherung|\bnv\b/i},
  {n:'Nürnberger',m:'info@nuernberger.at',vnr:'710 139 000',rx:/n(ü|ue)rnberger/i},
  {n:'PartnerBank',m:'bki@partnerbank.at',vnr:'',rx:/partner ?bank/i},
  {n:'R+V',m:'info@ruv.at',vnr:'349032',rx:/r ?\+ ?v/i},
+ {n:'Raiffeisen Versicherung',m:'service@raiffeisen-versicherung.at',vnr:'',rx:/raiffeisen[- ]?versicherung/i},
+ {n:'Roland',m:'roland.info@roland-rechtsschutz.at',vnr:'801.223',rx:/roland ?(rechtsschutz|versicherung)/i},
+ {n:'s Versicherung',m:'kontakt@s-versicherung.at',sp:'LV',hint:'LV-Abteilung der ERSTE Bank – sehr häufig bei Kunden!',vnr:'',rx:/\bs[- ]versicherung\b|sparkassen ?versicherung/i},
  {n:'sBausparkasse',m:'info@sbausparkasse.at',vnr:'',rx:/s[- ]?bausparkasse|bausparkasse der sparkasse/i},
- {n:'Uniqa',m:'partnerservice.noe@uniqa.at',vnr:'241792',rx:/uniqa/i},
+ {n:'Standard Life',m:'salesaustria@standardlife.at',cc:['AustriaTeam@StandardLife.de','serviceaustria@standardlife.de'],vnr:'',rx:/standard ?life/i},
+ {n:'Uniqa',m:'partnerservice.noe@uniqa.at',cc:['partnerservice.ost@uniqa.at'],hint:'Geht immer an BEIDE Adressen (NÖ + Ost) – macht das CRM automatisch',vnr:'241792',rx:/uniqa/i},
  {n:'VAV',m:'serviceteam2@vav.at',vnr:'7704',rx:/\bvav\b/i},
- {n:'Wiener Städtische',m:'kundenservice@wienerstaedtische.at',vnr:'',rx:/wiener ?st(ä|ae)dt|wr\.? ?st(ä|ae)dt/i},
+ {n:'Wiener Städtische',m:'kundenservice@wienerstaedtische.at',hint:'Langsam! Braucht 9 Werktage für die Auskunft',vnr:'',rx:/wiener ?st(ä|ae)dt|wr\.? ?st(ä|ae)dt/i},
  {n:'Wüstenrot',m:'vertrag@wuestenrot.at',vnr:'387492-2',rx:/w(ü|ue)stenrot/i},
  {n:'WWK',m:'vd.oesterreich@wwk.at',vnr:'Q940 2000',rx:/\bwwk\b/i},
  {n:'Zürich',m:'maklerservice.noe@at.zurich.com',vnr:'216814-6 (Sach) / 217024-8 (Leben) / 217377-8 (BAV)',rx:/z(ü|u)rich/i},
  {n:'ÖBV',m:'makler@oebv.com',vnr:'011519',rx:/öbv|oebv|österr\w* beamtenversicherung/i},
  {n:'Interrisk',m:'',vnr:'27917',rx:/interrisk/i},
  {n:'Meine Versicherung',m:'',vnr:'VP-123',rx:/meine versicherung ag/i},
- {n:'Roland',m:'',vnr:'801.223',rx:/roland ?(rechtsschutz|versicherung)/i},
  {n:'s-Wohnfinanz',m:'',vnr:'71076',rx:/s[- ]?wohnfinanz/i},
  {n:'Wiener Verein',m:'',vnr:'097005G5',rx:/wiener ?verein/i}
 ];
@@ -2923,7 +2934,13 @@ async function pdfText(file){ // PDF im Browser lesen (pdf.js); Foto-Scans haben
     return t;
   }catch(e){return '';}
 }
-function anstaltenScan(tx){return ANSTALTEN.filter(a=>a.rx.test(tx||'')).map(a=>a.n);}
+function anstaltenScan(tx){return ANSTALTEN.filter(a=>a.rx.test(a.strip?(tx||'').replace(a.strip,' '):(tx||''))).map(a=>a.n);}
+function astHat(d,a){return (d.anstalten||[]).some(x=>x===a.n||(a.alt||[]).includes(x));} // bei diesem Kunden (aus der PDF) erkannt?
+function astAdr(a){return [a.m].concat(a.cc||[]).filter(Boolean);}
+function astSubject(d){ // Betreff lt. Vorlage: „Auskunftsvollmacht Fam./Herr/Frau XYZ"
+  const nm=((d.name||d.org||'Kunde')+'').trim();
+  return 'Auskunftsvollmacht '+((d.partner&&d.partner.name)?'Fam. '+nm+' / '+d.partner.name:nm);
+}
 async function scansZuPdf(files){ // Handy-Scans zu EINEM sauberen PDF bündeln (Melanies Ansage 02.11.: keine losen Fotos mehr)
   const lib=window.jspdf&&window.jspdf.jsPDF;if(!lib||!files.length)return null;
   try{
@@ -3039,26 +3056,20 @@ async function astVmB64(id){ // Vollmacht-Datei (Jeder-mit-Link-lesbar) als Base
   let s='';for(let i=0;i<b.length;i+=8192)s+=String.fromCharCode.apply(null,b.subarray(i,i+8192));
   return btoa(s);
 }
-function astMailText(d,sel,vmInfo){ // EINE Sammel-Mail an alle gewählten Anstalten (Melanies Ansage 02.11.); vmInfo: 'anhang' | URL | null
-  const vnrs=(sel||[]).filter(a=>a.vnr);
+function astMailText(d,sel,vmInfo){ // v18.11-G: fester Standard-Text lt. Melanies Kopiervorlage; vmInfo: 'anhang' | URL (Anhang hat nicht geklappt) | null
   return 'Sehr geehrte Damen und Herren,\n\n'
-   +'wir betreuen den unten angeführten Kunden und ersuchen'
-   +(vmInfo==='anhang'?' – entsprechend der beiliegenden, unterschriebenen Auskunftsvollmacht –':'')
-   +' um Übermittlung einer vollständigen Aufstellung der bestehenden Verträge (Sparte, Polizzennummer, Beginn/Ablauf, Prämie, Rückkaufswert sofern zutreffend).\n\n'
-   +(vnrs.length?('Unsere Vermittlernummer'+(vnrs.length===1?': '+vnrs[0].vnr:'n (je Gesellschaft):\n'+vnrs.map(a=>'- '+a.n+': '+a.vnr).join('\n'))+'\n\n'):'')
-   +'Kunde: '+((d.name||'')+(d.org&&d.org!==d.name?' ('+d.org+')':'')||'—')+'\n'
-   +'Geburtsdatum: '+((d.geb||'').trim()||'[bitte ergänzen]')+'\n'
-   +((d.partner&&d.partner.name)?'Partner/in: '+d.partner.name+(d.partner.geb?', geb. '+d.partner.geb:'')+'\n':'')
-   +'Anschrift: '+([d.strasse,[d.plz,d.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ')||'[bitte ergänzen]')+'\n'
-   +(typeof vmInfo==='string'&&vmInfo!=='anhang'?'\nUnterschriebene Auskunftsvollmacht: '+vmInfo+'\n':'')
-   +(vmInfo?'':'\n[⚠ Auskunftsvollmacht bitte noch beilegen]\n')
-   +'\nVielen Dank und freundliche Grüße\n'+(chatName()||'')+'\nCENSA – Wir übernehmen die Vorsorge. Sie führen die GmbH.';
+   +'wir ersuchen um Übermittlung der aktuellen Vertragsübersicht aller bestehenden Verträge der oben genannten Person per E-Mail. Im Anhang finden Sie die Auskunftsvollmacht!\n\n'
+   +'Im Falle einer Lebensversicherung benötigen wir außerdem den aktuellen Rückkaufs- bzw. Depotwert sowie die Summe der bis dato einbezahlten Prämien.\n\n'
+   +'Wir möchten Sie darauf hinweisen, dass gemäß unserer Mitgliedschaft bei der Interessengemeinschaft österreichischer Versicherungsmakler (IGV), von der Verrechnung jeglicher Gebühren für Auskünfte abzusehen ist.\n\n'
+   +'Besten Dank vorab für die prompte Erledigung!'
+   +((typeof vmInfo==='string'&&vmInfo!=='anhang')?'\n\nAuskunftsvollmacht zum Abrufen: '+vmInfo:'');
 }
-function astBcc(sel){return [...new Set((sel||[]).flatMap(a=>[a.m,a.cc]).filter(Boolean))].join(', ');}
+function astBccList(sel){return [...new Set((sel||[]).flatMap(a=>astAdr(a)))];}
+function astBcc(sel){return astBccList(sel).join(', ');} // Komma = Standard für Mail-Kopfzeilen (Gmail, .eml); Outlook-Web braucht Strichpunkt
 function astMime(d,hdr,text,att){ // kompletter Mail-Rohbau (für Gmail-Entwurf UND .eml-Datei); hdr={to?,cc?,bcc?}
   const nl='\r\n';
   let h=(hdr.to?'To: '+hdr.to+nl:'')+(hdr.cc?'Cc: '+hdr.cc+nl:'')+(hdr.bcc?'Bcc: '+hdr.bcc+nl:'')
-   +'Subject: =?UTF-8?B?'+b64u8('Auskunftsersuchen – '+(d.name||d.org||'Kunde'))+'?='+nl
+   +'Subject: =?UTF-8?B?'+b64u8(astSubject(d))+'?='+nl
    +'X-Unsent: 1'+nl+'MIME-Version: 1.0'+nl;
   if(!att)return h+'Content-Type: text/plain; charset=UTF-8'+nl+'Content-Transfer-Encoding: base64'+nl+nl+b64u8(text).replace(/(.{76})/g,'$1'+nl);
   const bd='censa-'+Date.now();
@@ -4558,24 +4569,26 @@ function openModal(id){
       <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Dateien werden über deinen Google-Zugang im Kunden-Ordner unter „CENSA Analysen" gespeichert – beim ersten Mal fragt Google einmal um Erlaubnis. Team-Mitglieder mit Rolle „Assistenz" können Berechnungen direkt in den Ordner legen; Analyst &amp; Berater sehen ihn automatisch in ihrem Drive unter „Für mich freigegeben".${isNew?' · 💾 Beim Abgeben wird der neue Kunde automatisch mit angelegt.':''}</div>
     </div>
     ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px" id="m-anstsec">
-      <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">📧 Auskunfts-Ersuchen an Anstalten <span style="font-weight:500;color:var(--ink-2);font-size:12px">– aus der PDF-Analyse erkannt; der Entwurf wird fertig vorbereitet, kontrolliert und GESENDET wird von euch</span></div>
+      <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">📧 Auskunfts-Ersuchen an Anstalten <span style="font-weight:500;color:var(--ink-2);font-size:12px">– Adressen und Text laut eurer Anleitung „Vollmacht richtig versenden"; der Entwurf wird fertig vorbereitet, kontrolliert und GESENDET wird von euch</span></div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0">
-        ${ANSTALTEN.filter(a=>(d.anstalten||[]).includes(a.n)).map(a=>`<label class="gptoggle"><input type="checkbox" class="ast-ck" value="${esc(a.n)}" checked> ${esc(a.n)}${a.m?'':' ⚠'}</label>`).join('')||'<span style="font-size:12px;color:var(--ink-3)">Noch keine Anstalt aus einer PDF erkannt (Foto-Scans haben keinen lesbaren Text) – unten per Hand anhaken.</span>'}
+        ${ANSTALTEN.filter(a=>astHat(d,a)).map(a=>`<label class="gptoggle" title="${esc((astAdr(a).join(', ')||'keine Mailadresse hinterlegt')+(a.hint?' – '+a.hint:''))}"><input type="checkbox" class="ast-ck" value="${esc(a.n)}" checked> ${esc(a.n)}${a.sp?` <span style="color:var(--ink-3);font-weight:600">(${esc(a.sp)})</span>`:''}${a.m?'':' ⚠'}</label>`).join('')||'<span style="font-size:12px;color:var(--ink-3)">Noch keine Anstalt aus einer PDF erkannt (Foto-Scans haben keinen lesbaren Text) – unten per Hand anhaken.</span>'}
       </div>
       <details style="margin:4px 0"><summary style="cursor:pointer;font-size:12px;color:var(--ink-2)">+ weitere Anstalten wählen</summary>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0">${ANSTALTEN.filter(a=>!(d.anstalten||[]).includes(a.n)).map(a=>`<label class="gptoggle"><input type="checkbox" class="ast-ck" value="${esc(a.n)}"> ${esc(a.n)}${a.m?'':' ⚠'}</label>`).join('')}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0">${ANSTALTEN.filter(a=>!astHat(d,a)).map(a=>`<label class="gptoggle" title="${esc((astAdr(a).join(', ')||'keine Mailadresse hinterlegt')+(a.hint?' – '+a.hint:''))}"><input type="checkbox" class="ast-ck" value="${esc(a.n)}"> ${esc(a.n)}${a.sp?` <span style="color:var(--ink-3);font-weight:600">(${esc(a.sp)})</span>`:''}${a.m?'':' ⚠'}</label>`).join('')}</div>
       </details>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0">
         <span style="font-size:12px;font-weight:700">Vollmacht anhängen:</span>
         <select id="ast-vm" style="min-width:0;max-width:340px">${(()=>{const fs2=(d.analyse||[]).filter(x=>x.id);let pre=fs2.findIndex(x=>x.vm||/vollmacht/i.test(x.name||''));return '<option value="">— ohne Anhang —</option>'+fs2.map((x,i)=>`<option value="${esc(x.id)}"${i===pre?' selected':''}>${esc(x.name)}</option>`).join('');})()}</select>
       </div>
+      <div id="ast-hints" style="font-size:12px;margin:4px 0"></div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:6px">
-        <button type="button" class="btn pri" id="ast-gmail">📧 Gmail-Entwürfe anlegen</button>
-        <button type="button" class="btn" id="ast-owa">🌐 Web-Outlook</button>
-        <button type="button" class="btn" id="ast-eml">💾 Outlook-Programm (.eml)</button>
+        <button type="button" class="btn pri" id="ast-owa" title="Öffnet outlook.office.com mit fertigem Entwurf: alle Adressen im BCC, Betreff und Text ausgefüllt">🌐 Outlook im Browser</button>
+        <button type="button" class="btn" id="ast-mailto" title="Öffnet die Mail-App dieses Geräts (z. B. Outlook- oder Mail-App am Handy) mit BCC, Betreff und Text">📱 Mail-App am Handy</button>
+        <button type="button" class="btn" id="ast-gmail">📧 Gmail-Entwurf (mit Anhang)</button>
+        <button type="button" class="btn" id="ast-eml">💾 Outlook-Programm am PC (.eml)</button>
       </div>
       <div id="ast-owa-liste"></div>
-      <div style="font-size:11px;color:var(--ink-3);margin-top:5px"><b>EINE Sammel-Mail an alle angehakten Anstalten – alle Adressen im BCC</b> (die Anstalten sehen einander nicht), Vermittlernummern je Gesellschaft stehen im Text. Gmail: Entwurf mit Vollmacht-ANHANG in deinem Gmail. 🌐 Web-Outlook: Entwurf im Browser, Vollmacht als Link. .eml: fürs Outlook-PROGRAMM am PC, mit Anhang. ⚠ = keine Mailadresse hinterlegt.</div>
+      <div style="font-size:11px;color:var(--ink-3);margin-top:5px"><b>EINE Sammel-Mail an alle angehakten Anstalten – alle Adressen im BCC</b> (die Anstalten sehen einander nicht). Betreff und Text sind eure Standard-Vorlage. <b>Vor dem Senden prüfen:</b> Name, Geburtsdatum und Adresse auf der Vollmacht richtig und leserlich? Unterschrift drauf? Richtige Abteilung (LV ≠ Sach)? Danach im „Gesendet"-Ordner nachsehen, ob die Mail wirklich raus ist. ⚠ = keine Mailadresse hinterlegt.</div>
     </div>`:''}
     ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid ${d.auswertung&&d.auswertung.status==='offen'?'var(--bad)':'var(--line)'};border-radius:12px" id="m-auswsec">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">🧮 Fall-Auswertung <span style="font-weight:500;color:var(--ink-2);font-size:12px">– die Assistenz wertet aus; Analyst &amp; Berater bekommen die Info automatisch als Aufgabe</span></div>
@@ -4855,6 +4868,27 @@ function openModal(id){
   if(astSec){
     const selAst=()=>Array.from(astSec.querySelectorAll('.ast-ck:checked')).map(x=>ANSTALTEN.find(a=>a.n===x.value)).filter(Boolean);
     const vmEntry=()=>{const id=(astSec.querySelector('#ast-vm')||{value:''}).value;return id?(d.analyse||[]).find(x=>x.id===id):null;};
+    // Hinweise der angehakten Anstalten (lt. Anleitung: „langsam", „nur LV", „an beide schicken" …)
+    const astHints=()=>{const h=selAst().filter(a=>a.hint||!a.m);
+      astSec.querySelector('#ast-hints').innerHTML=h.map(a=>`<div style="padding:3px 0;color:${a.m?'var(--ink-2)':'var(--bad)'}">ℹ <b>${esc(a.n)}:</b> ${esc(a.m?a.hint:'keine Mailadresse hinterlegt – wird übersprungen')}</div>`).join('');};
+    astSec.querySelectorAll('.ast-ck').forEach(c=>c.addEventListener('change',astHints));astHints();
+    // Nach dem Öffnen des Entwurfs: die restlichen Handgriffe als Checkliste + Kopier-Knöpfe (falls BCC/Betreff nicht übernommen wurden)
+    const astHelfer=(sel,vm,was,link)=>{
+      const adr=astBccList(sel),host2=astSec.querySelector('#ast-owa-liste');
+      host2.innerHTML=`<div style="margin:9px 0;padding:11px 13px;border:1.5px solid var(--brand);border-radius:11px;font-size:13px;line-height:1.5">
+        <div style="font-weight:800;margin-bottom:5px">✅ ${was} – ${sel.length} Anstalt${sel.length===1?'':'en'}, ${adr.length} Adresse${adr.length===1?'':'n'} im BCC</div>
+        ${link?`<div style="margin-bottom:6px">Kein Fenster aufgegangen? <a href="${esc(link)}" target="_blank" rel="noopener" style="font-weight:800;color:var(--brand-ink)">Hier antippen</a></div>`:''}
+        <div><b>1.</b> Im Entwurf prüfen, ob die Adressen im <b>BCC</b> stehen. Feld leer? <button type="button" class="mini-btn" data-acp="adr">📋 Adressen kopieren</button> und ins BCC-Feld einfügen.</div>
+        <div style="margin-top:4px"><b>2.</b> <b>📎 Vollmacht anhängen:</b> ${vm?`<a href="${esc(vm.url||'#')}" target="_blank" rel="noopener" style="font-weight:800;color:var(--brand-ink)">${esc(vm.name||'Vollmacht')} öffnen</a>, speichern und in die Mail ziehen.`:'<span style="color:var(--bad);font-weight:700">Es ist keine Vollmacht ausgewählt – bitte unterschriebene Vollmacht anhängen.</span>'}</div>
+        <div style="margin-top:4px"><b>3.</b> Senden – und im „Gesendet"-Ordner prüfen, ob die Mail wirklich raus ist.</div>
+        <div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="mini-btn" data-acp="sub">📋 Betreff kopieren</button><button type="button" class="mini-btn" data-acp="txt">📋 Text kopieren</button></div>
+      </div>`;
+      host2.querySelectorAll('[data-acp]').forEach(b2=>b2.addEventListener('click',()=>{const k=b2.dataset.acp;
+        if(k==='adr')copyText(adr.join('; '),null,'📋 '+adr.length+' Adressen kopiert – ins BCC-Feld einfügen');
+        else if(k==='sub')copyText(astSubject(d),null,'📋 Betreff kopiert');
+        else copyText(astMailText(d,sel,null),null,'📋 Text kopiert');}));
+      host2.scrollIntoView({block:'nearest',behavior:'smooth'});
+    };
     const bauen=async()=>{ // gemeinsame Vorarbeit: Auswahl + Vollmacht (Anhang, sonst Link)
       const sel=selAst();
       if(!sel.length){toast('Bitte mindestens eine Anstalt anhaken');return null;}
@@ -4893,21 +4927,30 @@ function openModal(id){
       b.disabled=false;b.textContent=alt;
     });
     astSec.querySelector('#ast-owa').addEventListener('click',()=>{
-      // Web-Outlook: je Anstalt ein Deep-Link-Entwurf. KEIN window.open-Stapel (Popup-Blocker!) –
-      // stattdessen klickbare Liste, jeder Klick ist eine eigene Browser-Geste.
+      // Outlook im Browser (euer Postfach auf outlook.office.com): EIN Entwurf, alle Adressen im BCC.
+      // v18.11-G: Adressen mit STRICHPUNKT getrennt – mit Komma hat Outlook die Liste als EINE ungültige Adresse gelesen.
       const sel=selAst().filter(a=>a.m);
       if(!sel.length){toast('Bitte mindestens eine Anstalt (mit Mailadresse) anhaken');return;}
       const vm=vmEntry();
-      // EINE Sammel-Mail: alle Anstalten im BCC; Vollmacht als Link im Text (Web-Outlook kann keine Anhänge vorbefüllen)
-      const q='bcc='+encodeURIComponent(astBcc(sel))
-        +'&subject='+encodeURIComponent('Auskunftsersuchen – '+(d.name||d.org||'Kunde'))
-        +'&body='+encodeURIComponent(astMailText(d,sel,vm?(vm.url||null):null));
-      window.open('https://outlook.cloud.microsoft/mail/deeplink/compose?'+q,'_blank'); // EIN Fenster, synchron im Klick = Popup-sicher
-      const host2=astSec.querySelector('#ast-owa-liste');
-      host2.innerHTML='<div style="margin:8px 0;padding:9px 11px;border:1.5px solid var(--brand);border-radius:10px;font-size:12.5px"><b>🌐 Sammel-Entwurf geöffnet</b> ('+sel.length+' Anstalten im BCC). Falls kein Fenster aufging: '
-        +'<a href="https://outlook.cloud.microsoft/mail/deeplink/compose?'+q+'" target="_blank" rel="noopener" style="font-weight:800;color:var(--brand-ink)">hier klicken</a> &nbsp;·&nbsp; <a href="https://outlook.live.com/mail/deeplink/compose?'+q+'" target="_blank" rel="noopener" style="color:var(--ink-2)">🏠 privates outlook.com</a>'
-        +'<div style="color:var(--ink-3);margin-top:4px">Vollmacht steht als Link im Text – zum Anhängen als Datei bitte Gmail- oder .eml-Weg nutzen.</div></div>';
-      histAdd(d,'Sammel-Auskunftsmail vorbereitet (Web-Outlook, BCC): '+sel.map(a=>a.n).join(', '));
+      const link='https://outlook.office.com/mail/deeplink/compose?bcc='+encodeURIComponent(astBccList(sel).join(';'))
+        +'&subject='+encodeURIComponent(astSubject(d))
+        +'&body='+encodeURIComponent(astMailText(d,sel,null));
+      window.open(link,'_blank'); // EIN Fenster, synchron im Klick = Popup-sicher
+      astHelfer(sel,vm,'Entwurf in Outlook geöffnet',link);
+      histAdd(d,'Sammel-Auskunftsmail vorbereitet (Outlook im Browser, BCC): '+sel.map(a=>a.n).join(', '));
+      persist();
+    });
+    astSec.querySelector('#ast-mailto').addEventListener('click',()=>{
+      // Mail-App des Geräts (Handy: Outlook-/Mail-App, PC: Standard-Mailprogramm) – BCC, Betreff und Text vorbefüllt
+      const sel=selAst().filter(a=>a.m);
+      if(!sel.length){toast('Bitte mindestens eine Anstalt (mit Mailadresse) anhaken');return;}
+      const vm=vmEntry();
+      const link='mailto:?bcc='+encodeURIComponent(astBccList(sel).join(','))
+        +'&subject='+encodeURIComponent(astSubject(d))
+        +'&body='+encodeURIComponent(astMailText(d,sel,null).replace(/\n/g,'\r\n'));
+      const a3=document.createElement('a');a3.href=link;document.body.appendChild(a3);a3.click();a3.remove();
+      astHelfer(sel,vm,'Mail-App geöffnet',link);
+      histAdd(d,'Sammel-Auskunftsmail vorbereitet (Mail-App, BCC): '+sel.map(a=>a.n).join(', '));
       persist();
     });
     astSec.querySelector('#ast-eml').addEventListener('click',async e2=>{
@@ -4918,7 +4961,7 @@ function openModal(id){
         const mime=astMime(d,{bcc:astBcc(w.sel)},astMailText(d,w.sel,w.vmInfo),w.att);
         const bl=new Blob([mime],{type:'message/rfc822'});
         const a2=document.createElement('a');a2.href=URL.createObjectURL(bl);
-        a2.download='Auskunftsersuchen – '+(d.name||d.org||'Kunde').slice(0,30)+' ('+w.sel.length+' Anstalten).eml';
+        a2.download=astSubject(d).slice(0,60)+' ('+w.sel.length+' Anstalten).eml';
         document.body.appendChild(a2);a2.click();a2.remove();
         setTimeout(((u)=>()=>URL.revokeObjectURL(u))(a2.href),5000);
         histAdd(d,'Sammel-Auskunftsmail vorbereitet (.eml, BCC): '+w.sel.map(a=>a.n).join(', ')+(w.att?' · Vollmacht angehängt':''));
