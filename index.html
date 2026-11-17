@@ -73,7 +73,7 @@
 
   main{padding:16px 18px 60px}
   .board{display:flex;gap:12px;overflow-x:auto;padding-bottom:12px;align-items:flex-start}
-  .col{flex:0 0 250px;background:var(--surface-2);border:1px solid var(--line);border-radius:16px;display:flex;flex-direction:column;max-height:calc(100vh - 150px)}
+  .col{flex:0 0 250px;background:var(--surface-2);border:1px solid var(--line);border-radius:16px;display:flex;flex-direction:column}
   .col-h{padding:11px 13px;border-bottom:1px solid var(--line-2);display:flex;align-items:center;gap:8px;position:sticky;top:0}
   .col-h .dot{width:9px;height:9px;border-radius:50%;background:var(--brand)}
   .col-h .t{font-size:12.5px;font-weight:700}
@@ -279,7 +279,34 @@
   *::-webkit-scrollbar-track{background:transparent}
   *::-webkit-scrollbar-thumb{background:var(--line);border-radius:10px;border:2px solid var(--bg)}
   *::-webkit-scrollbar-thumb:hover{background:var(--ink-3)}
-  #hdrMore{display:none}
+  /* ===== v18.11-B: aufgeräumte Kopfleiste auf JEDEM Bildschirm =====
+     Zeile 1: Logo · Reiter · „+ Lead" · „⋯"-Menü (Konto, Import, Backup, Leeren)
+     Zeile 2: Hinweise (Google verbinden, Aufgaben) links, Verbindungsstatus + Anrufe rechts */
+  header .logo{order:1;flex:0 0 auto} header h1{order:2;white-space:nowrap}
+  header .tabs{order:3;flex:0 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none}
+  header .tabs::-webkit-scrollbar{display:none}
+  header .tabs button{flex:0 0 auto;white-space:nowrap}
+  header .spacer{order:4;flex:1 1 0;margin-left:0}
+  header #btnNew{order:5}
+  #hdrMore{order:6;display:inline-flex;justify-content:center;padding:0;width:38px;height:36px;font-size:19px;line-height:1}
+  header.open #hdrMore{background:var(--brand-bg);border-color:var(--brand)}
+  #hdrStatus{order:7;flex:1 1 100%;display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
+  #gcalBadge{gap:0}
+  #hdrStatus #dbState{margin-left:auto}
+  #hdrMenu{display:none;position:absolute;right:18px;top:calc(100% + 6px);z-index:40;flex-direction:column;gap:8px;min-width:240px;max-width:calc(100vw - 36px);padding:11px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.22)}
+  header.open #hdrMenu{display:flex}
+  #hdrMenu .btn{justify-content:flex-start}
+  #hdrMenu .kpi{flex-wrap:wrap}
+  .col{max-height:max(320px,calc(100vh - 250px))}
+  @media (max-width:1400px){header .tabs button{padding:7px 11px}}
+  @media (min-width:761px) and (max-width:1000px){#gcalBadge .lg{display:none}}
+  /* schmaler Laptop / iPad: Reiter bekommen ihre eigene Zeile und lassen sich wischen – nichts ragt mehr über den Rand */
+  @media (max-width:1240px){
+    header .tabs{order:6;flex:1 1 100%;margin-left:0}
+    #hdrMore{order:5} header #btnNew{order:4}
+    #hdrStatus{gap:8px} #hdrStatus .kpi{white-space:nowrap}
+    .col{max-height:max(320px,calc(100vh - 300px))}
+  }
   .fsel{display:contents}
   html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
   button,a,select,summary,label{touch-action:manipulation}
@@ -287,23 +314,22 @@
   @media (max-width:760px){
     html,body{max-width:100%;overflow-x:hidden}
     header{padding:8px 12px;padding-top:calc(8px + env(safe-area-inset-top));padding-left:calc(12px + env(safe-area-inset-left));padding-right:calc(12px + env(safe-area-inset-right));gap:8px;row-gap:8px}
-    header .logo{order:1;width:30px;height:30px;border-radius:9px;font-size:14px}
-    header h1{order:2;flex:1 1 0;min-width:0;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    #hdrMore{order:3;display:inline-flex;padding:0;width:40px;height:40px;justify-content:center;font-size:20px;line-height:1;border-radius:11px}
-    header #btnNew{order:4;height:40px;padding:0 14px}
-    header .tabs{order:5;flex:1 1 100%;margin-left:0;max-width:100%;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none;scroll-padding:0 24px}
-    header .tabs::-webkit-scrollbar{display:none}
-    header .tabs button{flex:1 0 auto;white-space:nowrap;padding:9px 13px;font-size:13.5px}
+    header .logo{width:30px;height:30px;border-radius:9px;font-size:14px}
+    header h1{flex:1 1 0;min-width:0;font-size:14.5px;overflow:hidden;text-overflow:ellipsis}
     header .spacer{display:none}
+    header #btnNew{order:3;height:40px;padding:0 14px}
+    #hdrMore{order:4;width:40px;height:40px;font-size:20px;border-radius:11px}
+    header .tabs{order:5;flex:1 1 100%;margin-left:0;max-width:100%;-webkit-overflow-scrolling:touch;scroll-padding:0 24px}
+    header .tabs button{flex:1 0 auto;padding:9px 13px;font-size:13.5px}
     /* Hinweis-Knöpfe (Google verbinden, Aufgaben) liegen am Handy UNTER der Leiste und rollen mit weg */
     #subbar{display:flex;flex-wrap:wrap;gap:8px;padding:0 12px;padding-left:calc(12px + env(safe-area-inset-left));padding-right:calc(12px + env(safe-area-inset-right))}
     #subbar .kpi{margin-top:10px;flex:1 1 auto;justify-content:center;flex-wrap:wrap;text-align:center;padding:10px 12px;font-size:13px;row-gap:2px;border-radius:12px}
-    /* Konto, Status, Import/Backup: hinter „⋯" – bleibt erreichbar, frisst aber keinen Platz */
-    header #meBadge,header #dbState,header .kpi:not([id]),header #btnImport,header #btnExport,header #btnReset{display:none;order:9}
-    header.open #meBadge,header.open #dbState,header.open .kpi:not([id]){display:flex}
-    header.open #btnImport,header.open #btnExport,header.open #btnReset{display:inline-flex}
-    header.open #meBadge{flex:1 1 100%;flex-wrap:wrap}
-    header.open #hdrMore{background:var(--brand-bg);border-color:var(--brand)}
+    /* Status + Konto/Import/Backup: am Handy erst hinter „⋯" */
+    #hdrStatus{display:none;order:8}
+    header.open #hdrStatus{display:flex}
+    #hdrStatus #dbState{margin-left:0}
+    #hdrMenu{position:static;order:9;flex:1 1 100%;flex-direction:row;flex-wrap:wrap;min-width:0;max-width:none;padding:0;border:0;box-shadow:none;background:transparent}
+    #hdrMenu #meBadge{flex:1 1 100%}
     main{padding:12px 12px calc(70px + env(safe-area-inset-bottom));padding-left:calc(12px + env(safe-area-inset-left));padding-right:calc(12px + env(safe-area-inset-right))}
     /* iPhone zoomt bei Eingabefeldern unter 16px hinein und „verrutscht" die Seite – daher 16px */
     input,select,textarea{font-size:16px!important}
@@ -322,7 +348,7 @@
     .wnav .kpi{margin-left:0!important;flex:1 1 55%;justify-content:center;text-align:center;white-space:nowrap;font-size:12px;padding:7px 8px}
     .wnav select{flex:1 1 120px}
     .board{gap:10px;scroll-snap-type:x proximity;margin:0 -12px;padding:0 12px 12px}
-    .col{flex:0 0 84vw;max-width:340px;max-height:none;scroll-snap-align:start}
+    .col{flex:0 0 84vw;max-width:340px;max-height:none!important;scroll-snap-align:start}
     .cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
     .mc{padding:12px 13px}.mc .v{font-size:23px}
     .panel{padding:13px 13px;border-radius:14px}
@@ -369,15 +395,19 @@
     <button data-tab="chat">Chat</button>
   </div>
   <div class="spacer"></div>
-  <div class="kpi hide" id="gcalBadge" title="Auf diesem Gerät ist Google noch nicht verbunden – ohne Verbindung kommen deine Kalender-Termine (und die daraus angelegten Leads) nicht ins CRM" style="cursor:pointer;background:var(--brand);color:#fff">📅 Google auf diesem Gerät verbinden</div>
+  <div id="hdrStatus">
+  <div class="kpi hide" id="gcalBadge" title="Auf diesem Gerät ist Google noch nicht verbunden – ohne Verbindung kommen deine Kalender-Termine (und die daraus angelegten Leads) nicht ins CRM" style="cursor:pointer;background:var(--brand);color:#fff">📅 Google<span class="lg">&nbsp;auf diesem Gerät</span>&nbsp;verbinden</div>
   <div class="kpi hide" id="todoBadge" title="Deine offenen Aufgaben" style="cursor:pointer;background:var(--warn-bg);color:var(--warn)"></div>
-  <div class="kpi" id="meBadge"></div>
   <div class="kpi" id="dbState" title="Datenbank-Status">⏳ verbinde…</div>
   <div class="kpi">☎ Heute <b id="kpiDials">0</b></div>
+  </div>
+  <button class="btn pri" id="btnNew"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>Lead</button>
+  <div id="hdrMenu">
+  <div class="kpi" id="meBadge"></div>
   <button class="btn" id="btnImport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Import</button>
   <button class="btn" id="btnExport"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9m0 0-4 4m4-4 4 4M4 7V5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2"/></svg>Backup</button>
   <button class="btn" id="btnReset" title="Alle Datensätze löschen – für den Start mit echten Daten"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>Leeren</button>
-  <button class="btn pri" id="btnNew"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>Lead</button>
+  </div>
   <input type="file" id="fileIn" accept=".csv,.json" class="hide">
 </header>
 
@@ -425,7 +455,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="18.11-A";
+const APP_VERSION="18.11-B";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -5183,11 +5213,15 @@ function loadDemo(){
 
 /* ---------- tabs ---------- */
 document.getElementById('hdrMore').addEventListener('click',()=>document.querySelector('header').classList.toggle('open'));
+document.addEventListener('click',e=>{const h=document.querySelector('header');if(!h.classList.contains('open'))return; // Menü schließt bei Klick daneben und nach einer Auswahl
+  if(e.target.closest('#hdrMore'))return;
+  if(!e.target.closest('#hdrMenu,#hdrStatus')||e.target.closest('#hdrMenu .btn,#meLogout'))h.classList.remove('open');});
 /* v18.11-A: Am Handy wandern „Google verbinden" + „Aufgaben" aus der fixen Kopfleiste in die Zeile darunter */
 (()=>{const mq=window.matchMedia('(max-width:760px)');
   const place=()=>{const sb=document.getElementById('subbar'),g=document.getElementById('gcalBadge'),t=document.getElementById('todoBadge'),me=document.getElementById('meBadge');
     if(!sb||!g||!t||!me)return;
-    if(mq.matches){sb.appendChild(g);sb.appendChild(t);}else{me.parentElement.insertBefore(g,me);me.parentElement.insertBefore(t,me);}};
+    const st=document.getElementById('hdrStatus'),db=document.getElementById('dbState');
+    if(mq.matches){sb.appendChild(g);sb.appendChild(t);}else if(st&&db){st.insertBefore(g,db);st.insertBefore(t,db);}};
   place();if(mq.addEventListener)mq.addEventListener('change',place);else if(mq.addListener)mq.addListener(place);})();
 document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
@@ -5201,7 +5235,7 @@ document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',
   if(b.dataset.tab==='foerder')renderFoerder();
 }));
 document.getElementById('todoBadge').addEventListener('click',()=>openTodo(true));
-document.getElementById('gcalBadge').addEventListener('click',()=>{const b=document.getElementById('gcalBadge');b.textContent='📅 Verbinde …';gcalConnectHere().then(()=>{b.textContent='📅 Google auf diesem Gerät verbinden';});});
+document.getElementById('gcalBadge').addEventListener('click',()=>{const b=document.getElementById('gcalBadge');b.textContent='📅 Verbinde …';gcalConnectHere().then(()=>{b.innerHTML='📅 Google<span class="lg">&nbsp;auf diesem Gerät</span>&nbsp;verbinden';});});
 setInterval(()=>{try{updateTodoBadge();}catch(e){}},60000); // Google-Verbindung läuft nach ~1 Std ab → Hinweis wieder zeigen
 
 /* ---------- init: Firebase Anmeldung + Datenbank ---------- */
