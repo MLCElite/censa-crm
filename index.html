@@ -455,7 +455,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="18.11-C";
+const APP_VERSION="18.11-D";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2665,7 +2665,10 @@ function wEntriesFor(person,start,wk){
     if(ov)a.status=ov.status||'';
     return a;
   });
-  const man=WOCHE.filter(e=>e.type!=='ov'&&nameEq(e.name,person)).map(e=>({auto:false,gcal:!!e.gcal,_id:e._id,art:e.art||'EG',tag:+e.tag||0,zeit:e.zeit||'',kunde:e.kunde||'',ort:e.ort||'',status:e.status||'',name:person}));
+  const man=WOCHE.filter(e=>e.type!=='ov'&&nameEq(e.name,person)).map(e=>{
+    const o={auto:false,gcal:!!e.gcal,_id:e._id,art:e.art||'EG',tag:+e.tag||0,zeit:e.zeit||'',kunde:e.kunde||'',ort:e.ort||'',status:e.status||'',name:person};
+    if(o.gcal&&o.art==='PRIVAT'){const pa=gcalArt(o.kunde);if(pa.suffix){o.art=pa.art;o.kunde=pa.rest;}} // früher gespeicherte Einträge („Peschek BG") neu lesen
+    return o;});
   return wDedupe([...auto,...man]).sort((a,b)=>(a.tag-b.tag)||((a.zeit||'').localeCompare(b.zeit||'')));
 }
 function wDedupe(list){ // derselbe Termin aus Lead UND Google-Kalender (oder zweimal im Kalender / aus Doppel-Lead) → nur 1× zeigen
@@ -3141,9 +3144,55 @@ function leadFuerKalender(ev,kunde,dt,deals){
   return {d:best,aehnlich:best?[]:aehnlich.slice(0,3)};
 }
 function gcalArt(title){
-  const m=(title||'').trim().match(/^(AG|BG|MGT|EG|KG|TG|PRIVAT)\b[\s:\-–]*/i);
-  if(m)return {art:m[1].toUpperCase(),rest:(title||'').trim().slice(m[0].length).trim()};
-  return {art:'PRIVAT',rest:(title||'').trim()};
+  const t=(title||'').trim();
+  const m=t.match(/^(AG|BG|MGT|EG|KG|TG|PRIVAT)\b[\s:\-–]*/i);
+  if(m)return {art:m[1].toUpperCase(),rest:t.slice(m[0].length).trim()};
+  // v18.11-D (Melanies Ansage 18.11.): Kürzel darf auch HINTEN stehen – „Peschek BG", „Peschek – AG", „Peschek (BG)"
+  const m2=t.match(/^(.*[^\s:\-–,(\/])[\s:\-–,(\/]+(AG|BG)\)?\s*$/i);
+  if(m2&&m2[1].trim().length>=2)return {art:m2[2].toUpperCase(),rest:m2[1].trim(),suffix:true};
+  return {art:'PRIVAT',rest:t};
+}
+/* v18.11-D: Kalender-Termin mit AG/BG, dessen Kunde noch NICHT im CRM ist → im Wochenplan per Klick
+   „➕ Lead anlegen". Gibt es den Kunden doch schon (Name/Telefon/E-Mail), wird der Termin dort eingetragen. */
+async function wLeadAusKalender(ent,start,wk){
+  const person=ent.name,art=ent.art==='BG'?'BG':'AG';
+  const kunde=(ent.kunde||'').trim();
+  if(kunde.length<2){toast('Im Kalender-Eintrag steht kein Name');return;}
+  const hm=(ent.zeit||'').split(':').map(Number);
+  const dt=new Date(start.getFullYear(),start.getMonth(),start.getDate()+(+ent.tag||0),isNaN(hm[0])?9:hm[0],hm[1]||0);
+  const ts=calPad(dt.getDate())+'.'+calPad(dt.getMonth()+1)+'.'+dt.getFullYear()+' '+calPad(dt.getHours())+':'+calPad(dt.getMinutes());
+  const san=x=>String(x).replace(/[^0-9A-Za-z_-]/g,'');
+  let evId=ent._id||'';const pre=san('g'+wk+'_'),suf=san('_'+person);
+  if(evId.startsWith(pre))evId=evId.slice(pre.length);
+  if(suf&&evId.endsWith(suf))evId=evId.slice(0,-suf.length);
+  const loc=(ent.ort||'').trim();
+  const feld=art==='BG'?'datumBG':'datumAG',rolle=art==='BG'?'berater':'analyst';
+  const fund=leadFuerKalender({id:evId,summary:kunde,location:loc,description:''},kunde,dt,state.deals);
+  if(fund.d){ // Kunde gibt es schon → nichts doppelt anlegen
+    const m=fund.d;
+    if(m.status==='open'&&!(m[feld]||'').trim()){
+      m[feld]=ts;if(!(m[rolle]||'').trim())m[rolle]=person;if(!m.gcalId&&evId)m.gcalId=evId;
+      terminStage(m);histAdd(m,'Termin aus dem Google-Kalender von '+person+' übernommen: '+art+' '+ts);
+      dbPersist(m);
+      chatSys('📅 Termin aus dem Google-Kalender von '+person+' beim bestehenden Kunden eingetragen: '+(m.name||m.org||'—')+' – '+art+' '+ts+' (kein neuer Lead angelegt)',m);
+      toast('Kunde ist schon angelegt – Termin wurde dort eingetragen');
+    }else toast('Kunde ist schon angelegt'+((m[feld]||'').trim()?' – '+art+'-Termin dort: '+m[feld]:''));
+    render();openModal(m.id);return;
+  }
+  if(fund.aehnlich.length&&!confirm('Ein ähnlicher Kunde ist schon angelegt:\n\n• '+fund.aehnlich.join('\n• ')+'\n\n„'+kunde+'" trotzdem als NEUEN Lead anlegen?\n\n(Abbrechen = nichts anlegen)'))return;
+  const d=blank();
+  d.name=kunde;d.gcalId=evId;d.quelle='Google Kalender';
+  if(/gesmbh|gmbh|ges\.m\.b\.h/i.test(kunde)){d.kundentyp='GmbH';d.org=kunde;}
+  if(loc){if(loc.length<=60)d.ort=loc;const pm=/\b([1-9]\d{3})\b/.exec(loc);if(pm){d.plz=pm[1];d.bezirk=bezFromPLZ(pm[1]);}}
+  d[feld]=ts;d[rolle]=person;
+  terminStage(d);
+  d.notizen=todayStr().split('-').reverse().join('.')+' Per Klick im Wochenplan aus dem Google-Kalender von '+person+' angelegt ('+art+' '+ts+(loc?' · '+loc:'')+')';
+  histAdd(d,'Lead per Klick aus dem Wochenplan angelegt ('+art+' '+ts+')');
+  state.deals.unshift(d);dbPersist(d);
+  chatSys('📅 Neuer Lead aus dem Google-Kalender von '+person+': '+kunde+' – '+(art==='BG'?'Beratung ':'Analyse ')+ts,d);
+  render();
+  toast('✅ Lead „'+kunde+'" angelegt – bitte Telefon, E-Mail und Adresse ergänzen');
+  openModal(d.id);
 }
 async function gcalSync(start,wk,person){
   if(!GCAL_CLIENT_ID){toast('Google-Kalender-Sync ist noch nicht eingerichtet');return;}
@@ -3216,6 +3265,7 @@ async function gcalLeadImport(tok,person){
     const t=(ev.summary||'').trim();
     if(!t||/^(Analyse|Beratung):/i.test(t))return;
     const pa=gcalArt(t);let art=pa.art,kunde=pa.rest;
+    if(pa.suffix)return; // Kürzel hinten („Peschek BG"): bewusst nur per Klick im Wochenplan – ein einzelner Nachname ist zu ungenau für die Automatik
     if(art==='PRIVAT'){if(!(ev.location||'').trim()||privat.test(t))return;art='AG';kunde=t;}
     if(art!=='AG'&&art!=='BG')return;
     kunde=(kunde||'').trim();
@@ -3375,7 +3425,7 @@ async function renderWoche(){
       const dd=new Date(start.getTime()+t*86400000);
       const today=new Date();today.setHours(0,0,0,0);
       const ents=wEntriesFor(me,start,wk).filter(e=>e.tag===t);
-      return `<div class="wday${dd.getTime()===today.getTime()?' today':''}"><div class="wdh">${d2} ${fmtDM(dd)}</div>${ents.map((e,i2)=>`<div class="wentry" data-wi="${e.auto?('a:'+e.dealId+':'+e.art):('m:'+e._id)}"${e.mitschau?` style="${e.dabei===0?'opacity:.55;border:1.5px dashed var(--ink-3);background:var(--surface-2)':(e.dabei===1?'border:1.5px solid var(--good)':'border:1.5px solid var(--warn);background:rgba(230,160,30,.07)')}"`:''}><button class="wdel" data-wdel="${e.auto?'':e._id}" title="${e.auto?'Automatisch aus dem CRM-Termin':(e.gcal?'Aus deinem Google Kalender (Sync)':'Eintrag löschen')}">${e.auto?'🔗':(e.gcal?'📅':'×')}</button><span class="wart" style="background:${e.mitschau&&e.dabei===0?'var(--ink-3)':(WARTC[e.art]||'var(--ink-3)')}">${esc(e.art)}</span>${e.mitschau?`<span class="tg" style="background:${e.dabei===1?'var(--good)':(e.dabei===0?'var(--ink-3)':'var(--warn)')};color:#fff;font-weight:800">${e.dabei===1?'👀 dabei':(e.dabei===0?'ohne mich':'Dabei?')}</span>`:''}<b>${esc(e.zeit)}</b> ${esc(e.kunde)}${e.ort?`<div class="wsub">${esc(e.ort)}</div>`:''}${e.mitschau?`<div style="display:flex;gap:4px;margin-top:4px"><button class="mini-btn" data-wbg="1" style="${e.dabei===1?'background:var(--good);color:#fff;font-weight:800':''}">👍 dabei</button><button class="mini-btn" data-wbg="0" style="${e.dabei===0?'background:var(--ink-3);color:#fff;font-weight:800':''}">✗ ohne mich</button></div>`:''}<div class="wsts">${[['done','✔','durchgeführt'],['moved','↗','verschoben'],['cancelled','✖','abgesagt']].map(([s,ic,tt])=>`<button class="wst${e.status===s?' on '+s:''}" data-ws="${s}" title="${tt}">${ic}</button>`).join('')}</div></div>`).join('')||'<div style="font-size:11px;color:var(--ink-3);text-align:center">—</div>'}</div>`;
+      return `<div class="wday${dd.getTime()===today.getTime()?' today':''}"><div class="wdh">${d2} ${fmtDM(dd)}</div>${ents.map((e,i2)=>`<div class="wentry" data-wi="${e.auto?('a:'+e.dealId+':'+e.art):('m:'+e._id)}"${e.mitschau?` style="${e.dabei===0?'opacity:.55;border:1.5px dashed var(--ink-3);background:var(--surface-2)':(e.dabei===1?'border:1.5px solid var(--good)':'border:1.5px solid var(--warn);background:rgba(230,160,30,.07)')}"`:''}><button class="wdel" data-wdel="${e.auto?'':e._id}" title="${e.auto?'Automatisch aus dem CRM-Termin':(e.gcal?'Aus deinem Google Kalender (Sync)':'Eintrag löschen')}">${e.auto?'🔗':(e.gcal?'📅':'×')}</button><span class="wart" style="background:${e.mitschau&&e.dabei===0?'var(--ink-3)':(WARTC[e.art]||'var(--ink-3)')}">${esc(e.art)}</span>${e.mitschau?`<span class="tg" style="background:${e.dabei===1?'var(--good)':(e.dabei===0?'var(--ink-3)':'var(--warn)')};color:#fff;font-weight:800">${e.dabei===1?'👀 dabei':(e.dabei===0?'ohne mich':'Dabei?')}</span>`:''}<b>${esc(e.zeit)}</b> ${esc(e.kunde)}${e.ort?`<div class="wsub">${esc(e.ort)}</div>`:''}${e.mitschau?`<div style="display:flex;gap:4px;margin-top:4px"><button class="mini-btn" data-wbg="1" style="${e.dabei===1?'background:var(--good);color:#fff;font-weight:800':''}">👍 dabei</button><button class="mini-btn" data-wbg="0" style="${e.dabei===0?'background:var(--ink-3);color:#fff;font-weight:800':''}">✗ ohne mich</button></div>`:''}${(e.gcal&&(e.art==='AG'||e.art==='BG'))?`<button class="mini-btn" data-wlead="1" title="Dieser Kunde ist noch nicht im CRM – mit einem Klick als Lead anlegen (${e.art}-Termin wird gleich eingetragen)" style="display:block;width:100%;margin-top:5px;border-color:var(--brand);color:var(--brand-ink);font-weight:800">➕ Lead anlegen</button>`:''}<div class="wsts">${[['done','✔','durchgeführt'],['moved','↗','verschoben'],['cancelled','✖','abgesagt']].map(([s,ic,tt])=>`<button class="wst${e.status===s?' on '+s:''}" data-ws="${s}" title="${tt}">${ic}</button>`).join('')}</div></div>`).join('')||'<div style="font-size:11px;color:var(--ink-3);text-align:center">—</div>'}</div>`;
     }).join('')}</div>
     <div class="ehsec wnew" style="margin-top:14px"><div class="ehhead">＋ Eintrag hinzufügen <span class="ehtag">MGT, EG, KG, TG, Privat – AG/BG kommen automatisch aus den Terminen</span></div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
@@ -3418,6 +3468,7 @@ async function renderWoche(){
       ev.stopPropagation();
       wSetStatus(ent,wk,ent.status===b.dataset.ws?'':b.dataset.ws);
     }));
+    el.querySelectorAll('[data-wlead]').forEach(b=>b.addEventListener('click',ev=>{ev.stopPropagation();b.disabled=true;wLeadAusKalender(ent,start,wk);}));
     el.querySelectorAll('[data-wbg]').forEach(b=>b.addEventListener('click',ev=>{ // 👀 BG-Mitschau: dabei / nicht dabei
       ev.stopPropagation();
       const d2=state.deals.find(x=>x.id===ent.dealId);if(!d2)return;
