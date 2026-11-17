@@ -540,7 +540,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-H";
+const APP_VERSION="19.11-I";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -4924,14 +4924,6 @@ function openModal(id){
         <button type="button" class="btn" id="aw-fehlt" style="border-color:var(--bad);color:var(--bad)">📩 Fehlt / einholen</button>
       </div>`:''}
     </div>`:''}
-    ${!isNew?`<details style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px" id="m-akte">
-      <summary style="font-weight:800;font-size:13.5px;cursor:pointer">📖 Kunden-Akte <span style="font-weight:500;color:var(--ink-2);font-size:12px">– ${(d.hist||[]).length+(d.calls||[]).length} Einträge, neueste zuerst</span></summary>
-      <div style="max-height:260px;overflow-y:auto;font-size:12px;line-height:1.75;color:var(--ink-2);margin-top:6px">${(()=>{
-        const ic=t=>t.indexOf('☎')===0?'':(/ausgewertet/.test(t)?'🧮 ':/fehlen|einholen/i.test(t)?'📩 ':/ANGENOMMEN/.test(t)?'✅ ':/ABGELEHNT|ABGESAGT/.test(t)?'🚫 ':/Analyse abgegeben/.test(t)?'📤 ':/Übergabe/.test(t)?'📋 ':/Termin|Wiedervorlage/.test(t)?'📅 ':/Phase|Status/.test(t)?'🔁 ':/Zuordnung|Dispo|Telefonist|Analyst|Berater|Zuteilung|Aufteilen/.test(t)?'👤 ':/Förderung/.test(t)?'🎯 ':/Buchung|Website|Gründer/.test(t)?'🌐 ':/E-Mail|Briefing/.test(t)?'✉️ ':/Duplikat/.test(t)?'🔗 ':'📝 ');
-        const ev=[...(d.hist||[]).map(h=>({ts:h.ts,von:h.von,txt:h.txt})),...(d.calls||[]).map(c=>({ts:c.ts,von:c.von||d.telefonist||'',txt:'☎ Anruf: '+(c.outcome||'')+(c.dur?' ('+c.dur+' Min.)':'')+(c.note?' – '+c.note:'')}))].sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));
-        return ev.length?ev.map(e2=>{const t=e2.ts?new Date(e2.ts):null;const z=t?(String(t.getDate()).padStart(2,'0')+'.'+String(t.getMonth()+1).padStart(2,'0')+'.'+String(t.getFullYear()).slice(2)+' '+t.toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'})):'';return '<div style="padding:2px 0;border-bottom:1px dashed var(--line)"><span class="tnum" style="color:var(--ink-3)">'+z+'</span> · <b>'+esc(e2.von||'?')+'</b> · '+ic(e2.txt)+esc(e2.txt)+'</div>';}).join(''):'Noch nichts dokumentiert – jeder Anruf, jeder Termin, jeder Statuswechsel und jede Abgabe landet ab sofort automatisch hier.';
-      })()}</div>
-    </details>`:''}
     <div class="ehsec tb tb-be">
       <div class="ehhead">EH-Rechner <span class="ehtag">IVP-Einheitentabelle</span></div>
       ${(()=>{const bt=beteiligung(d);return `<div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:10px" title="Wer zusätzlich am Abschluss beteiligt ist – der Anteil geht vom Analysten ab (Analyst = 50 % minus Beteiligung), der Berater bleibt bei 50 %. Die Person braucht keinen Zugang.">
@@ -4944,6 +4936,15 @@ function openModal(id){
       <div class="ehgrp"><div class="ehgt">Abschluss (Berater)</div><div id="eh-list-a"></div><div class="ehadd" id="eh-add-a"></div></div>
       <div class="ehtot" id="eh-tot"></div>
     </div>
+    ${/* v19.11-I: Kunden-Akte steht in jedem Reiter ganz am Ende (auch beim Berater, nach dem EH-Rechner) */''}
+    ${!isNew?`<details style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px" id="m-akte">
+      <summary style="font-weight:800;font-size:13.5px;cursor:pointer">📖 Kunden-Akte <span style="font-weight:500;color:var(--ink-2);font-size:12px">– ${(d.hist||[]).length+(d.calls||[]).length} Einträge, neueste zuerst</span></summary>
+      <div style="max-height:260px;overflow-y:auto;font-size:12px;line-height:1.75;color:var(--ink-2);margin-top:6px">${(()=>{
+        const ic=t=>t.indexOf('☎')===0?'':(/ausgewertet/.test(t)?'🧮 ':/fehlen|einholen/i.test(t)?'📩 ':/ANGENOMMEN/.test(t)?'✅ ':/ABGELEHNT|ABGESAGT/.test(t)?'🚫 ':/Analyse abgegeben/.test(t)?'📤 ':/Übergabe/.test(t)?'📋 ':/Termin|Wiedervorlage/.test(t)?'📅 ':/Phase|Status/.test(t)?'🔁 ':/Zuordnung|Dispo|Telefonist|Analyst|Berater|Zuteilung|Aufteilen/.test(t)?'👤 ':/Förderung/.test(t)?'🎯 ':/Buchung|Website|Gründer/.test(t)?'🌐 ':/E-Mail|Briefing/.test(t)?'✉️ ':/Duplikat/.test(t)?'🔗 ':'📝 ');
+        const ev=[...(d.hist||[]).map(h=>({ts:h.ts,von:h.von,txt:h.txt})),...(d.calls||[]).map(c=>({ts:c.ts,von:c.von||d.telefonist||'',txt:'☎ Anruf: '+(c.outcome||'')+(c.dur?' ('+c.dur+' Min.)':'')+(c.note?' – '+c.note:'')}))].sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));
+        return ev.length?ev.map(e2=>{const t=e2.ts?new Date(e2.ts):null;const z=t?(String(t.getDate()).padStart(2,'0')+'.'+String(t.getMonth()+1).padStart(2,'0')+'.'+String(t.getFullYear()).slice(2)+' '+t.toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'})):'';return '<div style="padding:2px 0;border-bottom:1px dashed var(--line)"><span class="tnum" style="color:var(--ink-3)">'+z+'</span> · <b>'+esc(e2.von||'?')+'</b> · '+ic(e2.txt)+esc(e2.txt)+'</div>';}).join(''):'Noch nichts dokumentiert – jeder Anruf, jeder Termin, jeder Statuswechsel und jede Abgabe landet ab sofort automatisch hier.';
+      })()}</div>
+    </details>`:''}
     </div>
     <div class="modal-foot">
       <button class="btn pri" id="m-save">Speichern</button>
