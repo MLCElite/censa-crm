@@ -455,7 +455,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="18.11-D";
+const APP_VERSION="18.11-E";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1321,6 +1321,7 @@ function renderTelefon(){
   if(host.__sel===undefined&&ME&&hasRole(ME,'telefonist'))host.__sel=ME.name;
   const sel=host.__sel||'';const fb=host.__bez||'';
   host.__skip=host.__skip||{};
+  if(host.__power===undefined){try{host.__power=localStorage.getItem('censa_power')==='1';}catch(e){host.__power=false;}}
   const base=DS.filter(d=>d.status==='open'&&['Neuer Lead','In Bearbeitung'].includes(d.stage)&&(!sel||canonName(d.telefonist||'')===sel)&&!host.__skip[d.id]);
   const bezCnt={};let ohneBez=0;
   base.forEach(d=>{const b=(d.bezirk||'').trim();if(b)bezCnt[b]=(bezCnt[b]||0)+1;else ohneBez++;});
@@ -1347,13 +1348,16 @@ function renderTelefon(){
      <select id="tSel" style="width:auto"><option value="">Telefonist wählen…</option>${tels.map(x=>`<option${sel===x?' selected':''}>${esc(x)}</option>`).join('')}</select>
      <span class="kpi">☎ Heute <b class="tnum">${dials}</b></span>
      <span class="kpi">Termine <b class="tnum">${termine}</b></span>
+     <button class="bchip${host.__power?' on':''}" id="tPower" title="Powerdial: nach jedem Ergebnis wird sofort der nächste Kunde angerufen">⚡ Powerdial ${host.__power?'AN':'AUS'}</button>
      <span class="kpi" style="margin-left:auto">${queue.length} in der Liste</span>
    </div>
+   ${host.__power?`<div style="max-width:640px;margin:0 0 11px;padding:9px 13px;border-radius:11px;background:var(--brand-bg);color:var(--brand-ink);font-size:12.5px;line-height:1.45"><b>⚡ Powerdial ist an.</b> Ersten Kunden mit „☎ Anrufen" starten. Danach reicht ein Tipp auf das Ergebnis („n.a.", „Kein Interesse", „Überspringen" oder „Termin" mit Datum) – der nächste Kunde wird sofort angewählt. Die Gesprächsdauer wird automatisch mitgeschrieben.</div>`:''}
    ${d0?dialerCard(d0):`<div class="emptybig"><div class="big">Liste leer${sel?' für '+esc(sel):''} 🎉</div>Alle Anruf-Leads abgearbeitet oder übersprungen.</div>`}
    ${queue.length>1?`<div style="margin-top:12px;max-width:640px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin-bottom:6px">${fb?(fb==='__none'?'Ohne Bezirk':'Bezirk '+esc(fb))+' – alle '+queue.length+' Kunden':'Als Nächstes – nach Bezirk sortiert ('+(queue.length-1)+' weitere)'}</div><div class="st-list">${(fb?queue:queue.filter(x=>x.id!==d0.id).slice(0,10)).map(x=>`<div class="gl" data-tpick="${x.id}"${x.id===d0.id?' style="border-color:var(--brand);background:var(--brand-bg)"':''}><span class="tg">${esc(x.bezirk||'—')}</span><span class="gn">${x.id===d0.id?'▶ ':''}${esc(x.name||x.org||'—')}</span><span class="ph">${esc(x.org&&x.name!==x.org?x.org:'')}</span><span class="ph tnum">${esc(x.telefon||'')}</span>${isOverdue(x)?'<span class="od">überfällig</span>':''}</div>`).join('')}</div></div>`:''}
    ${naToday.length?`<div style="margin-top:14px;max-width:640px"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--warn);margin-bottom:6px">📵 Heute nicht abgehoben (${naToday.length}) – bleiben hier, falls der Kunde zurückruft</div><div class="st-list">${naToday.map(x=>`<div class="gl" data-napick="${x.d.id}" style="border-left:3px solid var(--warn)"><span class="ph tnum" style="font-weight:800">${x.ts?new Date(x.ts).toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'}):'—'}</span><span class="gn">${esc(x.d.name||x.d.org||'—')}</span><span class="ph">${esc(x.d.org&&x.d.name!==x.d.org?x.d.org:'')}</span><span class="ph tnum">${esc(x.d.telefon||'')}</span><span class="tg od">n.a. ${x.anz}×</span></div>`).join('')}</div></div>`:''}`;
   host.querySelectorAll('[data-bz]').forEach(b=>b.addEventListener('click',()=>{host.__bez=b.dataset.bz;host.__pick='';renderTelefon();}));
   host.querySelector('#tSel').addEventListener('change',e=>{host.__sel=e.target.value;host.__skip={};host.__pick='';renderTelefon();});
+  host.querySelector('#tPower').addEventListener('click',()=>{host.__power=!host.__power;try{localStorage.setItem('censa_power',host.__power?'1':'0');}catch(e){}renderTelefon();toast(host.__power?'⚡ Powerdial AN – nach jedem Ergebnis wird der nächste Kunde angewählt':'Powerdial AUS');});
   host.querySelectorAll('[data-tpick]').forEach(el=>el.addEventListener('click',()=>{host.__pick=el.dataset.tpick;renderTelefon();}));
   host.querySelectorAll('[data-napick]').forEach(el=>el.addEventListener('click',()=>{const id=el.dataset.napick;delete host.__skip[id];host.__bez='';host.__pick=id;renderTelefon();}));
   if(d0)wireDialer(host,d0);
@@ -1473,11 +1477,17 @@ function wireDialer(host,d){
     if(v!==(d.briefing||'')){d.briefing=v;histAdd(d,'Briefing aktualisiert (Telefon-Tab)');dbPersist(d);toast('Briefing gespeichert ✓');}
   });
   const call=host.querySelector('#t-call');
-  const meta=()=>{const du=host.querySelector('#t-dur'),no=host.querySelector('#t-note');const o={};if(du&&du.value)o.dur=parseFloat(du.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
-  if(call)call.addEventListener('click',()=>{d.calls=d.calls||[];d.calls.push({ts:new Date().toISOString(),outcome:'angerufen'});dbPersist(d);});
+  /* v18.11-E: Powerdial + automatische Gesprächsdauer. Der Anruf läuft über das eigene Telefon (tel:-Link) –
+     kostenlos, keine Telefonanlage nötig. pdNext() wählt den nächsten Kunden noch im selben Tipp an
+     (Browser erlauben das Öffnen der Telefon-App nur direkt aus einer Nutzer-Aktion heraus). */
+  const meta=()=>{const du=host.querySelector('#t-dur'),no=host.querySelector('#t-note');const o={};if(du&&du.value)o.dur=parseFloat(du.value);
+    else if(host.__callStart&&host.__callStart.id===d.id){const mn=Math.round((Date.now()-host.__callStart.t)/6000)/10;if(mn>=0.1&&mn<=90)o.dur=mn;}
+    if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
+  const pdNext=()=>{if(!host.__power)return;const a=host.querySelector('#t-call');if(a)a.click();};
+  if(call)call.addEventListener('click',()=>{d.calls=d.calls||[];d.calls.push({ts:new Date().toISOString(),outcome:'angerufen'});host.__callStart={id:d.id,t:Date.now()};dbPersist(d);});
   host.querySelectorAll('[data-to]').forEach(b=>b.addEventListener('click',()=>{
     const o=b.dataset.to;
-    if(o==='skip'){host.__skip[d.id]=1;renderTelefon();return;}
+    if(o==='skip'){host.__skip[d.id]=1;renderTelefon();pdNext();return;}
     if(o==='open'){openModal(d.id);return;}
     d.calls=d.calls||[];d.calls.push(Object.assign({ts:new Date().toISOString(),outcome:o},meta()));
     const noteV=((host.querySelector('#t-note')||{}).value||'').trim();
@@ -1485,12 +1495,12 @@ function wireDialer(host,d){
     if(o==='termin'){
       const ag=((host.querySelector('#t-ag')||{}).value||'').trim();
       d.stage='Analysetermin vereinbart';
-      if(ag){d.datumAG=ag;histAdd(d,'AG-Termin: — → '+ag+' (Telefon-Tab)');chatSys('📅 Neuer Analysetermin: '+(d.name||d.org||'—')+' – '+ag+' · Zuordnung über die Tages-Dispo',d);dbPersist(d);render();toast('✓ Termin '+ag+' gespeichert – Melanie ordnet über die Dispo zu');return;}
+      if(ag){d.datumAG=ag;histAdd(d,'AG-Termin: — → '+ag+' (Telefon-Tab)');chatSys('📅 Neuer Analysetermin: '+(d.name||d.org||'—')+' – '+ag+' · Zuordnung über die Tages-Dispo',d);dbPersist(d);render();toast('✓ Termin '+ag+' gespeichert – Melanie ordnet über die Dispo zu');pdNext();return;}
       chatSys('📅 Neuer Analysetermin: '+(d.name||d.org||'—')+' · Zuordnung über die Tages-Dispo',d);dbPersist(d);render();openModal(d.id);toast('Termin! Datum (AG) im Lead eintragen – zugeordnet wird über die Dispo');return;
     }
     if(o==='rueckruf'){d.stage='In Bearbeitung';dbPersist(d);render();openModal(d.id);toast('Rückruf – Wiedervorlage-Datum eintragen');return;}
-    if(o==='nichterreicht'){if(d.stage==='Neuer Lead')d.stage='In Bearbeitung';naStamp(d);host.__skip[d.id]=1;dbPersist(d);render();toast('n.a. vermerkt – Kunde bleibt unten in „📵 Heute nicht abgehoben" für den Rückruf');return;}
-    if(o==='keininteresse'){d.status='lost';d.lostReason='Kein Interesse';d.lostDate=todayStr();d.lostBy='Telefonist';d.wiedervorlage=new Date(Date.now()+61*86400000).toISOString().slice(0,10);dbPersist(d);render();toast('Kein Interesse – Reaktivierung in 2 Monaten');return;}
+    if(o==='nichterreicht'){if(d.stage==='Neuer Lead')d.stage='In Bearbeitung';naStamp(d);host.__skip[d.id]=1;dbPersist(d);render();toast('n.a. vermerkt – Kunde bleibt unten in „📵 Heute nicht abgehoben" für den Rückruf');pdNext();return;}
+    if(o==='keininteresse'){d.status='lost';d.lostReason='Kein Interesse';d.lostDate=todayStr();d.lostBy='Telefonist';d.wiedervorlage=new Date(Date.now()+61*86400000).toISOString().slice(0,10);dbPersist(d);render();toast('Kein Interesse – Reaktivierung in 2 Monaten');pdNext();return;}
   }));
 }
 
@@ -3265,7 +3275,6 @@ async function gcalLeadImport(tok,person){
     const t=(ev.summary||'').trim();
     if(!t||/^(Analyse|Beratung):/i.test(t))return;
     const pa=gcalArt(t);let art=pa.art,kunde=pa.rest;
-    if(pa.suffix)return; // Kürzel hinten („Peschek BG"): bewusst nur per Klick im Wochenplan – ein einzelner Nachname ist zu ungenau für die Automatik
     if(art==='PRIVAT'){if(!(ev.location||'').trim()||privat.test(t))return;art='AG';kunde=t;}
     if(art!=='AG'&&art!=='BG')return;
     kunde=(kunde||'').trim();
