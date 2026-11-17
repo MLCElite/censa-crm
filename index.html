@@ -203,6 +203,8 @@
     #modal:has(#m-ltabs) .lbody{column-count:3;column-gap:14px}
     #modal:has(#m-ltabs) .lbody>*{break-inside:avoid;margin:0 0 10px!important}
     #modal:has(#m-ltabs) .lbody .grid2{gap:7px 9px}
+    #modal:has(#m-ltabs) .lbody>.grid2{break-inside:auto} /* Feld-Block darf sich auf zwei Spalten verteilen – gleicht die Spaltenhöhen aus */
+    #modal:has(#m-ltabs) .lbody>.grid2>*{break-inside:avoid}
     #modal:has(#m-ltabs) .fld{margin-bottom:0;gap:3px}
     #modal:has(#m-ltabs) .fld label{font-size:10.5px}
     #modal:has(#m-ltabs) .lbody input,#modal:has(#m-ltabs) .lbody select,#modal:has(#m-ltabs) .lbody textarea{padding:6px 9px;font-size:13px;border-radius:8px}
@@ -540,7 +542,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-C";
+const APP_VERSION="19.11-D";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -4602,7 +4604,67 @@ function openModal(id){
       <button class="ob rueckruf" data-o="rueckruf"><span class="d"></span>Rückruf</button>
       <button class="ob nichts" data-o="nichterreicht"><span class="d"></span>n.a. – nicht abgehoben</button>
       <button class="ob weg" data-o="keininteresse"><span class="d"></span>Kein Interesse</button></div></div>`:''}
-    ${/* v19.11-A: im Analyst-Reiter stehen „Analyse abgeben" + „Potenzial schätzen" GANZ OBEN – kein langes Scrollen mehr */''}
+    <div class="grid2">
+      <div class="fld tb tb-tel"><label>Kundentyp</label><select id="m-typ"><option${d.kundentyp==='Privat'?' selected':''}>Privat</option><option${d.kundentyp==='GmbH'?' selected':''}>GmbH</option></select></div>
+      <div class="fld tb tb-tel"><label>Quelle</label><input id="m-quelle" value="${esc(d.quelle)}" placeholder="Recherche, Empfehlung…"></div>
+      <div class="fld full tb tb-tel"><label>Name</label><input id="m-name" value="${esc(d.name)}"></div>
+      <div class="fld full tb tb-tel ${d.kundentyp==='GmbH'?'':'hide'}" id="m-orgwrap"><label>Firma</label><input id="m-org" value="${esc(d.org)}"></div>
+      <details class="sec tb tb-tel ${d.kundentyp==='GmbH'?'':'hide'}" id="m-finwrap"><summary>🏢 Finanzdaten <span class="sv">${d.umsatz?('Umsatz '+esc(d.umsatz)+' €'):(d.anlage?('Anlagevermögen '+esc(d.anlage)+' €'):'— öffentliche Zahlen eintragen —')}</span></summary>
+        <div class="inner2">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+          <input id="m-umsatz" type="number" placeholder="Umsatz €" value="${esc(d.umsatz||'')}">
+          <input id="m-gewinn" type="number" placeholder="Gewinn €" value="${esc(d.gewinn||'')}">
+          <input id="m-anlage" type="number" placeholder="Anlagevermögen €" value="${esc(d.anlage||'')}">
+          <input id="m-sach" type="number" placeholder="davon Sachanlagen €" value="${esc(d.sachanlage||'')}">
+          <input id="m-finanz" type="number" placeholder="davon Finanzanlagen €" value="${esc(d.finanzanlage||'')}">
+        </div>
+        <div style="display:flex;gap:7px;margin-top:7px;flex-wrap:wrap;align-items:center">
+          <a class="mini-btn" id="m-fin-nd" href="#" target="_blank" rel="noopener">Firmen-Check: Northdata</a>
+          <a class="mini-btn" id="m-fin-g" href="#" target="_blank" rel="noopener">Firmen-Check: Google</a>
+        </div>
+        </div>
+      </details>
+      <div class="fld tb tb-tel"><label>Telefon</label><input id="m-tel" value="${esc(d.telefon)}" placeholder="+43 …"></div>
+      <div class="fld tb tb-tel"><label>E-Mail (Kunde) <span style="font-weight:500;color:var(--ink-3);text-transform:none">— für Termineinladung</span></label><input id="m-email" type="email" value="${esc(d.email||'')}" placeholder="kunde@firma.at"></div>
+      <details class="sec tb tb-tel"${(d.strasse||d.plz||d.ort)?'':' open'}><summary>📍 Adresse <span class="sv">${esc([d.strasse,d.plz,d.ort].filter(Boolean).join(', ')||'— noch leer —')}${d.bezirk?' · '+esc(d.bezirk):''}</span></summary>
+        <div class="inner2" style="display:grid;grid-template-columns:2fr .8fr 1.2fr;gap:9px">
+          <input id="m-str" value="${esc(d.strasse||'')}" placeholder="Straße + Nr.">
+          <input id="m-plz" value="${esc(d.plz||'')}" placeholder="PLZ">
+          <input id="m-ort" value="${esc(d.ort)}" placeholder="Ort">
+        </div>
+        <div style="padding:0 13px 11px;font-size:11.5px;font-weight:700;color:var(--brand-ink)" id="m-bezview">${d.bezirk?'· '+esc(d.bezirk):''}</div>
+      </details>
+    </div>
+    <div class="grid2">
+      ${(()=>{const roleSel=(id2,label,cur,role,cls)=>`<div class="fld tb ${cls}"><label>${label}</label><select id="${id2}">${roleDropdown(role,cur)}</select></div>`;
+      const mgtSel=(id2,label,cur,cls)=>{const names=TEAM.map(x=>x.name).sort(COLL.compare);let o=`<option value=""${!cur?' selected':''}>— niemand —</option>`+names.map(n=>`<option${n===cur?' selected':''}>${esc(n)}</option>`).join('');if(cur&&!names.includes(cur))o+=`<option selected>${esc(cur)}</option>`;return `<div class="fld tb ${cls}"><label>${label}</label><select id="${id2}">${o}</select></div>`;};
+      return roleSel('m-telf','Telefonist',d.telefonist||'','telefonist','tb-tel')+roleSel('m-an','Analyst',d.analyst||'','analyst','tb-tel tb-an')+roleSel('m-be','Berater',d.berater||'','berater','tb-an tb-be')
+        +mgtSel('m-mgtag','🤝 MGT dabei (Analyse)',d.mgtAG||'','tb-an')+mgtSel('m-mgtbg','🤝 MGT dabei (Beratung)',d.mgtBG||'','tb-be');})()}
+      ${(d.telHist&&d.telHist.length)?`<div class="fld full tb tb-tel"><div class="histline">Frühere Anrufer: ${esc(d.telHist.join(', '))}</div></div>`:''}
+      <div class="fld tb tb-tel"><label>Wiedervorlage</label><input type="date" id="m-wv" value="${esc(d.wiedervorlage)}"></div>
+      <div class="fld tb tb-tel tb-an"><label>Analysetermin (AG)</label><input id="m-dag" value="${esc(d.datumAG||'')}" placeholder="z. B. 22.09. 14:00"></div>
+      <div class="fld tb tb-an tb-be"><label>Beratungstermin (BG)</label><input id="m-dbg" value="${esc(d.datumBG||'')}" placeholder="z. B. 25.09. 10:00"></div>
+      <div class="fld full tb tb-an tb-be"><label title="Setzt den Termin auf „verschoben": einfach neu terminisieren, zuordnen und bestätigen – Kunde und Analyst/Berater bekommen den neuen Termin automatisch per Kalender-Einladung">Termin verschoben? <span style="font-weight:500;color:var(--ink-3);text-transform:none">— danach neu terminisieren</span></label>
+        <div style="display:flex;gap:7px;flex-wrap:wrap">
+          <button type="button" class="mini-btn" id="cal-ag-x" style="color:var(--bad)" title="Analysetermin abgesagt oder verschoben">❗ AG verschoben</button>
+          <button type="button" class="mini-btn" id="cal-bg-x" style="color:var(--bad)" title="Beratungstermin abgesagt oder verschoben">❗ BG verschoben</button>
+        </div>
+      </div>
+      ${isAdmin()?`<div class="fld tb tb-tel"><label>Potenzieller Geschäftspartner? <span style="color:var(--ink-3);font-weight:500;text-transform:none">(nur für Admins sichtbar)</span></label><label class="gptoggle"><input type="checkbox" id="m-gp" ${d.gp?'checked':''}> Ja – fürs Recruiting vormerken</label></div>`:''}
+      <div class="fld tb tb-an"><label>Geburtsdatum <span style="font-weight:500;color:var(--ink-3);text-transform:none">— für Anstalts-Auskünfte</span></label><input id="m-geb" value="${esc(d.geb||'')}" placeholder="TT.MM.JJJJ"></div>
+      <details class="sec tb tb-an"${(d.partner&&d.partner.name)?' open':''}><summary>👫 Partner / Familie <span class="sv">${esc((d.partner&&d.partner.name)||'— keiner erfasst —')}${(d.partner&&d.partner.geb)?' · '+esc(d.partner.geb):''}</span></summary>
+        <div class="inner2" style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1.2fr;gap:8px">
+          <input id="m-pname" placeholder="Name Partner/in" value="${esc((d.partner&&d.partner.name)||'')}">
+          <input id="m-pgeb" placeholder="Geburtsdatum" value="${esc((d.partner&&d.partner.geb)||'')}">
+          <input id="m-ptel" placeholder="Telefon" value="${esc((d.partner&&d.partner.telefon)||'')}">
+          <input id="m-pmail" placeholder="E-Mail" value="${esc((d.partner&&d.partner.email)||'')}">
+        </div>
+        <div style="font-size:11px;color:var(--ink-3);margin-top:4px">Beide bleiben in EINEM Kunden („Familie") – Analysen, Termine und Auskünfte laufen gemeinsam.</div>
+      </details>
+      <div class="fld full tb tb-tel tb-an"><label>Briefing für den Analysten <span style="font-weight:500;color:var(--ink-3)">— Branche, jung/alt, Alleinentscheider, was wurde besprochen</span></label><textarea id="m-brief" rows="2" placeholder="Branche, jung/alt, Alleinentscheider, was wurde besprochen">${esc(d.briefing||'')}</textarea></div>
+      <div class="fld full"><label>Notizen</label><textarea id="m-notiz" rows="3">${esc(d.notizen)}</textarea></div>
+    </div>
+    ${/* v19.11-D: Reihenfolge im Analyst-Reiter: 1. Analyst/Berater + Termine · 2. Analyse & Sprachnachricht · 3. Auskunftsvollmacht · 4. Potenzial */''}
     <div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--brand);border-radius:12px" id="m-analysesec" class="tb tb-an">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">📤 Analyse abgeben <span style="font-weight:500;color:var(--ink-2);font-size:12px">– PDF/Fotos + Sprachnotiz landen direkt hier beim Kunden (statt in WhatsApp)</span></div>
       ${(()=>{if(isNew)return '';const st=analyseStand(d),erf=analyseErfolgt(d)&&leadNeu(d);
@@ -4631,79 +4693,6 @@ function openModal(id){
       <div style="font-size:11px;color:var(--ink-3);margin-top:5px">Dateien werden über deinen Google-Zugang im Kunden-Ordner unter „CENSA Analysen" gespeichert – beim ersten Mal fragt Google einmal um Erlaubnis. Team-Mitglieder mit Rolle „Assistenz" können Berechnungen direkt in den Ordner legen; Analyst &amp; Berater sehen ihn automatisch in ihrem Drive unter „Für mich freigegeben".${isNew?' · 💾 Beim Abgeben wird der neue Kunde automatisch mit angelegt.':''}</div>
       </details>
     </div>
-    <div class="tb tb-an" id="m-potsec" style="margin:2px 0 12px;padding:11px 13px;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px">
-      <div style="font-weight:800;font-size:13.5px;margin-bottom:7px">🎯 Potenzial schätzen <span style="font-weight:500;color:var(--ink-2);font-size:12px">– Sparbetrag oder Zielsumme eintragen, das CRM rechnet das EH-Ziel</span></div>
-      <div class="ehadd">
-        <input class="num" id="q-betrag" type="number" placeholder="€ / Monat" style="width:104px">
-        <button type="button" class="mini-btn" data-q="lv">+ Veranlagung</button>
-        <button type="button" class="mini-btn" data-q="bav">+ BAV §3</button>
-        <input class="num" id="q-summe" type="number" placeholder="Zielsumme €" style="width:118px">
-        <button type="button" class="mini-btn" data-q="gg">+ Golden Gates</button>
-      </div>
-      <div id="eh-vorschlag"></div>
-      <div id="eh-list-s" style="margin-top:7px"></div>
-      <div id="eh-tot-s" style="font-size:13px;font-weight:800;color:var(--brand-ink)"></div>
-    </div>
-    <div class="grid2">
-      <div class="fld tb tb-tel"><label>Kundentyp</label><select id="m-typ"><option${d.kundentyp==='Privat'?' selected':''}>Privat</option><option${d.kundentyp==='GmbH'?' selected':''}>GmbH</option></select></div>
-      <div class="fld tb tb-tel"><label>Quelle</label><input id="m-quelle" value="${esc(d.quelle)}" placeholder="Recherche, Empfehlung…"></div>
-      <div class="fld full tb tb-tel"><label>Name</label><input id="m-name" value="${esc(d.name)}"></div>
-      <div class="fld full tb tb-tel ${d.kundentyp==='GmbH'?'':'hide'}" id="m-orgwrap"><label>Firma</label><input id="m-org" value="${esc(d.org)}"></div>
-      <details class="sec tb tb-tel ${d.kundentyp==='GmbH'?'':'hide'}" id="m-finwrap"><summary>🏢 Finanzdaten <span class="sv">${d.umsatz?('Umsatz '+esc(d.umsatz)+' €'):(d.anlage?('Anlagevermögen '+esc(d.anlage)+' €'):'— öffentliche Zahlen eintragen —')}</span></summary>
-        <div class="inner2">
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-          <input id="m-umsatz" type="number" placeholder="Umsatz €" value="${esc(d.umsatz||'')}">
-          <input id="m-gewinn" type="number" placeholder="Gewinn €" value="${esc(d.gewinn||'')}">
-          <input id="m-anlage" type="number" placeholder="Anlagevermögen €" value="${esc(d.anlage||'')}">
-          <input id="m-sach" type="number" placeholder="davon Sachanlagen €" value="${esc(d.sachanlage||'')}">
-          <input id="m-finanz" type="number" placeholder="davon Finanzanlagen €" value="${esc(d.finanzanlage||'')}">
-        </div>
-        <div style="display:flex;gap:7px;margin-top:7px;flex-wrap:wrap;align-items:center">
-          <a class="mini-btn" id="m-fin-nd" href="#" target="_blank" rel="noopener">Firmen-Check: Northdata</a>
-          <a class="mini-btn" id="m-fin-g" href="#" target="_blank" rel="noopener">Firmen-Check: Google</a>
-        </div>
-        </div>
-      </details>
-      <div class="fld tb tb-tel"><label>Telefon</label><input id="m-tel" value="${esc(d.telefon)}" placeholder="+43 …"></div>
-      <div class="fld tb tb-tel"><label>E-Mail (Kunde) <span style="font-weight:500;color:var(--ink-3);text-transform:none">— für Termineinladung</span></label><input id="m-email" type="email" value="${esc(d.email||'')}" placeholder="kunde@firma.at"></div>
-      <div class="fld tb tb-an"><label>Geburtsdatum <span style="font-weight:500;color:var(--ink-3);text-transform:none">— für Anstalts-Auskünfte</span></label><input id="m-geb" value="${esc(d.geb||'')}" placeholder="TT.MM.JJJJ"></div>
-      <details class="sec tb tb-an"${(d.partner&&d.partner.name)?' open':''}><summary>👫 Partner / Familie <span class="sv">${esc((d.partner&&d.partner.name)||'— keiner erfasst —')}${(d.partner&&d.partner.geb)?' · '+esc(d.partner.geb):''}</span></summary>
-        <div class="inner2" style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1.2fr;gap:8px">
-          <input id="m-pname" placeholder="Name Partner/in" value="${esc((d.partner&&d.partner.name)||'')}">
-          <input id="m-pgeb" placeholder="Geburtsdatum" value="${esc((d.partner&&d.partner.geb)||'')}">
-          <input id="m-ptel" placeholder="Telefon" value="${esc((d.partner&&d.partner.telefon)||'')}">
-          <input id="m-pmail" placeholder="E-Mail" value="${esc((d.partner&&d.partner.email)||'')}">
-        </div>
-        <div style="font-size:11px;color:var(--ink-3);margin-top:4px">Beide bleiben in EINEM Kunden („Familie") – Analysen, Termine und Auskünfte laufen gemeinsam.</div>
-      </details>
-      <details class="sec tb tb-tel"${(d.strasse||d.plz||d.ort)?'':' open'}><summary>📍 Adresse <span class="sv">${esc([d.strasse,d.plz,d.ort].filter(Boolean).join(', ')||'— noch leer —')}${d.bezirk?' · '+esc(d.bezirk):''}</span></summary>
-        <div class="inner2" style="display:grid;grid-template-columns:2fr .8fr 1.2fr;gap:9px">
-          <input id="m-str" value="${esc(d.strasse||'')}" placeholder="Straße + Nr.">
-          <input id="m-plz" value="${esc(d.plz||'')}" placeholder="PLZ">
-          <input id="m-ort" value="${esc(d.ort)}" placeholder="Ort">
-        </div>
-        <div style="padding:0 13px 11px;font-size:11.5px;font-weight:700;color:var(--brand-ink)" id="m-bezview">${d.bezirk?'· '+esc(d.bezirk):''}</div>
-      </details>
-    </div>
-    <div class="grid2">
-      ${(()=>{const roleSel=(id2,label,cur,role,cls)=>`<div class="fld tb ${cls}"><label>${label}</label><select id="${id2}">${roleDropdown(role,cur)}</select></div>`;
-      const mgtSel=(id2,label,cur,cls)=>{const names=TEAM.map(x=>x.name).sort(COLL.compare);let o=`<option value=""${!cur?' selected':''}>— niemand —</option>`+names.map(n=>`<option${n===cur?' selected':''}>${esc(n)}</option>`).join('');if(cur&&!names.includes(cur))o+=`<option selected>${esc(cur)}</option>`;return `<div class="fld tb ${cls}"><label>${label}</label><select id="${id2}">${o}</select></div>`;};
-      return roleSel('m-telf','Telefonist',d.telefonist||'','telefonist','tb-tel')+roleSel('m-an','Analyst',d.analyst||'','analyst','tb-tel tb-an')+roleSel('m-be','Berater',d.berater||'','berater','tb-an tb-be')
-        +mgtSel('m-mgtag','🤝 MGT dabei (Analyse)',d.mgtAG||'','tb-an')+mgtSel('m-mgtbg','🤝 MGT dabei (Beratung)',d.mgtBG||'','tb-be');})()}
-      ${(d.telHist&&d.telHist.length)?`<div class="fld full tb tb-tel"><div class="histline">Frühere Anrufer: ${esc(d.telHist.join(', '))}</div></div>`:''}
-      <div class="fld tb tb-tel"><label>Wiedervorlage</label><input type="date" id="m-wv" value="${esc(d.wiedervorlage)}"></div>
-      <div class="fld tb tb-tel tb-an"><label>Analysetermin (AG)</label><input id="m-dag" value="${esc(d.datumAG||'')}" placeholder="z. B. 22.09. 14:00"></div>
-      <div class="fld tb tb-an tb-be"><label>Beratungstermin (BG)</label><input id="m-dbg" value="${esc(d.datumBG||'')}" placeholder="z. B. 25.09. 10:00"></div>
-      <div class="fld full tb tb-an tb-be"><label title="Setzt den Termin auf „verschoben": einfach neu terminisieren, zuordnen und bestätigen – Kunde und Analyst/Berater bekommen den neuen Termin automatisch per Kalender-Einladung">Termin verschoben? <span style="font-weight:500;color:var(--ink-3);text-transform:none">— danach neu terminisieren</span></label>
-        <div style="display:flex;gap:7px;flex-wrap:wrap">
-          <button type="button" class="mini-btn" id="cal-ag-x" style="color:var(--bad)">❗ AG abgesagt / verschoben</button>
-          <button type="button" class="mini-btn" id="cal-bg-x" style="color:var(--bad)">❗ BG abgesagt / verschoben</button>
-        </div>
-      </div>
-      ${isAdmin()?`<div class="fld tb tb-tel"><label>Potenzieller Geschäftspartner? <span style="color:var(--ink-3);font-weight:500;text-transform:none">(nur für Admins sichtbar)</span></label><label class="gptoggle"><input type="checkbox" id="m-gp" ${d.gp?'checked':''}> Ja – fürs Recruiting vormerken</label></div>`:''}
-      <div class="fld full tb tb-tel tb-an"><label>Briefing für den Analysten <span style="font-weight:500;color:var(--ink-3)">— Branche, jung/alt, Alleinentscheider, was wurde besprochen</span></label><textarea id="m-brief" rows="2" placeholder="Branche, jung/alt, Alleinentscheider, was wurde besprochen">${esc(d.briefing||'')}</textarea></div>
-      <div class="fld full"><label>Notizen</label><textarea id="m-notiz" rows="3">${esc(d.notizen)}</textarea></div>
-    </div>
     ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px" id="m-anstsec" class="tb tb-an">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">📧 Auskunfts-Ersuchen an Anstalten <span style="font-weight:500;color:var(--ink-2);font-size:12px">– Adressen und Text laut eurer Anleitung „Vollmacht richtig versenden"; der Entwurf wird fertig vorbereitet, kontrolliert und GESENDET wird von euch</span></div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0">
@@ -4727,6 +4716,19 @@ function openModal(id){
       </details>
       <details class="lmore"><summary>ⓘ Hilfe zum Versand</summary><div style="font-size:11px;color:var(--ink-3);margin-top:6px"><b>Eine Sammel-Mail, alle Anstalten im Bcc</b> (sie sehen einander nicht), Betreff und Text sind eure Standard-Vorlage. Die unterschriebene Vollmacht hängt ihr selbst an. Vor dem Senden: Daten auf der Vollmacht richtig und leserlich? Unterschrift drauf? Richtige Abteilung (LV ≠ Sach)? ⚠ = keine Mailadresse hinterlegt.</div></details>
     </div>`:''}
+    <div class="tb tb-an" id="m-potsec" style="margin:2px 0 12px;padding:11px 13px;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px">
+      <div style="font-weight:800;font-size:13.5px;margin-bottom:7px">🎯 Potenzial schätzen <span style="font-weight:500;color:var(--ink-2);font-size:12px">– Sparbetrag oder Zielsumme eintragen, das CRM rechnet das EH-Ziel</span></div>
+      <div class="ehadd">
+        <input class="num" id="q-betrag" type="number" placeholder="€ / Monat" style="width:104px">
+        <button type="button" class="mini-btn" data-q="lv">+ Veranlagung</button>
+        <button type="button" class="mini-btn" data-q="bav">+ BAV §3</button>
+        <input class="num" id="q-summe" type="number" placeholder="Zielsumme €" style="width:118px">
+        <button type="button" class="mini-btn" data-q="gg">+ Golden Gates</button>
+      </div>
+      <div id="eh-vorschlag"></div>
+      <div id="eh-list-s" style="margin-top:7px"></div>
+      <div id="eh-tot-s" style="font-size:13px;font-weight:800;color:var(--brand-ink)"></div>
+    </div>
     ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid ${d.auswertung&&d.auswertung.status==='offen'?'var(--bad)':'var(--line)'};border-radius:12px" id="m-auswsec" class="tb tb-be">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">🧮 Fall-Auswertung <span style="font-weight:500;color:var(--ink-2);font-size:12px">– der Berater wertet aus; der Analyst bekommt die Info automatisch als Aufgabe</span></div>
       ${d.auswertung?(d.auswertung.status==='fertig'
