@@ -348,7 +348,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="17.11-A";
+const APP_VERSION="17.11-B";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -750,7 +750,7 @@ function listeDetailHtml(d){
       ${d.telefon?`<a href="tel:${esc((d.telefon||'').replace(/[^+\d]/g,''))}" class="dv" style="color:var(--brand-ink);font-weight:700">☎ ${esc(d.telefon)}</a>`:'<span class="dv">☎ —</span>'}
       <span class="dv">✉ ${esc(d.email||'—')}</span>
       <span class="dv">📍 ${esc([d.strasse,d.plz,d.ort].filter(Boolean).join(', ')||'—')}${d.bezirk?' · '+esc(d.bezirk):''}</span>
-      <span class="dv">${badge(d.kundentyp)} ${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''} ${eh>0?`<span class="tg" style="background:var(--brand-bg);color:var(--brand-ink)">${eh.toFixed(0)} EH</span>`:''} ${naInfo(d)} ${anhangBadge(d)} ${lueckenBadge(d)}</span>
+      <span class="dv">${badge(d.kundentyp)} ${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''} ${eh>0?`<span class="tg" style="background:var(--brand-bg);color:var(--brand-ink)">${eh.toFixed(0)} EH</span>`:''} ${naInfo(d)} ${anhangBadge(d)} ${lueckenBadge(d)||adrBadge(d)}</span>
     </div>
     <div class="dcol">
       <div class="dl">Zuteilung (sofort gespeichert)</div>
@@ -1314,7 +1314,7 @@ function dialerCard(d){
   return `<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:22px 24px;max-width:640px">
     <div style="font-size:23px;font-weight:800;letter-spacing:-.4px">${esc(d.name||d.org||'—')}</div>
     ${d.org&&d.name!==d.org?`<div style="font-size:13px;color:var(--ink-2)">${esc(d.org)}</div>`:''}
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${badge(d.kundentyp)}${(d.gp&&isAdmin())?'<span class="tg gpb">GP?</span>':''}${d.bezirk?`<span class="tg">${esc(d.bezirk)}</span>`:''}${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''}${isOverdue(d)?'<span class="tg od">überfällig</span>':''}${naInfo(d)}${anhangBadge(d)}${lueckenBadge(d)}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${badge(d.kundentyp)}${(d.gp&&isAdmin())?'<span class="tg gpb">GP?</span>':''}${d.bezirk?`<span class="tg">${esc(d.bezirk)}</span>`:''}${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''}${isOverdue(d)?'<span class="tg od">überfällig</span>':''}${naInfo(d)}${anhangBadge(d)}${lueckenBadge(d)||adrBadge(d)}</div>
     <div style="display:flex;align-items:center;gap:13px;margin:16px 0;padding:14px 16px;background:var(--surface-2);border:1px solid var(--line);border-radius:12px">
       <div id="t-telnum" title="Doppelklick = Nummer kopieren" style="font-size:21px;font-weight:800;flex:1;cursor:copy;user-select:all" class="tnum">${esc(d.telefon||'— keine Nummer —')}</div>
       ${d.telefon?`<a class="btn pri" id="t-call" href="tel:${esc(tel)}" style="font-size:15px;padding:11px 20px">☎ Anrufen</a>`:''}
@@ -4052,7 +4052,17 @@ function adrBadge(d){return adrFehlt(d)?'<span class="tg od" title="Straße + PL
    – ab Termin (AG/BG eingetragen oder Phase ≥ „Analysetermin vereinbart"): + E-Mail, Ansprechpartner
    – Analyse durchgeführt (Phase ≥ „Analyse & Doku" ODER AG-Termin liegt >2 Std zurück): + Analyse-PDF,
      Sprachnachricht, Geburtsdatum
-   Nur OFFENE Kunden (nicht gewonnen/verloren), nicht Posteingang, nicht Recruiting. */
+   Nur OFFENE Kunden (nicht gewonnen/verloren), nicht Posteingang, nicht Recruiting, nur Neukunden (siehe LK_AB). */
+/* v17.11-B (Melanies Korrektur 17.11.): Fehlt-Anzeigen NUR für Neukunden, die ab dem 27.10.2026 angelegt wurden
+   (3 Wochen vor Einführung). Altbestand bleibt ohne Anzeige – dort sind Analysen und Infos schon vorhanden.
+   Der Anlage-Zeitpunkt steckt in der Lead-ID: uid() = 'd' + Zufall + Date.now() (Basis 36, 8 Zeichen). */
+const LK_AB=new Date(2026,9,27).getTime();
+function leadAngelegt(d){
+  const m=/([0-9a-z]{8})$/.exec((d&&d.id)||'');
+  if(m){const t=parseInt(m[1],36);if(t>1.5e12&&t<Date.now()+86400000)return t;}
+  return 0; // unbekannt = Altbestand
+}
+function leadNeu(d){return leadAngelegt(d)>=LK_AB;}
 function anaTyp(a){ // Anhang: 'audio' (Sprachnachricht) oder 'doc' (PDF/Foto) – alte Einträge am Dateinamen erkennen
   if(a&&a.typ)return a.typ;
   const n=((a&&a.name)||'').toLowerCase();
@@ -4080,7 +4090,7 @@ function analyseStand(d){ // was liegt zur Analyse schon vor?
 function analyseErfolgt(d){return d.status==='open'&&(STAGES.indexOf(d.stage)>=3||terminVorbei(d.datumAG));}
 function leadLuecken(d){
   const L=[];L.aktiv=false;L.doc=false;
-  if(!d||d.status!=='open'||d.geprueft===false||(d.quelle||'')==='Recruiting')return L;
+  if(!d||d.status!=='open'||d.geprueft===false||(d.quelle||'')==='Recruiting'||!leadNeu(d))return L;
   L.aktiv=STAGES.indexOf(d.stage)>=2||!!(d.datumAG||'').trim()||!!(d.datumBG||'').trim();
   const erf=analyseErfolgt(d);
   if(erf){
@@ -4207,7 +4217,7 @@ function openModal(id){
     </div>
     <div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--brand);border-radius:12px" id="m-analysesec">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">📤 Analyse abgeben <span style="font-weight:500;color:var(--ink-2);font-size:12px">– PDF/Fotos + Sprachnotiz landen direkt hier beim Kunden (statt in WhatsApp)</span></div>
-      ${(()=>{if(isNew)return '';const st=analyseStand(d),erf=analyseErfolgt(d);
+      ${(()=>{if(isNew)return '';const st=analyseStand(d),erf=analyseErfolgt(d)&&leadNeu(d);
         const pill=(ok,ic,txt,extra)=>`<span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:800;padding:6px 13px;border-radius:20px;${ok?'background:var(--good-bg);color:var(--good)':(erf?'background:var(--bad);color:var(--surface)':'background:var(--surface-3);color:var(--ink-2)')}">${ic} ${txt} ${ok?'✓'+(extra||''):(erf?'FEHLT':'– noch offen')}</span>`;
         return `<div style="display:flex;gap:7px;flex-wrap:wrap;margin:7px 0 9px">${pill(st.pdf,'📄','Analyse-PDF',st.docs?'':' (lt. Übergabe)')}${pill(st.sprach,'🎙','Sprachnachricht',st.sprachWie==='text'?' (schriftlich in der Übergabe)':st.sprachWie==='haken'?' (lt. Übergabe)':'')}</div>`;})()}
       ${(d.analyse&&d.analyse.length)?`<div style="font-size:14px;font-weight:800;margin:4px 0 6px">📎 ${d.analyse.length} ${d.analyse.length===1?'Datei':'Dateien'} angehängt</div><div style="margin:0 0 9px;display:flex;flex-direction:column;gap:6px">${(()=>{
