@@ -185,6 +185,10 @@
   /* v19.11-B: Reiter im Kunden-Fenster (Telefonist · Analyst · Berater) */
   .ltabs{display:flex;gap:4px;background:var(--surface-3);padding:4px;border-radius:13px;margin:0 0 13px;overflow-x:auto;scrollbar-width:none}
   .lmore{margin-top:6px}
+  .achip{display:inline-flex;align-items:center;gap:5px;background:var(--brand-bg);color:var(--brand-ink);border-radius:8px;padding:3px 3px 3px 9px;font-size:12.5px;font-weight:700}
+  .achip.nomail{background:var(--bad-bg);color:var(--bad)}
+  .achip button{border:0;background:transparent;color:inherit;font-size:13px;font-weight:800;padding:2px 6px;border-radius:6px;cursor:pointer;opacity:.7}
+  .achip button:hover{opacity:1;background:rgba(0,0,0,.08)}
   .lmore>summary{cursor:pointer;font-size:11.5px;color:var(--ink-3);list-style:none}
   .lmore>summary::-webkit-details-marker{display:none}
   .lbody>*{margin-bottom:12px}
@@ -215,7 +219,6 @@
     #modal:has(#m-ltabs) .lbody>[id^="m-"]:not(.grid2){padding:9px 11px!important}
     #modal:has(#m-ltabs) .ehsec{padding:9px 11px}
     #modal:has(#m-ltabs) .lbody .btn{padding:6px 11px;font-size:12.5px}
-    #modal:has(#m-ltabs) #ast-owa,#modal:has(#m-ltabs) #ast-mailto{padding:8px 12px!important;font-size:13px!important}
     #modal:has(#m-ltabs) .gptoggle{padding:5px 9px;font-size:12.5px}
     #modal:has(#m-ltabs) .anf{padding:6px 10px}
     #modal:has(#m-ltabs) .anf-ic{font-size:19px}
@@ -235,7 +238,6 @@
     #modal:has(#m-ltabs) .anf-t small{white-space:nowrap;flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis}
     #modal:has(#m-ltabs) #m-analysesec>div[style*="flex-direction:column"]{gap:3px!important;margin-bottom:6px!important}
     #modal:has(#m-ltabs) #m-analysesec .btn{padding:5px 8px;font-size:12px;gap:4px}
-    #modal:has(#m-ltabs) #ast-hints{max-height:54px;overflow-y:auto}
     #modal:has(#m-ltabs) #m-akte>summary>span{display:none}
     #modal:has(#m-ltabs) #m-analysesec>div[style*="font-size:14px"]{display:none}
     #modal:has(#m-ltabs) #eh-tot-s{font-size:12px!important}
@@ -250,10 +252,7 @@
     #modal:has(#m-ltabs) .ehrow .nm{min-width:0}
     #modal:has(#m-ltabs) .anf-t b{font-size:12.5px}
     #modal:has(#m-ltabs) .anf-t small{font-size:10.5px}
-    #modal:has(#m-ltabs) #ast-office{padding:5px 9px!important;margin:4px 0!important}
-    #modal:has(#m-ltabs) #ast-office span[style*="ink-3"]{display:none}
     #modal:has(#m-ltabs) #ast-hints{font-size:11.5px!important}
-    #modal:has(#m-ltabs) #ast-hints>div{padding:0!important}
     #modal:has(#m-ltabs) .lmore{margin-top:3px}
     #modal:has(#m-ltabs) .ehrow{padding:4px 8px;margin-bottom:3px}
     #modal:has(#m-ltabs) .modal-foot .btn{padding:7px 13px}
@@ -542,7 +541,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-D";
+const APP_VERSION="19.11-E";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -4694,27 +4693,24 @@ function openModal(id){
       </details>
     </div>
     ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px" id="m-anstsec" class="tb tb-an">
-      <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">📧 Auskunfts-Ersuchen an Anstalten <span style="font-weight:500;color:var(--ink-2);font-size:12px">– Adressen und Text laut eurer Anleitung „Vollmacht richtig versenden"; der Entwurf wird fertig vorbereitet, kontrolliert und GESENDET wird von euch</span></div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0">
-        ${ANSTALTEN.filter(a=>astHat(d,a)).map(a=>`<label class="gptoggle" title="${esc((astAdr(a).join(', ')||'keine Mailadresse hinterlegt')+(a.hint?' – '+a.hint:''))}"><input type="checkbox" class="ast-ck" value="${esc(a.n)}" checked> ${esc(a.n)}${a.sp?` <span style="color:var(--ink-3);font-weight:600">(${esc(a.sp)})</span>`:''}${a.m?'':' ⚠'}</label>`).join('')||'<span style="font-size:12px;color:var(--ink-3)">Noch keine Anstalt aus einer PDF erkannt (Foto-Scans haben keinen lesbaren Text) – unten per Hand anhaken.</span>'}
-      </div>
-      <details style="margin:4px 0"><summary style="cursor:pointer;font-size:12px;color:var(--ink-2)">+ weitere Anstalten wählen</summary>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0">${ANSTALTEN.filter(a=>!astHat(d,a)).map(a=>`<label class="gptoggle" title="${esc((astAdr(a).join(', ')||'keine Mailadresse hinterlegt')+(a.hint?' – '+a.hint:''))}"><input type="checkbox" class="ast-ck" value="${esc(a.n)}"> ${esc(a.n)}${a.sp?` <span style="color:var(--ink-3);font-weight:600">(${esc(a.sp)})</span>`:''}${a.m?'':' ⚠'}</label>`).join('')}</div>
-      </details>
-      <div id="ast-hints" style="font-size:12px;margin:4px 0"></div>
-      <div id="ast-office" style="font-size:12.5px;margin:6px 0;padding:8px 11px;border-radius:9px;background:var(--surface);border:1px solid var(--line);display:flex;gap:8px;align-items:center;flex-wrap:wrap"></div>
-      <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:8px">
-        <button type="button" class="btn pri" id="ast-owa" style="font-size:14px;padding:11px 16px" title="Öffnet Outlook mit fertigem Entwurf und kopiert alle Adressen fürs Bcc-Feld">🌐 Mail in Outlook vorbereiten</button>
-        <button type="button" class="btn" id="ast-mailto" style="font-size:14px;padding:11px 16px" title="Öffnet die Mail-App dieses Geräts – Bcc, Betreff und Text sind ausgefüllt">📱 Mail-App</button>
+      <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">📧 Auskunftsvollmacht an Anstalten</div>
+      <div id="ast-chips" style="display:flex;flex-wrap:wrap;gap:5px;margin:6px 0 5px"></div>
+      <select id="ast-add" style="max-width:300px" title="Anstalt aus der Liste wählen – sie wird oben hinzugefügt"></select>
+      <details class="lmore" id="ast-hintbox"><summary></summary><div id="ast-hints" style="font-size:12px;margin:4px 0"></div></details>
+      <div id="ast-office" style="font-size:12.5px;margin:5px 0;display:flex;gap:6px;align-items:center;flex-wrap:wrap"></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px">
+        <span style="font-size:12.5px;font-weight:700">Mail vorbereiten:</span>
+        <button type="button" class="btn pri" id="ast-owa" title="Öffnet Outlook mit fertigem Entwurf und kopiert alle Adressen fürs Bcc-Feld">🌐 Outlook</button>
+        <button type="button" class="btn" id="ast-mailto" title="Öffnet die Mail-App dieses Geräts – Bcc, Betreff und Text sind ausgefüllt">📱 Mail-App</button>
       </div>
       <div id="ast-owa-liste"></div>
-      <details style="margin-top:6px"><summary style="cursor:pointer;font-size:11.5px;color:var(--ink-3)">weitere Wege (Gmail, Outlook-Programm am PC)</summary>
-        <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:6px">
+      <details class="lmore"><summary>ⓘ Hilfe und weitere Wege</summary>
+        <div style="font-size:11px;color:var(--ink-3);margin-top:6px"><b>Eine Sammel-Mail, alle Anstalten im Bcc</b> (sie sehen einander nicht). Adressen, Betreff und Text sind eure Standard-Vorlage laut Anleitung „Vollmacht richtig versenden". Die Office-Mail steht im „An"-Feld, die Anstalten antworten dorthin. Die unterschriebene Vollmacht hängt ihr selbst an. Vor dem Senden: Daten auf der Vollmacht richtig und leserlich? Unterschrift drauf? Richtige Abteilung (LV ≠ Sach)? ⚠ = keine Mailadresse hinterlegt.</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
           <button type="button" class="btn" id="ast-gmail">📧 Gmail-Entwurf</button>
           <button type="button" class="btn" id="ast-eml">💾 Outlook-Programm am PC (.eml)</button>
         </div>
       </details>
-      <details class="lmore"><summary>ⓘ Hilfe zum Versand</summary><div style="font-size:11px;color:var(--ink-3);margin-top:6px"><b>Eine Sammel-Mail, alle Anstalten im Bcc</b> (sie sehen einander nicht), Betreff und Text sind eure Standard-Vorlage. Die unterschriebene Vollmacht hängt ihr selbst an. Vor dem Senden: Daten auf der Vollmacht richtig und leserlich? Unterschrift drauf? Richtige Abteilung (LV ≠ Sach)? ⚠ = keine Mailadresse hinterlegt.</div></details>
     </div>`:''}
     <div class="tb tb-an" id="m-potsec" style="margin:2px 0 12px;padding:11px 13px;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:7px">🎯 Potenzial schätzen <span style="font-weight:500;color:var(--ink-2);font-size:12px">– Sparbetrag oder Zielsumme eintragen, das CRM rechnet das EH-Ziel</span></div>
@@ -5002,12 +4998,27 @@ function openModal(id){
   if(astSec){
     /* v19.11-A (Melanies Ansage): nur die Mail vorbereiten – schnell und einfach. Kein Vollmacht-Auswahlfeld, kein Link:
        die unterschriebene Vollmacht hängt jeder selbst an. Office-Mail steht fix im „An"-Feld. */
-    const selAst=()=>Array.from(astSec.querySelectorAll('.ast-ck:checked')).map(x=>ANSTALTEN.find(a=>a.n===x.value)).filter(Boolean);
-    const astHints=()=>{const h=selAst().filter(a=>a.hint||!a.m);
-      astSec.querySelector('#ast-hints').innerHTML=h.map(a=>`<div style="padding:3px 0;color:${a.m?'var(--ink-2)':'var(--bad)'}">ℹ <b>${esc(a.n)}:</b> ${esc(a.m?a.hint:'keine Mailadresse hinterlegt – wird übersprungen')}</div>`).join('');};
-    astSec.querySelectorAll('.ast-ck').forEach(c=>c.addEventListener('change',astHints));astHints();
+    /* v19.11-E (Melanies Ansage: „Fenster viel zu groß, ich will nicht scrollen"): statt 43 großer Kästchen
+       → kleine Chips der gewählten Anstalten (✕ entfernt) + EIN Auswahlfeld zum Hinzufügen. Hinweise eingeklappt. */
+    const astSet=new Set(ANSTALTEN.filter(a=>astHat(d,a)).map(a=>a.n));
+    const selAst=()=>ANSTALTEN.filter(a=>astSet.has(a.n));
+    const astPaint=()=>{
+      const sel=selAst();
+      astSec.querySelector('#ast-chips').innerHTML=sel.length?sel.map(a=>`<span class="achip${a.m?'':' nomail'}" title="${esc((astAdr(a).join(', ')||'keine Mailadresse hinterlegt')+(a.hint?' – '+a.hint:''))}">${esc(a.n)}${a.sp?' ('+esc(a.sp)+')':''}${a.m?'':' ⚠'}<button type="button" data-ax="${esc(a.n)}" title="entfernen">✕</button></span>`).join('')
+        :'<span style="font-size:12.5px;color:var(--ink-3)">Noch keine Anstalt gewählt – unten aus der Liste hinzufügen.</span>';
+      const add=astSec.querySelector('#ast-add');
+      add.innerHTML='<option value="">＋ Anstalt hinzufügen …</option>'+ANSTALTEN.filter(a=>!astSet.has(a.n)).map(a=>`<option value="${esc(a.n)}">${esc(a.n)}${a.sp?' ('+esc(a.sp)+')':''}${a.m?'':' – keine Mailadresse'}</option>`).join('');
+      const h=sel.filter(a=>a.hint||!a.m),box=astSec.querySelector('#ast-hintbox');
+      box.style.display=h.length?'':'none';
+      box.querySelector('summary').textContent='ⓘ '+h.length+' Hinweis'+(h.length===1?'':'e')+' zu den gewählten Anstalten';
+      astSec.querySelector('#ast-hints').innerHTML=h.map(a=>`<div style="padding:2px 0;color:${a.m?'var(--ink-2)':'var(--bad)'}"><b>${esc(a.n)}:</b> ${esc(a.m?a.hint:'keine Mailadresse hinterlegt – wird übersprungen')}</div>`).join('');
+    };
+    astSec.querySelector('#ast-chips').addEventListener('click',ev=>{const x=ev.target.closest('[data-ax]');if(!x)return;astSet.delete(x.dataset.ax);astPaint();});
+    astSec.querySelector('#ast-add').addEventListener('change',ev=>{const v=ev.target.value;if(v){astSet.add(v);astPaint();}});
+    astPaint();
     const officePaint=()=>{const o=astSec.querySelector('#ast-office');
-      o.innerHTML='📮 <b>Office-Mail:</b> '+(VM_MAIL?`<b style="color:var(--brand-ink)">${esc(VM_MAIL)}</b> <span style="color:var(--ink-3)">– steht bei jeder Auskunfts-Mail im „An"-Feld, die Anstalten antworten dorthin</span>`:'<span style="color:var(--bad);font-weight:700">noch nicht festgelegt</span>'+(isAdmin()?'':' <span style="color:var(--ink-3)">– bitte Melanie Bescheid geben</span>'))
+      o.title='Office-Mail: steht bei jeder Auskunfts-Mail im „An"-Feld, die Anstalten antworten dorthin';
+      o.innerHTML='📮 <b>An:</b> '+(VM_MAIL?`<b style="color:var(--brand-ink)">${esc(VM_MAIL)}</b>`:'<span style="color:var(--bad);font-weight:700">Office-Mail noch nicht festgelegt</span>'+(isAdmin()?'':' <span style="color:var(--ink-3)">– bitte Melanie Bescheid geben</span>'))
         +(isAdmin()?` <button type="button" class="mini-btn" id="ast-office-set">${VM_MAIL?'ändern':'festlegen'}</button>`:'');
       const bs=o.querySelector('#ast-office-set');
       if(bs)bs.addEventListener('click',async()=>{
@@ -5045,8 +5056,8 @@ function openModal(id){
         +'&subject='+encodeURIComponent(astSubject(d))
         +'&body='+encodeURIComponent(astMailText(d,sel,null));
       window.open(link,'_blank');
-      astHelfer(sel,'Mail in Outlook vorbereitet',link,kopiert?'kopiert':'nichtkopiert');
-      histAdd(d,'Auskunfts-Mail vorbereitet (Outlook): '+sel.map(a=>a.n).join(', '));
+      astHelfer(sel,'Outlook geöffnet',link,kopiert?'kopiert':'nichtkopiert');
+      d.anstalten=[...astSet];histAdd(d,'Auskunfts-Mail vorbereitet (Outlook): '+sel.map(a=>a.n).join(', '));
       persist();
     });
     astSec.querySelector('#ast-mailto').addEventListener('click',()=>{
@@ -5056,7 +5067,7 @@ function openModal(id){
         +'&body='+encodeURIComponent(astMailText(d,sel,null).replace(/\n/g,'\r\n'));
       const a3=document.createElement('a');a3.href=link;document.body.appendChild(a3);a3.click();a3.remove();
       astHelfer(sel,'Mail-App geöffnet',link,'');
-      histAdd(d,'Auskunfts-Mail vorbereitet (Mail-App): '+sel.map(a=>a.n).join(', '));
+      d.anstalten=[...astSet];histAdd(d,'Auskunfts-Mail vorbereitet (Mail-App): '+sel.map(a=>a.n).join(', '));
       persist();
     });
     astSec.querySelector('#ast-gmail').addEventListener('click',async e2=>{
