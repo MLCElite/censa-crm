@@ -541,7 +541,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-K";
+const APP_VERSION="19.11-L";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -974,7 +974,8 @@ function renderPipeline(){
     </div><span class="kpi" style="margin-left:auto">${pool.length} Datensätze</span>
   </div>`+'<div class="board">'+cols.map(col=>{
     const list=pool.filter(col.test);
-    list.sort((a,b)=>{const oa=isOverdue(a)?0:1,ob=isOverdue(b)?0:1;if(oa!==ob)return oa-ob;const da=parseDMY(a.wiedervorlage),db=parseDMY(b.wiedervorlage);return (da?da.getTime():8.64e15)-(db?db.getTime():8.64e15);});
+    const FL=new Map(list.map(d=>[d,faellig(d)])); // v19.11-L: aktuell/passiert oben, „später" (> 30 Tage) ganz unten
+    list.sort((a,b)=>{const fa=FL.get(a),fb=FL.get(b);if(fa.spaeter!==fb.spaeter)return fa.spaeter?1:-1;const oa=isOverdue(a)?0:1,ob=isOverdue(b)?0:1;if(oa!==ob)return oa-ob;return faelligCmp(fa,fb);});
     const MAXC=60,vis=list.slice(0,MAXC); // Tempo: max. 60 Karten je Spalte
     const cards=list.length?(vis.map(d=>leadCard(d)).join('')+(list.length>MAXC?`<div class="empty-col">… ${list.length-MAXC} weitere – bitte Suche oder Filter nutzen</div>`:'')):'<div class="empty-col">—</div>';
     return `<div class="col ${col.cls}"><div class="col-h"><span class="dot"></span><span class="t">${esc(col.title)}</span><span class="c tnum">${list.length}</span></div><div class="col-b">${cards}</div></div>`;
@@ -990,7 +991,7 @@ function renderPipeline(){
 function leadCard(d){
   const eh=ehAbschluss(d);
   const od=isOverdue(d);
-  return `<div class="lead${od?' od':''}" data-id="${d.id}"><div class="n">${esc(d.name||d.org||'—')}</div><div class="meta">${badge(d.kundentyp)}${d.geprueft===false?'<span class="tg gpb">📥 Posteingang</span>':''}${od?`<span class="tg od">überfällig</span>`:''}${(d.gp&&isAdmin())?`<span class="tg gpb">GP?</span>`:''}${d.bezirk?`<span class="tg">${esc(d.bezirk)}</span>`:''}${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''}${eh>0?`<span class="tg" style="background:var(--brand-bg);color:var(--brand-ink)">${eh.toFixed(0)} EH</span>`:potBadge(d)}${anhangBadge(d)}${lueckenBadge(d)}</div>${d.telefon?`<div class="tel">${esc(d.telefon)}</div>`:''}</div>`;
+  return `<div class="lead${od?' od':''}" data-id="${d.id}"><div class="n">${esc(d.name||d.org||'—')}</div><div class="meta">${badge(d.kundentyp)}${d.geprueft===false?'<span class="tg gpb">📥 Posteingang</span>':''}${od?`<span class="tg od">überfällig</span>`:''}${(d.gp&&isAdmin())?`<span class="tg gpb">GP?</span>`:''}${d.bezirk?`<span class="tg">${esc(d.bezirk)}</span>`:''}${d.quelle?`<span class="tg">${esc(d.quelle)}</span>`:''}${eh>0?`<span class="tg" style="background:var(--brand-bg);color:var(--brand-ink)">${eh.toFixed(0)} EH</span>`:potBadge(d)}${anhangBadge(d)}${lueckenBadge(d)}${(()=>{if(d.status!=='open')return '';const f=faellig(d);return f.spaeter?`<span class="tg" title="Steht erst später an – deshalb weiter unten einsortiert">📅 ${esc(f.txt)}</span>`:'';})()}</div>${d.telefon?`<div class="tel">${esc(d.telefon)}</div>`:''}</div>`;
 }
 
 function listeDetailHtml(d){
@@ -1880,7 +1881,34 @@ function grpBy(list,f,fb){
   return Object.keys(m).map(k=>[disp[k],m[k]]).sort((a,b)=>b[1].length-a[1].length);
 }
 function isOverdue(d){const du=daysUntil(d.wiedervorlage);return du!=null&&du<0;}
-function glItem(d){const od=isOverdue(d)?`<span class="od">überfällig ${-daysUntil(d.wiedervorlage)}T</span>`:'';return `<div class="gl" data-id="${d.id}"><span class="gn">${esc(d.name||d.org||'—')}</span><span class="ph">${esc(d.stage)}</span>${od}</div>`;}
+/* v19.11-L (Melanies Ansage): Listen zeigen zuerst, was AKTUELL ist oder schon PASSIERT ist. Kunden, deren Termin bzw.
+   Wiedervorlage erst in über SPAETER_TAGE Tagen ansteht (z. B. „erst nächstes Jahr"), rutschen ans Ende unter „Später".
+   Maßgeblich: der nächste bevorstehende Termin (AG/BG); gibt es keinen, die Wiedervorlage; sonst der letzte Termin. */
+const SPAETER_TAGE=30;
+function terminZeit(s){ // Termin-Text → Date (ohne den „nächstes Jahr"-Sprung von parseTermin)
+  const n=terminNorm(s);if(!n)return null;
+  const m=/^(\d{2})\.(\d{2})\.(\d{4})(?: (\d{2}):(\d{2}))?$/.exec(n.txt);
+  return m?new Date(+m[3],+m[2]-1,+m[1],m[4]?+m[4]:9,m[5]?+m[5]:0):null;
+}
+function faellig(d){
+  const now=Date.now(),tAG=terminZeit(d.datumAG),tBG=terminZeit(d.datumBG),wv=parseDMY(d.wiedervorlage);
+  const alle=[tAG&&{t:tAG.getTime(),art:'AG'},tBG&&{t:tBG.getTime(),art:'BG'}].filter(Boolean);
+  let r=alle.filter(x=>x.t>=now).sort((a,b)=>a.t-b.t)[0]||null;      // 1. nächster bevorstehender Termin
+  if(!r&&wv)r={t:wv.getTime(),art:'WV'};                              // 2. Wiedervorlage
+  if(!r)r=alle.sort((a,b)=>b.t-a.t)[0]||null;                         // 3. letzter (vergangener) Termin
+  if(!r)return {t:null,art:'',spaeter:false,txt:''};
+  const dt=new Date(r.t),jahr=dt.getFullYear()!==new Date().getFullYear()?dt.getFullYear():'';
+  return {t:r.t,art:r.art,spaeter:r.t>now+SPAETER_TAGE*86400000,
+    txt:(r.art==='WV'?'Wiedervorlage ':r.art+' ')+calPad(dt.getDate())+'.'+calPad(dt.getMonth()+1)+'.'+jahr+(r.art==='WV'?'':' '+calPad(dt.getHours())+':'+calPad(dt.getMinutes()))};
+}
+function faelligCmp(a,b){const k=x=>x.spaeter?2:(x.t==null?1:0);return k(a)-k(b)||((a.t||0)-(b.t||0));} // aktuell/passiert → ohne Datum → später
+function faelligListe(list,max){ // sortierte Zeilen mit Datum; „Später" abgesetzt am Ende
+  const xs=list.map(d=>({d:d,f:faellig(d)})).sort((a,b)=>faelligCmp(a.f,b.f));
+  const akt=xs.filter(x=>!x.f.spaeter),sp=xs.filter(x=>x.f.spaeter),mx=max||9999;
+  return akt.slice(0,mx).map(x=>glItem(x.d,x.f)).join('')
+    +(sp.length?`<details class="grp" style="margin-top:4px"><summary style="font-size:12.5px;color:var(--ink-2)">📅 Später – erst in über ${SPAETER_TAGE} Tagen<span class="cnt">${sp.length}</span></summary><div class="inner">${sp.slice(0,mx).map(x=>glItem(x.d,x.f)).join('')}</div></details>`:'');
+}
+function glItem(d,f){const od=isOverdue(d)?`<span class="od">überfällig ${-daysUntil(d.wiedervorlage)}T</span>`:'';return `<div class="gl" data-id="${d.id}"><span class="gn">${esc(d.name||d.org||'—')}</span><span class="ph">${esc(d.stage)}</span>${(f&&f.txt)?`<span class="ph tnum"${(f.t<Date.now()&&!f.spaeter)?' style="color:var(--bad);font-weight:700"':''}>${esc(f.txt)}</span>`:''}${od}</div>`;}
 
 /* ---------- Duplikat-Check & verlustfreies Zusammenführen (Admin) ---------- */
 function dupKeys(d,lastCnt){
@@ -2162,12 +2190,17 @@ function renderSteuerung(){
     const neu=hTs?(Date.now()-new Date(hTs).getTime()<86400000):!(d.hist||[]).length;
     return {dt:dt?dt.getTime():Infinity,urg,neu};
   };
-  const dispoSort=(list,role)=>list.map(d=>({d,m:dMeta(d,role)})).sort((a,b)=>{
-    const r=x=>x.m.urg?0:(x.m.neu?1:2);
-    return r(a)-r(b)||a.m.dt-b.m.dt;
+  const dispoSort=(list,role)=>list.map(d=>{const f=faellig(d);return {d,f,m:f.spaeter?{dt:Infinity,urg:null,neu:false}:dMeta(d,role)};}).sort((a,b)=>{
+    const r=x=>x.f.spaeter?3:(x.m.urg?0:(x.m.neu?1:2)); // „später" (> 30 Tage) immer ans Ende
+    return r(a)-r(b)||faelligCmp(a.f,b.f);
   });
+  const dispoBlock=(list,role,names)=>{ // aktuelle Zeilen offen, spätere eingeklappt
+    const xs=dispoSort(list,role),akt=xs.filter(x=>!x.f.spaeter),sp=xs.filter(x=>x.f.spaeter);
+    return `<div class="st-list">${akt.map(x=>dRow(x,role,names)).join('')||'<div class="empty-col">Aktuell nichts offen.</div>'}</div>`
+      +(sp.length?`<details class="grp" style="margin-top:6px"><summary style="font-size:12.5px;color:var(--ink-2)">📅 Später – Termin oder Wiedervorlage erst in über ${SPAETER_TAGE} Tagen<span class="cnt">${sp.length}</span></summary><div class="inner">${sp.map(x=>dRow(x,role,names)).join('')}</div></details>`:'');
+  };
   const dRow=(x,role,names)=>{const d=x.d,mm=x.m,rot=!!(mm.urg||mm.neu);
-    return `<div class="gl" style="cursor:default;flex-wrap:wrap${rot?';border:1.5px solid var(--bad);background:var(--bad-bg,rgba(220,60,60,.08))':''}">${mm.urg?`<span class="tg" style="background:var(--bad);color:#fff;font-weight:800">🔴 ${mm.urg}</span>`:(mm.neu?`<span class="tg" style="background:var(--bad);color:#fff;font-weight:800">🆕 NEU</span>`:'')}<span class="gn" style="cursor:pointer" data-open="${d.id}">${esc(d.name||d.org||'—')}</span>${adrBadge(d)}${role==='berater'?(potBadge(d)||'<span class="tg" title="Der Analyst hat noch kein Potenzial geschätzt">🎯 offen</span>')+(((d.uebergabe||{}).prio==='hot')?'<span class="tg" style="background:var(--bad-bg);color:var(--bad);font-weight:800">🔴 heiß</span>':''):''}<span class="ph tnum"${mm.urg?' style="color:var(--bad);font-weight:800"':''}>${esc((role==='analyst'?d.datumAG:d.datumBG)||d.wiedervorlage||'— Termin fehlt —')}</span><select data-dsel="${d.id}" style="width:150px;padding:5px 8px;font-size:12px"><option value="">wählen…</option>${names.map(n=>`<option>${esc(n)}</option>`).join('')}</select><button class="mini-btn" data-dispo="${d.id}" data-role="${role}">Zuordnen</button></div>`;};
+    return `<div class="gl" style="cursor:default;flex-wrap:wrap${rot?';border:1.5px solid var(--bad);background:var(--bad-bg,rgba(220,60,60,.08))':''}">${mm.urg?`<span class="tg" style="background:var(--bad);color:#fff;font-weight:800">🔴 ${mm.urg}</span>`:(mm.neu?`<span class="tg" style="background:var(--bad);color:#fff;font-weight:800">🆕 NEU</span>`:'')}<span class="gn" style="cursor:pointer" data-open="${d.id}">${esc(d.name||d.org||'—')}</span>${adrBadge(d)}${role==='berater'?(potBadge(d)||'<span class="tg" title="Der Analyst hat noch kein Potenzial geschätzt">🎯 offen</span>')+(((d.uebergabe||{}).prio==='hot')?'<span class="tg" style="background:var(--bad-bg);color:var(--bad);font-weight:800">🔴 heiß</span>':''):''}<span class="ph tnum"${mm.urg?' style="color:var(--bad);font-weight:800"':''}>${esc((x.f&&x.f.spaeter)?x.f.txt:((role==='analyst'?d.datumAG:d.datumBG)||(x.f&&x.f.txt)||'— Termin fehlt —'))}</span><select data-dsel="${d.id}" style="width:150px;padding:5px 8px;font-size:12px"><option value="">wählen…</option>${names.map(n=>`<option>${esc(n)}</option>`).join('')}</select><button class="mini-btn" data-dispo="${d.id}" data-role="${role}">Zuordnen</button></div>`;};
   const t0=todayStr();
   const proto={};
   state.deals.forEach(d=>(d.calls||[]).forEach(c=>{
@@ -2200,8 +2233,8 @@ function renderSteuerung(){
     ${buchPanel()}
     ${adrPanel()}
     <div class="panel" style="border-color:var(--brand)"><h3>📋 Tages-Dispo – Termine zuordnen <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— am Tagesende neue Termine dem passenden Mitarbeiter zuweisen; die Person sieht es sofort in ihrer Liste und im Chat</span></h3>
-      ${dispoA.length?`<div class="ehgt" style="margin:2px 0 6px">Analysen ohne Analyst (${dispoA.length})</div><div class="st-list">${dispoSort(dispoA,'analyst').map(x=>dRow(x,'analyst',anNames)).join('')}</div>`:''}
-      ${handover.length?`<div class="ehgt" style="margin:12px 0 6px">Beratungen – übergabereif, ohne Berater (${handover.length})</div><div class="st-list">${dispoSort(handover,'berater').map(x=>dRow(x,'berater',beNames)).join('')}</div>`:''}
+      ${dispoA.length?`<div class="ehgt" style="margin:2px 0 6px">Analysen ohne Analyst (${dispoA.length})</div>${dispoBlock(dispoA,'analyst',anNames)}`:''}
+      ${handover.length?`<div class="ehgt" style="margin:12px 0 6px">Beratungen – übergabereif, ohne Berater (${handover.length})</div>${dispoBlock(handover,'berater',beNames)}`:''}
       ${(!dispoA.length&&!handover.length)?'<div class="empty-col">Nichts zuzuordnen – alles verteilt 👍</div>':''}
     </div>
     ${zuordPanel()}
@@ -2236,11 +2269,11 @@ function renderSteuerung(){
     ${baumPanel()}
     ${unterlagenPanel()}
     ${teamPanel()}
-    <div class="panel"><h3>Telefonisten · offene Anruf-Leads</h3><div class="st-list">${teGroups.length?teGroups.map(([t,list])=>{const wv=list.filter(d=>daysUntil(d.wiedervorlage)!=null&&daysUntil(d.wiedervorlage)<=0).length;return `<details class="grp"><summary>${esc(t)}<span class="cnt">${list.length} offen${wv?` · <span style="color:var(--warn)">${wv} Rückrufe fällig</span>`:''}</span></summary><div class="inner">${list.slice(0,40).map(glItem).join('')}</div></details>`;}).join(''):'<div class="empty-col">Keine offenen Anruf-Leads.</div>'}</div></div>
+    <div class="panel"><h3>Telefonisten · offene Anruf-Leads</h3><div class="st-list">${teGroups.length?teGroups.map(([t,list])=>{const wv=list.filter(d=>daysUntil(d.wiedervorlage)!=null&&daysUntil(d.wiedervorlage)<=0).length;return `<details class="grp"><summary>${esc(t)}<span class="cnt">${list.length} offen${wv?` · <span style="color:var(--warn)">${wv} Rückrufe fällig</span>`:''}</span></summary><div class="inner">${faelligListe(list,40)}</div></details>`;}).join(''):'<div class="empty-col">Keine offenen Anruf-Leads.</div>'}</div></div>
     <div class="panel"><h3>Reaktivierung fällig <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— „Kein Interesse", alle 2 Monate; Lead öffnen → „Wieder freigeben"</span></h3>${reakt.length?`<div class="st-list">${reakt.slice(0,40).map(glItem).join('')}</div>`:'<div class="empty-col">Aktuell nichts fällig.</div>'}</div>
     ${(()=>{const svc=state.deals.filter(d=>d.status==='won'&&daysUntil(d.wiedervorlage)!=null&&daysUntil(d.wiedervorlage)<=3);return `<div class="panel"><h3>Servicetermine fällig <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— Pflicht binnen 2 Wochen nach Abschluss</span></h3>${svc.length?`<div class="st-list">${svc.slice(0,40).map(d=>`<div class="gl" data-id="${d.id}"><span class="gn">${esc(d.name||d.org||'—')}</span><span class="ph">Berater: ${esc(d.berater||'—')}</span>${isOverdue(d)?`<span class="od">überfällig ${-daysUntil(d.wiedervorlage)}T</span>`:`<span class="ph tnum">bis ${esc(d.wiedervorlage)}</span>`}</div>`).join('')}</div>`:'<div class="empty-col">Keine fälligen Servicetermine.</div>'}</div>`;})()}
-    <div class="panel"><h3>Analysten · offene Analysen</h3><div class="st-list">${anGroups.length?anGroups.map(([a,list])=>`<details class="grp"><summary>${esc(a)}<span class="cnt">${list.length} offen · ${list.filter(d=>d.stage==='Analyse & Doku'&&!(d.berater||'').trim()).length} übergabereif</span></summary><div class="inner">${list.map(glItem).join('')}</div></details>`).join(''):'<div class="empty-col">Keine offenen Analysen.</div>'}</div></div>
-    <div class="panel"><h3>Berater · offene Beratungen</h3><div class="st-list">${beGroups.length?beGroups.map(([b,list])=>{const od=list.filter(isOverdue).length;return `<details class="grp"><summary>${esc(b)}<span class="cnt">${list.length} offen${od?` · <span style="color:var(--bad)">${od} überfällig</span>`:''}</span></summary><div class="inner">${list.map(glItem).join('')}</div></details>`;}).join(''):'<div class="empty-col">Keine offenen Beratungen.</div>'}</div></div>`;
+    <div class="panel"><h3>Analysten · offene Analysen</h3><div class="st-list">${anGroups.length?anGroups.map(([a,list])=>`<details class="grp"><summary>${esc(a)}<span class="cnt">${list.length} offen · ${list.filter(d=>d.stage==='Analyse & Doku'&&!(d.berater||'').trim()).length} übergabereif${(()=>{const n=list.filter(d=>faellig(d).spaeter).length;return n?' · '+n+' später':'';})()}</span></summary><div class="inner">${faelligListe(list)}</div></details>`).join(''):'<div class="empty-col">Keine offenen Analysen.</div>'}</div></div>
+    <div class="panel"><h3>Berater · offene Beratungen</h3><div class="st-list">${beGroups.length?beGroups.map(([b,list])=>{const od=list.filter(isOverdue).length;return `<details class="grp"><summary>${esc(b)}<span class="cnt">${list.length} offen${od?` · <span style="color:var(--bad)">${od} überfällig</span>`:''}${(()=>{const n=list.filter(d=>faellig(d).spaeter).length;return n?' · '+n+' später':'';})()}</span></summary><div class="inner">${faelligListe(list)}</div></details>`;}).join(''):'<div class="empty-col">Keine offenen Beratungen.</div>'}</div></div>`;
   host.querySelectorAll('.gl[data-id]').forEach(el=>el.addEventListener('click',()=>openModal(el.dataset.id)));
   host.querySelectorAll('[data-open]').forEach(el=>el.addEventListener('click',()=>openModal(el.dataset.open)));
   host.querySelectorAll('[data-dispo]').forEach(b=>b.addEventListener('click',()=>{
