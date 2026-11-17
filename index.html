@@ -455,7 +455,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="18.11-B";
+const APP_VERSION="18.11-C";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2666,7 +2666,28 @@ function wEntriesFor(person,start,wk){
     return a;
   });
   const man=WOCHE.filter(e=>e.type!=='ov'&&nameEq(e.name,person)).map(e=>({auto:false,gcal:!!e.gcal,_id:e._id,art:e.art||'EG',tag:+e.tag||0,zeit:e.zeit||'',kunde:e.kunde||'',ort:e.ort||'',status:e.status||'',name:person}));
-  return [...auto,...man].sort((a,b)=>(a.tag-b.tag)||((a.zeit||'').localeCompare(b.zeit||'')));
+  return wDedupe([...auto,...man]).sort((a,b)=>(a.tag-b.tag)||((a.zeit||'').localeCompare(b.zeit||'')));
+}
+function wDedupe(list){ // derselbe Termin aus Lead UND Google-Kalender (oder zweimal im Kalender / aus Doppel-Lead) → nur 1× zeigen
+  const dealOf=e=>e.dealId?state.deals.find(x=>x.id===e.dealId):null;
+  const namen=e=>{const d=dealOf(e);return d?[d.name,d.org].filter(x=>(x||'').trim()):[e.kunde];};
+  const gid=d=>(d&&d.gcalId)?String(d.gcalId).replace(/[^0-9A-Za-z_-]/g,''):'';
+  const autos=list.filter(e=>e.auto);
+  const out=[];
+  list.forEach(e=>{
+    if(e.gcal){
+      // (1) Kalender-Eintrag gehört zu einem Lead, der am selben Tag schon im Plan steht
+      if(autos.some(a=>{if(a.tag!==e.tag)return false;const d=dealOf(a),g=gid(d);
+        return (g&&(e._id||'').indexOf(g)>=0)||namen(a).some(n=>kundeGleich(n,e.kunde));}))return;
+      // (2) derselbe Termin steht zweimal im Kalender (z. B. eigener Eintrag + Einladung)
+      if(out.some(o=>o.gcal&&o.tag===e.tag&&o.zeit===e.zeit&&kundeGleich(o.kunde,e.kunde)))return;
+    }else if(e.auto&&!e.mgt&&!e.mitschau){
+      // (3) zwei Leads für denselben Kunden (Doppel-Lead) mit identischem Termin
+      if(out.some(o=>o.auto&&!o.mgt&&!o.mitschau&&o.dealId!==e.dealId&&o.art===e.art&&o.tag===e.tag&&o.zeit===e.zeit&&namen(o).some(n=>namen(e).some(n2=>kundeGleich(n,n2)))))return;
+    }
+    out.push(e);
+  });
+  return out;
 }
 const wStIc=s=>s==='done'?'✔':s==='moved'?'↗':s==='cancelled'?'✖':'○';
 async function wSetStatus(ent,wk,next){
@@ -3070,6 +3091,55 @@ function externCal(d,role){
   }
   return true;
 }
+/* v18.11-C (Melanies Meldung 18.11.: „Termin steht doppelt/dreifach im Wochenplan"):
+   Ursache: derselbe Termin kam 1× aus dem Lead (AG/BG-Datum) UND 1× aus dem Google-Kalender in den Plan;
+   hieß der Kunde im Kalender etwas anders als im CRM („AG: Steiner" statt „Steiner Sanitär GmbH"), wurde
+   zusätzlich ein zweiter Lead angelegt → 3×. Jetzt: (1) Wochenplan zeigt jeden Termin nur einmal,
+   (2) der Kalender-Abgleich erkennt bestehende Kunden und hängt den Termin dort an, statt neu anzulegen. */
+const KD_STOP=new Set(['gmbh','gesmbh','ges','mbh','kg','og','co','keg','ohg','e.u','eu','und','the','der','die','das','herr','hr','frau','fr','familie','fam','dr','mag','ing','dipl','dkfm','prof','bsc','msc','mba','termin','analyse','beratung','kunde','firma','fa','bei','mit','von','neu']);
+function kdTokens(s){ // Kundenname → Wort-Menge ohne Rechtsform/Anrede/Titel
+  return [...new Set((s||'').toLowerCase().replace(/ges\.?\s?m\.?\s?b\.?\s?h\.?/g,' ').replace(/&\s?co\.?/g,' ').replace(/e\.\s?u\./g,' ')
+    .split(/[^a-z0-9äöüß]+/).filter(t=>t.length>=3&&!KD_STOP.has(t)))];
+}
+function kdSub(a,b){ // kleinere Wort-Menge steckt vollständig in der größeren? → Anzahl gemeinsamer Wörter, sonst 0
+  if(!a.length||!b.length)return 0;
+  const k=a.length<=b.length?a:b,g=a.length<=b.length?b:a;
+  return k.every(t=>g.includes(t))?k.length:0;
+}
+function kundeGleich(x,y){return kdSub(kdTokens(x),kdTokens(y))>0;}
+function evDigits(ev){ // Telefonnummern (letzte 7 Ziffern) aus Titel/Ort/Beschreibung eines Kalender-Termins
+  const out=[];((ev.summary||'')+' '+(ev.location||'')+' '+(ev.description||'')).replace(/[+\d][\d\s\/().-]{6,}\d/g,m=>{const d=m.replace(/\D/g,'');if(d.length>=7)out.push(d.slice(-7));return m;});
+  return out;
+}
+function evMails(ev){
+  const out=(ev.attendees||[]).map(a=>(a.email||'').toLowerCase()).filter(Boolean);
+  ((ev.description||'')+' '+(ev.location||'')).replace(/[^\s<>"'(),;]+@[^\s<>"'(),;]+\.[a-z]{2,}/gi,m=>{out.push(m.toLowerCase());return m;});
+  return out;
+}
+/* Sucht zu einem Kalender-Termin den bestehenden Kunden. Sicher erkannt wird über: Kalender-ID, E-Mail,
+   Telefonnummer, exakt gleichen Namen, oder ≥2 übereinstimmende Namens-Wörter („Bauer Elektrotechnik").
+   Bei nur EINEM gemeinsamen Wort („Steiner") braucht es einen zweiten Hinweis (Termin am selben Tag oder
+   gleiche PLZ) – sonst würde ein neuer „Huber" fälschlich an einen fremden „Huber" gehängt.
+   Rückgabe {d: Treffer|null, aehnlich:[Namen möglicher Doppler]} */
+function leadFuerKalender(ev,kunde,dt,deals){
+  const T=kdTokens(kunde),tel=evDigits(ev),mails=evMails(ev);
+  const plz=(/\b([1-9]\d{3})\b/.exec(ev.location||'')||[])[1]||'';
+  const tag=x=>{const p=parseTermin(x);return p?p.getFullYear()*10000+p.getMonth()*100+p.getDate():0;};
+  const evTag=dt.getFullYear()*10000+dt.getMonth()*100+dt.getDate();
+  let hit=deals.find(d=>d.gcalId&&d.gcalId===ev.id);if(hit)return {d:hit,aehnlich:[]};
+  hit=deals.find(d=>(d.email||'').trim()&&mails.includes((d.email||'').trim().toLowerCase()));if(hit)return {d:hit,aehnlich:[]};
+  hit=deals.find(d=>{const x=(d.telefon||'').replace(/\D/g,'');return x.length>=7&&tel.includes(x.slice(-7));});if(hit)return {d:hit,aehnlich:[]};
+  const aehnlich=[];let best=null,bestN=0;
+  for(const d of deals){
+    const n=Math.max(kdSub(T,kdTokens(d.name)),kdSub(T,kdTokens(d.org)));
+    if(!n)continue;
+    const exakt=[d.name,d.org].some(x=>{const D=kdTokens(x);return D.length===T.length&&kdSub(T,D)===T.length;});
+    const beleg=tag(d.datumAG)===evTag||tag(d.datumBG)===evTag||(plz&&(d.plz||'').trim()===plz);
+    if(exakt||n>=2||beleg){const sc=(exakt?100:0)+n*10+(beleg?5:0)+(d.status==='open'?1:0);if(sc>bestN){best=d;bestN=sc;}}
+    else aehnlich.push(d.name||d.org||'');
+  }
+  return {d:best,aehnlich:best?[]:aehnlich.slice(0,3)};
+}
 function gcalArt(title){
   const m=(title||'').trim().match(/^(AG|BG|MGT|EG|KG|TG|PRIVAT)\b[\s:\-–]*/i);
   if(m)return {art:m[1].toUpperCase(),rest:(title||'').trim().slice(m[0].length).trim()};
@@ -3140,7 +3210,7 @@ async function gcalLeadImport(tok,person){
   const items=(await r.json()).items||[];
   const privat=/\b(privat|urlaub|frei|arzt|zahnarzt|friseur|geburtstag|feiertag|essen|mittag|training|schule|kinder|team|meeting|büro|buero|jour)\b/i;
   const norm=s=>(s||'').toLowerCase().replace(/gesmbh|gmbh|ges\.m\.b\.h\.?|& ?co ?kg|e\.u\./g,'').replace(/[^a-z0-9äöüß]/g,'').slice(0,30);
-  const neu=[];
+  const neu=[],upd=[],verknuepft=[];
   items.forEach(ev=>{
     if(!ev||ev.status==='cancelled'||!(ev.start&&ev.start.dateTime))return;
     const t=(ev.summary||'').trim();
@@ -3151,22 +3221,43 @@ async function gcalLeadImport(tok,person){
     kunde=(kunde||'').trim();
     const key=norm(kunde);
     if(!key||kunde.length<3)return;
-    if(state.deals.some(d=>d.gcalId===ev.id||(norm(d.name)===key)||(norm(d.org)===key))||neu.some(d=>d.gcalId===ev.id||norm(d.name)===key))return;
     const dt=new Date(ev.start.dateTime);
     const ts=calPad(dt.getDate())+'.'+calPad(dt.getMonth()+1)+'.'+dt.getFullYear()+' '+calPad(dt.getHours())+':'+calPad(dt.getMinutes());
     const loc=(ev.location||'').trim();
+    // 🔎 Kunde schon vorhanden? → KEIN zweiter Lead; Termin + Kalender-Verknüpfung beim bestehenden Kunden ergänzen
+    const fund=leadFuerKalender(ev,kunde,dt,state.deals.concat(neu));
+    if(fund.d){
+      const m=fund.d;if(neu.includes(m))return;
+      let ch=false;
+      if(!m.gcalId){m.gcalId=ev.id;ch=true;}
+      if(m.status==='open'){
+        const feld=art==='BG'?'datumBG':'datumAG',rolle=art==='BG'?'berater':'analyst';
+        if(!(m[feld]||'').trim()){
+          m[feld]=ts;if(!(m[rolle]||'').trim())m[rolle]=person;
+          terminStage(m);ch=true;
+          histAdd(m,'Termin aus dem Google-Kalender von '+person+' übernommen: '+art+' '+ts);
+          verknuepft.push({d:m,txt:art+' '+ts});
+        }
+      }
+      if(ch&&!upd.includes(m))upd.push(m);
+      return;
+    }
     const d=blank();
     d.name=kunde;d.gcalId=ev.id;d.quelle='Google Kalender';
     if(/gesmbh|gmbh|ges\.m\.b\.h/i.test(kunde)){d.kundentyp='GmbH';d.org=kunde;}
     if(loc){if(loc.length<=60)d.ort=loc;const pm=/\b([1-9]\d{3})\b/.exec(loc);if(pm){d.plz=pm[1];d.bezirk=bezFromPLZ(pm[1]);}}
     if(art==='BG'){d.datumBG=ts;d.berater=person;}else{d.datumAG=ts;d.analyst=person;}
     terminStage(d);
-    d.notizen=todayStr().split('-').reverse().join('.')+' Aus dem Google-Kalender von '+person+' übernommen ('+art+' '+ts+(loc?' · '+loc:'')+')';
+    d.notizen=todayStr().split('-').reverse().join('.')+' Aus dem Google-Kalender von '+person+' übernommen ('+art+' '+ts+(loc?' · '+loc:'')+')'
+      +(fund.aehnlich.length?'\n⚠ Möglicher Doppler – ähnlicher Kunde vorhanden: '+fund.aehnlich.join(', ')+' (bitte prüfen und ggf. zusammenführen)':'');
     neu.push(d);
   });
+  if(upd.length){
+    if(await dbPersistMany(upd))verknuepft.forEach(v=>chatSys('📅 Termin aus dem Google-Kalender von '+person+' beim bestehenden Kunden eingetragen: '+(v.d.name||v.d.org||'—')+' – '+v.txt+' (kein neuer Lead angelegt)',v.d));
+  }
   if(!neu.length)return 0;
   if(!(await dbPersistMany(neu)))return 0;
-  neu.forEach(d=>{state.deals.push(d);chatSys('📅 Neuer Lead aus dem Google-Kalender von '+person+': '+(d.name||'')+' – '+(d.datumBG?('Beratung '+d.datumBG):('Analyse '+d.datumAG)),d);});
+  neu.forEach(d=>{state.deals.push(d);chatSys('📅 Neuer Lead aus dem Google-Kalender von '+person+': '+(d.name||'')+' – '+(d.datumBG?('Beratung '+d.datumBG):('Analyse '+d.datumAG))+((d.notizen||'').indexOf('Möglicher Doppler')>=0?' · ⚠ ähnlicher Kunde vorhanden – bitte prüfen':''),d);});
   return neu.length;
 }
 /* ---------- Wochenplan-Druck im IVP-Formular-Format (eine A4-Seite je Mitarbeiter) ---------- */
