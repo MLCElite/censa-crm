@@ -541,7 +541,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-O";
+const APP_VERSION="19.11-P";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2835,7 +2835,7 @@ function openTodo(force){
       const canDec=(a.art==='beratung-zuord'||a.art==='analyse-zuord')&&personNames(me).includes((a.ackWer||'').trim().toLowerCase());
       return `<div class="ehrow" style="flex-wrap:wrap"><span class="nm" style="min-width:220px;white-space:normal">${zeit?zeit+' · ':''}${esc(a.text)}</span>${a.dealId?`<button class="mini-btn" data-tdl="${esc(a.dealId)}">Lead öffnen</button>`:''}<button class="mini-btn" style="border-color:var(--good);color:var(--good);font-weight:700" data-tda="${esc(a._id||'')}">✔ Annehmen</button>${canDec?`<button class="mini-btn" style="border-color:var(--bad);color:var(--bad)" data-tdd="${esc(a._id||'')}">✖ Ablehnen</button>`:''}</div>`;}).join('')}
     ${heute.length?`<div class="ehgt" style="margin-top:14px">📅 Deine Termine heute</div>${heute.map(e=>`<div class="ehrow"><span class="wart" style="background:${WARTC[e.art]||'var(--ink-3)'}">${esc(e.art)}</span><b>${esc(e.zeit)}</b><span class="nm">${esc(e.kunde)}</span><button class="mini-btn" data-tdl="${esc(e.dealId)}">Lead</button></div>`).join('')}`:''}
-    ${tal.length?`<div class="ehgt" style="margin-top:14px">📅 Termin fehlt: <span style="color:var(--bad)">${tal.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— bleibt hier, bis ein Termin oder eine Wiedervorlage eingetragen ist</span></div>${tal.slice(0,30).map(x=>`<div class="ehrow"><span class="nm"><b>${esc(x.d.name||x.d.org||'—')}</b> <span style="color:var(--ink-3);font-weight:500">· ${esc(x.txt)}</span></span>${isAdmin()?`<span class="tg" style="background:var(--brand-bg);color:var(--brand-ink);font-weight:800">${ROLLE_IC[x.z.rolle]} ${esc(x.z.name||('kein '+ROLLE_LBL[x.z.rolle]))}</span>`:''}<button class="mini-btn" data-tat="${esc(x.d.id)}" data-tart="${x.art}" style="border-color:var(--brand);color:var(--brand-ink);font-weight:800">📅 Termin eintragen</button><button class="mini-btn" data-tdl="${esc(x.d.id)}">Lead öffnen</button></div>`).join('')}${tal.length>30?`<div style="font-size:12px;color:var(--ink-3);margin:4px 0">… und ${tal.length-30} weitere.</div>`:''}`:''}
+    ${tal.length?`<div class="ehgt" style="margin-top:14px">📅 Termin fehlt: <span style="color:var(--bad)">${tal.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— bleibt hier, bis ein Termin oder eine Wiedervorlage eingetragen ist</span></div>${tal.slice(0,30).map(x=>`<div class="ehrow"><span class="nm"><b>${esc(x.d.name||x.d.org||'—')}</b> <span style="color:var(--ink-3);font-weight:500">· ${esc(x.txt)}</span></span>${x.alsMgt?`<span class="tg" style="background:var(--warn-bg);color:var(--warn);font-weight:800" title="Du bist bei diesem Termin als MGT dabei – dran ist ${esc(x.z.name||'—')}">🤝 MGT · dran: ${esc(x.z.name||'—')}</span>`:''}${isAdmin()?`<span class="tg" style="background:var(--brand-bg);color:var(--brand-ink);font-weight:800">${ROLLE_IC[x.z.rolle]} ${esc(x.z.name||('kein '+ROLLE_LBL[x.z.rolle]))}</span>${x.mgt?`<span class="tg" title="MGT-Begleitung">🤝 ${esc(x.mgt)}</span>`:''}`:''}<button class="mini-btn" data-tat="${esc(x.d.id)}" data-tart="${x.art}" style="border-color:var(--brand);color:var(--brand-ink);font-weight:800">📅 Termin eintragen</button><button class="mini-btn" data-tdl="${esc(x.d.id)}">Lead öffnen</button></div>`).join('')}${tal.length>30?`<div style="font-size:12px;color:var(--ink-3);margin:4px 0">… und ${tal.length-30} weitere.</div>`:''}`:''}
     ${lgl.length?`<div class="ehgt" style="margin-top:14px">${isAdmin()?'🕰 Ohne Datum und seit über 2 Wochen nicht bearbeitet:':'🕰 Deine Aufgabe – seit über 2 Wochen nichts passiert:'} <span style="color:var(--bad)">${lgl.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— ${isAdmin()?'wer dran ist, steht dabei':'bleibt hier, bis du den Kunden bearbeitest oder ein Datum / eine Wiedervorlage einträgst'}</span></div>${lgl.slice(0,LKMAX).map(x=>`<div class="ehrow"><span class="nm"><b>${esc(x.d.name||x.d.org||'—')}</b> <span style="color:var(--ink-3);font-weight:500">· ${esc(x.d.stage)}</span></span><span class="tg" style="background:var(--brand-bg);color:var(--brand-ink);font-weight:800">${ROLLE_IC[x.z.rolle]} ${esc(x.z.name||('kein '+ROLLE_LBL[x.z.rolle]))}</span><span class="tg od">${x.tage>=0?('seit '+x.tage+' Tagen'):'kein Datum bekannt'}</span><button class="mini-btn" data-tdl="${esc(x.d.id)}">Lead öffnen</button></div>`).join('')}${lgl.length>LKMAX?`<div style="font-size:12px;color:var(--ink-3);margin:4px 0">… und ${lgl.length-LKMAX} weitere.</div>`:''}`:''}
     ${(lk.list.length+lk.kalt)?`<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:14px;font-size:12.5px;color:var(--ink-2)"><span>🧩 Bei <b>${lk.list.length+lk.kalt}</b> Kunden fehlen noch Infos – sie sind rot markiert.</span><button class="mini-btn" id="td-lk">In der Liste anzeigen</button></div>`:''}
     ${od.length?`<div class="ehgt" style="margin-top:14px">⏰ Überfällige Wiedervorlagen: <span style="color:var(--bad)">${od.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— siehe Telefon/Pipeline</span></div>`:''}
@@ -3356,6 +3356,8 @@ function tgTermin(d,role,name){ // „Neuer Termin für dich"
     (!an&&pot.eh>0)?('🎯 Potenzial ≈ '+fmtEH(pot.eh)+' EH'):'',
     (d.briefing||'').trim()?('Briefing: '+d.briefing.trim().slice(0,400)):''].filter(Boolean);
   tgInfo(name,z.join('\n')).then(ok=>{if(ok)toast('🤖 Telegram-Info an '+name+' verschickt');});
+  const mg=mgtVon(d,an?'AG':'BG'); // MGT-Begleitung (nur angelegte Mitarbeiter) bekommt dieselbe Info
+  if(mg&&!nameEq(mg,name))tgInfo(mg,['🤝 CENSA – du bist als MGT dabei: '+(an?'ANALYSE':'BERATUNG')+' mit '+name].concat(z.slice(1)).join('\n'));
 }
 function wgNaechstes(mm,now){ // nächster Wochengespräch-Zeitpunkt der Person (oder null)
   if(mm.wgTag===undefined||mm.wgTag===null||mm.wgTag===''||!/^\d{1,2}:\d{2}$/.test(mm.wgZeit||''))return null;
@@ -3386,8 +3388,8 @@ function wgText(mm,M){ // Wochen-Übersicht für eine Person; M = Zeitpunkt des 
   const lg=liegenAlle().filter(x=>pn.includes((x.z.name||'').trim().toLowerCase()));
   return ['🗓 CENSA – deine Termine bis '+fmtDM(new Date(bis.getTime()-86400000))+(M?' (vor dem Wochengespräch am '+WG_TAGE[(M.getDay()+6)%7]+' '+fmtDM(M)+' '+calPad(M.getHours())+':'+calPad(M.getMinutes())+')':''),
     zeilen.length?zeilen.map(x=>'• '+x.txt).join('\n'):'• keine Termine eingetragen',
-    (()=>{const ta=state.deals.filter(d=>d.status==='open'&&(d.terminOffen||d.bgOffen)&&!wvZukunft(d)&&pn.includes((zustaendig(d).name||'').trim().toLowerCase())&&((d.terminOffen&&!((d.terminOffen.art==='BG'?d.datumBG:d.datumAG)||'').trim())||(d.bgOffen&&!(d.datumBG||'').trim())));
-      return ta.length?('\n📅 Termin fehlt – bitte nachtragen:\n'+ta.slice(0,12).map(d=>'• '+(d.name||d.org||'—')+' ('+((d.terminOffen&&!((d.terminOffen.art==='BG'?d.datumBG:d.datumAG)||'').trim())?(d.terminOffen.art==='BG'?'neuer Beratungstermin':'neuer Analysetermin'):'Beratungstermin nach der Analyse')+')').join('\n')):'';})(),
+    (()=>{const ta=terminAufgabenVon(mm.name);
+      return ta.length?('\n📅 Termin fehlt – bitte nachtragen:\n'+ta.slice(0,12).map(x=>'• '+(x.d.name||x.d.org||'—')+' ('+x.kurz+(x.alsMgt?', du bist als MGT dabei':'')+')').join('\n')):'';})(),
     lg.length?('\n🕰 Bitte dranbleiben – seit über 2 Wochen nichts passiert:\n'+lg.slice(0,12).map(x=>'• '+(x.d.name||x.d.org||'—')+' ('+x.d.stage+(x.tage>=0?', seit '+x.tage+' Tagen':'')+')').join('\n')+(lg.length>12?'\n… und '+(lg.length-12)+' weitere':'')):''].filter(Boolean).join('\n');
 }
 let __wgBusy=false;
@@ -4834,22 +4836,33 @@ function hatDatum(d){ // „Info auf ein Datum oder einen Zeitraum": Wiedervorla
    leer, entsteht eine Aufgabe bei der Person, die dran ist – sie bleibt, bis ein Termin (oder eine Wiedervorlage in
    der Zukunft) eingetragen oder der Kunde abgeschlossen ist. */
 function wvZukunft(d){const w=parseDMY(d.wiedervorlage);if(!w)return false;const h=new Date();h.setHours(0,0,0,0);return w.getTime()>h.getTime();}
-function terminAufgaben(){
-  const admin=isAdmin(),me=chatName(),pn=me?personNames(me):[];
+/* v19.11-P (Melanies Ansage): Auch die MGT-Begleitung bekommt die Termin-Aufgabe, die Nachfrage im Wochenplan und die
+   Updates – aber NUR, wenn sie als Mitarbeiter im Team angelegt ist (ein frei eingetragener Name bekommt nichts). */
+function mgtVon(d,art){ // angelegter Mitarbeiter, der bei AG bzw. BG als MGT dabei ist – sonst ''
+  const n=((art==='BG'?d.mgtBG:d.mgtAG)||'').trim();if(!n)return '';
+  const mm=teamByAnyName(n);return mm?mm.name:'';
+}
+function terminAufgabenAlle(){ // alle offenen Termin-Aufgaben mit zuständiger Person + MGT-Begleitung
   const out=[];
   state.deals.forEach(d=>{
     if(d.status!=='open'||(!d.terminOffen&&!d.bgOffen))return;
     if(wvZukunft(d))return; // „melden uns im Jänner" = geregelt
-    const z=zustaendig(d);
-    if(!admin&&!pn.includes((z.name||'').trim().toLowerCase()))return;
-    const to=d.terminOffen;
+    const z=zustaendig(d),to=d.terminOffen;
     if(to&&!((to.art==='BG'?d.datumBG:d.datumAG)||'').trim())
-      out.push({d:d,z:z,art:to.art,seit:to.seit||'',txt:'Neuer '+(to.art==='BG'?'Beratungstermin':'Analysetermin')+' fehlt'+(to.alt?' (war '+to.alt+(to.grund?', '+to.grund:'')+')':'')});
+      out.push({d:d,z:z,art:to.art,mgt:mgtVon(d,to.art),seit:to.seit||'',kurz:to.art==='BG'?'neuer Beratungstermin':'neuer Analysetermin',txt:'Neuer '+(to.art==='BG'?'Beratungstermin':'Analysetermin')+' fehlt'+(to.alt?' (war '+to.alt+(to.grund?', '+to.grund:'')+')':'')});
     else if(d.bgOffen&&!(d.datumBG||'').trim())
-      out.push({d:d,z:z,art:'BG',seit:d.bgOffen.seit||'',txt:'Analyse ist durchgeführt – Beratungstermin fehlt'});
+      out.push({d:d,z:z,art:'BG',mgt:mgtVon(d,'BG'),seit:d.bgOffen.seit||'',kurz:'Beratungstermin nach der Analyse',txt:'Analyse ist durchgeführt – Beratungstermin fehlt'});
   });
   out.sort((a,b)=>(a.seit||'').localeCompare(b.seit||''));
   return out;
+}
+function terminAufgabenVon(name){ // für eine Person: als Zuständige ODER als MGT-Begleitung
+  const pn=personNames(name);const hit=x=>!!x&&pn.includes((x||'').trim().toLowerCase());
+  return terminAufgabenAlle().filter(x=>hit(x.z.name)||hit(x.mgt)).map(x=>Object.assign({},x,{alsMgt:!hit(x.z.name)&&hit(x.mgt)}));
+}
+function terminAufgaben(){
+  if(isAdmin())return terminAufgabenAlle();
+  const me=chatName();return me?terminAufgabenVon(me):[];
 }
 function terminAbsage(d,art,alt,grund,note){ // Termin hat NICHT stattgefunden und es gibt (noch) keinen neuen → Dran-Regel + Aufgabe
   const an=art!=='BG',heute=todayStr().split('-').reverse().join('.');
@@ -4868,6 +4881,8 @@ function terminAbsage(d,art,alt,grund,note){ // Termin hat NICHT stattgefunden u
   d.notizen=((an?'AG ':'BG ')+(grund||'verschoben').toUpperCase()+' (war '+(alt||'—')+') am '+heute+' – neu terminisieren'+(note?': '+note:'')+' | '+(d.notizen||''));
   histAdd(d,(an?'Analysetermin ':'Beratungstermin ')+(grund||'verschoben')+' (war '+(alt||'—')+') – neuer Termin offen, dran: '+rl+' '+(wer||'—'));
   chatSys('❗ '+(an?'Analysetermin ':'Beratungstermin ')+(grund||'verschoben').toUpperCase()+': '+(d.name||d.org||'—')+' (war '+(alt||'—')+') – '+rl+' '+(wer||'')+' bleibt dran, bitte neu terminisieren!',d,wer||null);
+  const mg=mgtVon(d,an?'AG':'BG');
+  if(mg&&!nameEq(mg,wer))chatSys('🤝 Zur Info (du warst als MGT eingeplant): '+(an?'Analysetermin ':'Beratungstermin ')+(grund||'verschoben')+' – '+(d.name||d.org||'—')+' (war '+(alt||'—')+'). Neuer Termin offen, dran: '+rl+' '+(wer||'—'),d,mg);
   d.upd=new Date().toISOString();dbPersist(d);
   return {wer:wer,rl:rl};
 }
@@ -4883,12 +4898,14 @@ function terminSetzen(d,art,txt,quelle){ // neuen Termin eintragen (einheitliche
   histAdd(d,(an?'Analysetermin':'Beratungstermin')+': '+(alt||'—')+' → '+n.txt+(quelle?' ('+quelle+')':''));
   const wer=(d[rolle]||'').trim();
   chatSys('📅 '+(an?'Analysetermin':'Beratungstermin')+' '+(alt?'GEÄNDERT (war '+alt+')':'gesetzt')+': '+(d.name||d.org||'—')+' – '+n.txt+(wer?'':' · Zuordnung über die Tages-Dispo'),d,alt?(wer||null):null);
-  if(wer&&!externCal(d,rolle))zuordDirekt(d,rolle); // neue Kalender-Einladung + Telegram an die zugeteilte Person
+  if(wer&&!externCal(d,rolle))zuordDirekt(d,rolle); // neue Kalender-Einladung + Telegram an die zugeteilte Person (und die MGT-Begleitung)
+  else{const mg=mgtVon(d,an?'AG':'BG');if(mg)tgInfo(mg,'🤝 CENSA – du bist als MGT dabei: '+(an?'ANALYSE':'BERATUNG')+' '+(d.name||d.org||'—')+'\nNeuer Termin: '+n.txt+(wer?'':'\n(noch niemand zugeteilt)'));}
   d.upd=new Date().toISOString();dbPersist(d);
   return n.txt;
 }
 async function wTerminNachfrage(ent,wk,next){ // direkt nach dem Klick im Wochenplan
-  if(!ent.auto||ent.mgt||ent.mitschau||!next)return;
+  if(!ent.auto||ent.mitschau||!next)return;
+  if(ent.mgt&&!teamByAnyName(ent.name))return; // MGT-Begleitung: nur angelegte Mitarbeiter
   const d=state.deals.find(x=>x.id===ent.dealId);if(!d||d.status==='lost')return;
   const nm=d.name||d.org||'Kunde',an=ent.art==='AG';
   if(next==='moved'||next==='cancelled'){
