@@ -541,7 +541,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-E";
+const APP_VERSION="19.11-F";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2707,6 +2707,9 @@ function updateTodoBadge(){
   if(n)parts.push('📌 Aufgaben <b>'+n+'</b>');
   if(h)parts.push(n?('📅 heute '+h):('📅 Heute <b>'+h+'</b> Termin'+(h===1?'':'e')));
   if(f)parts.push('🧩 Infos fehlen <b>'+f+'</b>');
+  let lg=0;try{lg=liegenGeblieben().length;}catch(e){}
+  if(lg)parts.push('🕰 liegen geblieben <b>'+lg+'</b>');
+  el.classList.toggle('hide',!n&&!h&&!f&&!lg);
   el.innerHTML=parts.join(' · ');
 }
 async function gcalConnectHere(){
@@ -2725,6 +2728,7 @@ function openTodo(force){
   const heute=todayTermine();
   const od=isAdmin()?[]:visibleDeals().filter(d=>d.status==='open'&&isOverdue(d));
   const lk=myLuecken();const LKMAX=30;
+  const lgl=liegenGeblieben();
   const m=document.getElementById('modal');m.classList.remove('wide');
   m.innerHTML=`<h2>📌 Deine offenen Aufgaben</h2>
     <div class="sub">${acks.length?(acks.length+' Bestätigung'+(acks.length>1?'en':'')+' offen – bitte kurz abarbeiten'):'Alles bestätigt 👍'}</div>
@@ -2734,6 +2738,7 @@ function openTodo(force){
       return `<div class="ehrow" style="flex-wrap:wrap"><span class="nm" style="min-width:220px;white-space:normal">${zeit?zeit+' · ':''}${esc(a.text)}</span>${a.dealId?`<button class="mini-btn" data-tdl="${esc(a.dealId)}">Lead öffnen</button>`:''}<button class="mini-btn" style="border-color:var(--good);color:var(--good);font-weight:700" data-tda="${esc(a._id||'')}">✔ Annehmen</button>${canDec?`<button class="mini-btn" style="border-color:var(--bad);color:var(--bad)" data-tdd="${esc(a._id||'')}">✖ Ablehnen</button>`:''}</div>`;}).join('')}
     ${heute.length?`<div class="ehgt" style="margin-top:14px">📅 Deine Termine heute</div>${heute.map(e=>`<div class="ehrow"><span class="wart" style="background:${WARTC[e.art]||'var(--ink-3)'}">${esc(e.art)}</span><b>${esc(e.zeit)}</b><span class="nm">${esc(e.kunde)}</span><button class="mini-btn" data-tdl="${esc(e.dealId)}">Lead</button></div>`).join('')}`:''}
     ${lk.list.length?`<div class="ehgt" style="margin-top:14px">🧩 Hier fehlen noch Infos: <span style="color:var(--bad)">${lk.list.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— bitte nach und nach ergänzen</span></div>${lk.list.slice(0,LKMAX).map(x=>`<div class="ehrow"><span class="nm"><b>${esc(x.d.name||x.d.org||'—')}</b>${(isAdmin()&&(x.d.analyst||'').trim())?` <span style="color:var(--ink-3);font-weight:500">· Analyst: ${esc(x.d.analyst)}</span>`:''}</span><span style="display:flex;gap:5px;flex-wrap:wrap">${lueckenBadge(x.d)}</span><button class="mini-btn" data-tdl="${esc(x.d.id)}">Lead öffnen</button></div>`).join('')}${lk.list.length>LKMAX?`<div style="font-size:12px;color:var(--ink-3);margin:4px 0">… und ${lk.list.length-LKMAX} weitere – alle findest du unter „Liste" mit dem Filter „⚠ Infos fehlen".</div>`:''}`:''}
+    ${lgl.length?`<div class="ehgt" style="margin-top:14px">🕰 Ohne Datum und seit über 2 Wochen nicht bearbeitet: <span style="color:var(--bad)">${lgl.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— wer dran ist, steht dabei</span></div>${lgl.slice(0,LKMAX).map(x=>`<div class="ehrow"><span class="nm"><b>${esc(x.d.name||x.d.org||'—')}</b> <span style="color:var(--ink-3);font-weight:500">· ${esc(x.d.stage)}</span></span><span class="tg" style="background:var(--brand-bg);color:var(--brand-ink);font-weight:800">${ROLLE_IC[x.z.rolle]} ${esc(x.z.name||('kein '+ROLLE_LBL[x.z.rolle]))}</span><span class="tg od">${x.tage>=0?('seit '+x.tage+' Tagen'):'kein Datum bekannt'}</span><button class="mini-btn" data-tdl="${esc(x.d.id)}">Lead öffnen</button></div>`).join('')}${lgl.length>LKMAX?`<div style="font-size:12px;color:var(--ink-3);margin:4px 0">… und ${lgl.length-LKMAX} weitere.</div>`:''}`:''}
     ${lk.kalt?`<div style="font-size:12px;color:var(--ink-3);margin-top:8px">Außerdem ${lk.kalt} Lead${lk.kalt===1?'':'s'} ohne Termin, bei ${lk.kalt===1?'dem':'denen'} Telefon oder Adresse fehlt – in Pipeline und Liste am ⚠ erkennbar.</div>`:''}
     ${od.length?`<div class="ehgt" style="margin-top:14px">⏰ Überfällige Wiedervorlagen: <span style="color:var(--bad)">${od.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— siehe Telefon/Pipeline</span></div>`:''}
     <div class="modal-foot"><button class="btn${acks.length?'':' pri'}" id="m-close">${acks.length?'Später':'Los geht’s'}</button></div>`;
@@ -2772,7 +2777,7 @@ function autoEntries(person,start){
   const out=[];
   state.deals.forEach(d=>{
     if(d.status==='lost')return;
-    const push=(art,ds)=>{const dt=parseTermin(ds);if(dt&&dt>=start&&dt<end){out.push({auto:true,dealId:d.id,art,tag:Math.floor((dt-start)/86400000),zeit:calPad(dt.getHours())+':'+calPad(dt.getMinutes()),kunde:d.name||d.org||'—',ort:d.bezirk||d.ort||'',status:'',name:person});}};
+    const push=(art,ds)=>{const dt=parseTermin(ds);if(dt&&dt>=start&&dt<end){out.push({auto:true,dealId:d.id,art,tag:Math.floor((dt-start)/86400000),zeit:calPad(dt.getHours())+':'+calPad(dt.getMinutes()),kunde:(d.name||d.org||'—')+((art==='BG'&&(d.bgDone||[]).length)?' · Folge-BG':''),ort:d.bezirk||d.ort||'',status:'',name:person});}};
     if(hit(d.analyst))push('AG',d.datumAG);
     // 🤝 MGT-Begleitung (Melanies Ansage 10.11.): Führungskraft geht beim Termin ihres GP mit – erscheint im eigenen Wochenplan
     if((d.mgtAG||'').trim()&&hit(d.mgtAG)&&!hit(d.analyst)){
@@ -4554,6 +4559,49 @@ function lueckenBadge(d){ // Badge überall, wo gearbeitet wird (Pipeline-Karte,
     +(rest.length?'<span class="tg od" title="Bitte beim nächsten Kontakt erfragen und im Kunden eintragen">⚠ fehlt: '+rest.map(x=>x.t).join(' · ')+'</span>':'');
 }
 function anhangBadge(d){const n=(d.analyse||[]).length;return n?'<span class="tg anh" title="'+n+(n===1?' Datei':' Dateien')+' beim Kunden angehängt">📎 '+n+(n===1?' Datei':' Dateien')+'</span>':'';}
+/* v19.11-F – WER BLEIBT DRAN (Melanies Regel 19.11.2026):
+   · Solange noch KEIN Analyst beim Kunden war: der TELEFONIST – auch bei Absage/Verschiebung, bis ein neuer
+     Analysetermin steht (mit Notiz).
+   · Sobald die Analyse stattgefunden hat (Analyst war persönlich dort): der ANALYST – auch wenn die Beratung
+     verschoben wird, die Analyse abgebrochen wurde oder der Kunde „erst in 2 Monaten / nächstes Jahr" sagt.
+   · Sobald der BERATER dort war (Folge-BG): der Berater.
+   · Alles ohne Datum/Zeitraum, das länger als 2 Wochen nicht bearbeitet wurde, bekommt Melanie als Info. */
+function zustaendig(d){
+  const st=STAGES.indexOf(d.stage);
+  const beraterWar=(d.bgDone||[]).length>0||st>=5||terminVorbei(d.datumBG);
+  const analyseWar=st>=3||terminVorbei(d.datumAG);
+  const kette=beraterWar?['berater','analyst','telefonist']:(analyseWar?['analyst','telefonist','berater']:['telefonist','analyst','berater']);
+  for(const r of kette){const n=(d[r]||'').trim();if(n)return {rolle:r,name:n,soll:kette[0]};}
+  return {rolle:kette[0],name:'',soll:kette[0]};
+}
+const ROLLE_LBL={telefonist:'Telefonist',analyst:'Analyst',berater:'Berater'},ROLLE_IC={telefonist:'☎',analyst:'📊',berater:'🤝'};
+function letzteAktion(d){ // Zeitpunkt der letzten Bearbeitung (Speichern, Anruf, Verlauf, Upload)
+  let t=Date.parse(d.upd||'')||0;
+  (d.hist||[]).forEach(h=>{const x=Date.parse(h.ts||'');if(x>t)t=x;});
+  (d.calls||[]).forEach(c=>{const x=Date.parse(c.ts||'');if(x>t)t=x;});
+  (d.analyse||[]).forEach(a=>{const x=Date.parse(a.ts||'');if(x>t)t=x;});
+  return t||leadAngelegt(d);
+}
+function hatDatum(d){ // „Info auf ein Datum oder einen Zeitraum": Wiedervorlage ODER ein AG-/BG-Termin, der noch bevorsteht
+  if((d.wiedervorlage||'').trim())return true;
+  const kommt=x=>{const v=(x||'').trim();return !!v&&!!parseTermin(v)&&!terminVorbei(v);};
+  return kommt(d.datumAG)||kommt(d.datumBG);
+}
+function liegenGeblieben(){ // nur für Admins: Kunden in Arbeit, ohne Datum, seit >14 Tagen unbearbeitet
+  if(!isAdmin())return [];
+  const now=Date.now(),out=[];
+  state.deals.forEach(d=>{
+    if(d.status!=='open'||d.geprueft===false||(d.quelle||'')==='Recruiting')return;
+    if(!(STAGES.indexOf(d.stage)>=1||(d.calls||[]).length))return; // unberührte neue Leads sind kein „liegen geblieben"
+    if(hatDatum(d))return;
+    const t=letzteAktion(d);
+    const tage=t?Math.floor((now-t)/86400000):-1;
+    if(t&&tage<=14)return;
+    out.push({d:d,tage:tage,z:zustaendig(d)});
+  });
+  out.sort((a,b)=>COLL.compare(a.z.name||'~',b.z.name||'~')||(b.tage-a.tage));
+  return out;
+}
 function myLuecken(){ // für Aufgaben-Fenster + Kopf-Badge: Kunden mit Termin/Analyse, bei denen etwas fehlt
   const admin=isAdmin(),me=chatName(),my=me?personNames(me):[];
   const hit=x=>my.includes((x||'').trim().toLowerCase());
@@ -4584,7 +4632,7 @@ function openModal(id){
   const m=document.getElementById('modal');m.classList.add('wide');
   m.innerHTML=`
     <h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${isNew?'Neuer Lead':esc(d.name||d.org||'Lead')}<button class="btn pri" id="m-save-top" style="margin-left:auto;padding:8px 18px;font-size:13.5px">💾 Speichern</button></h2>
-    <div class="sub">${isNew?'Datensatz anlegen':'Status: '+(d.status==='won'?'Gewonnen':d.status==='lost'?'Verloren ('+esc(d.lostReason||'')+')':esc(d.stage))}</div>
+    <div class="sub">${isNew?'Datensatz anlegen':'Status: '+(d.status==='won'?'Gewonnen':d.status==='lost'?'Verloren ('+esc(d.lostReason||'')+')':esc(d.stage))}${(!isNew&&d.status==='open')?(()=>{const z=zustaendig(d);return ` · <b style="color:var(--brand-ink)" title="Wer bei diesem Kunden dranbleibt: Telefonist bis zur Analyse, danach der Analyst, nach der ersten Beratung der Berater">Dran: ${ROLLE_IC[z.rolle]} ${esc(z.name||('noch kein '+ROLLE_LBL[z.rolle]))}</b>`;})():''}</div>
     ${(!isNew&&isAdmin()&&d.geprueft===false)?`<div style="background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 13px;margin-bottom:13px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b>📥 Posteingang</b> – für das Team noch unsichtbar.<button class="btn" id="m-frei" style="padding:6px 12px;font-size:12.5px">✓ Prüfen &amp; freigeben</button></div>`:''}
     ${(!isNew&&isAdmin()&&(d.mergeUndo||[]).length)?`<div style="background:var(--surface-2);border:1.5px solid var(--line);border-radius:10px;padding:10px 13px;margin-bottom:13px;font-size:12.5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>🔗 Hier wurden Kunden zusammengeführt (${fmtD(d.mergeUndo[d.mergeUndo.length-1].ts)}: ${esc((d.mergeUndo[d.mergeUndo.length-1].rest||[]).map(o=>o.name||o.org||'—').join(', ').slice(0,120))})</span><button class="btn" id="m-undoMerge" style="padding:6px 12px;font-size:12.5px;margin-left:auto">↩ Rückgängig – wieder trennen</button></div>`:''}
     ${(()=>{if(isNew)return '';const L=leadLuecken(d);if(!L.length)return '';
@@ -4647,6 +4695,12 @@ function openModal(id){
         <div style="display:flex;gap:7px;flex-wrap:wrap">
           <button type="button" class="mini-btn" id="cal-ag-x" style="color:var(--bad)" title="Analysetermin abgesagt oder verschoben">❗ AG verschoben</button>
           <button type="button" class="mini-btn" id="cal-bg-x" style="color:var(--bad)" title="Beratungstermin abgesagt oder verschoben">❗ BG verschoben</button>
+        </div>
+      </div>
+      <div class="fld full tb tb-be"><label>Folge-Beratung</label>
+        <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
+          <button type="button" class="mini-btn" id="m-folgebg" style="border-color:var(--brand);color:var(--brand-ink);font-weight:800" title="Der Berater war beim Kunden und es gibt einen weiteren Beratungstermin – ab jetzt bleibt der Berater dran">🔁 Folge-BG eintragen</button>
+          ${(d.bgDone||[]).length?`<span style="font-size:12px;color:var(--ink-2)">Bisher: ${(d.bgDone||[]).map(x=>esc(x.datum)).join(' · ')}</span>`:''}
         </div>
       </div>
       ${isAdmin()?`<div class="fld tb tb-tel"><label>Potenzieller Geschäftspartner? <span style="color:var(--ink-3);font-weight:500;text-transform:none">(nur für Admins sichtbar)</span></label><label class="gptoggle"><input type="checkbox" id="m-gp" ${d.gp?'checked':''}> Ja – fürs Recruiting vormerken</label></div>`:''}
@@ -4828,7 +4882,7 @@ function openModal(id){
       }else histAdd(d,'MGT ('+p[2]+'): '+before[p[1]]+' entfernt');
       before[p[1]]=neu;
     });};
-  const persist=()=>{histDiff();if(isNew&&!state.deals.includes(d))state.deals.unshift(d);dbPersist(d);render();};
+  const persist=()=>{histDiff();d.upd=new Date().toISOString();if(isNew&&!state.deals.includes(d))state.deals.unshift(d);dbPersist(d);render();}; // upd = letzte Bearbeitung (Basis für die Liegen-geblieben-Info)
   const callMeta=()=>{const dur=m.querySelector('#m-dur'),no=m.querySelector('#m-cnote');const o={};if(dur&&dur.value)o.dur=parseFloat(dur.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
   m.querySelectorAll('[data-lk]').forEach(b=>b.addEventListener('click',()=>{
     const id=({tel:'m-tel',email:'m-email',adr:'m-str',name:'m-name',geb:'m-geb',pdf:'m-analysesec',sprach:'m-analysesec',pot:'q-betrag'})[b.dataset.lk];
@@ -5136,27 +5190,53 @@ function openModal(id){
   if(agx)agx.addEventListener('click',()=>{
     collect();
     if(!d.datumAG){toast('Kein Analysetermin eingetragen');return;}
-    if(!confirm('Analysetermin ('+d.datumAG+') auf VERSCHOBEN setzen?\n\nDer Lead geht zurück in die Anrufliste von '+(d.telefonist||'— kein Telefonist —')+'.\n\nSobald der neue Termin eingetragen, zugeordnet und bestätigt ist, bekommen Kunde und Analyst die neue Kalender-Einladung automatisch.'))return;
     const alt=d.datumAG;
-    if(d.telefonist&&confirm('WhatsApp-Info an '+d.telefonist+' vorbereiten? (falls er/sie gerade nicht in der App ist)'))
-      waNotify(d.telefonist,'❗ CENSA: Analysetermin '+(d.name||d.org||'—')+' (war '+alt+') wurde ABGESAGT – bitte im CRM bestätigen und neu terminisieren: https://mlcelite.github.io/censa-crm/');
-    d.datumAG='';d.stage='In Bearbeitung';d.status='open';d.wiedervorlage=todayStr();
-    d.notizen=('AG ABGESAGT (war '+alt+') am '+todayStr().split('-').reverse().join('.')+' – neu terminisieren | '+(d.notizen||''));
-    chatSys('❗ Analysetermin ABGESAGT: '+(d.name||d.org||'—')+' (war '+alt+') – '+(d.telefonist?('Telefonist '+d.telefonist):'Telefonist')+' bitte neu terminisieren!',d,d.telefonist||null);
-    persist();closeModal();toast('Abgesagt – Lead liegt wieder ganz oben beim Telefonisten');});
+    // Dran-Regel: War der Analyst schon dort (Termin liegt zurück / Analyse läuft), bleibt der ANALYST dran – sonst der TELEFONIST
+    const war=(STAGES.indexOf(d.stage)>=3||terminVorbei(alt))&&!!(d.analyst||'').trim();
+    const wer=war?(d.analyst||'').trim():(d.telefonist||'').trim();
+    const rl=war?'Analyst':'Telefonist';
+    if(!confirm('Analysetermin ('+alt+') auf VERSCHOBEN setzen?\n\nDran bleibt: '+rl+' '+(wer||'— noch niemand —')+(war?' (der Analyst war schon beim Kunden).':' – der Lead geht zurück in die Anrufliste.')+'\n\nSobald der neue Termin eingetragen ist, bekommen Kunde und Analyst die neue Kalender-Einladung automatisch.'))return;
+    const note=(prompt('Kurze Notiz dazu (optional) – z. B. Grund oder wann wieder melden:','')||'').trim();
+    if(wer&&confirm('WhatsApp-Info an '+wer+' vorbereiten? (falls er/sie gerade nicht in der App ist)'))
+      waNotify(wer,'❗ CENSA: Analysetermin '+(d.name||d.org||'—')+' (war '+alt+') wurde ABGESAGT – bitte im CRM bestätigen und neu terminisieren: https://mlcelite.github.io/censa-crm/');
+    d.datumAG='';d.status='open';d.wiedervorlage=todayStr();
+    if(!war)d.stage='In Bearbeitung';
+    d.notizen=('AG ABGESAGT (war '+alt+') am '+todayStr().split('-').reverse().join('.')+' – neu terminisieren'+(note?': '+note:'')+' | '+(d.notizen||''));
+    chatSys('❗ Analysetermin ABGESAGT: '+(d.name||d.org||'—')+' (war '+alt+') – '+rl+' '+(wer||'')+' bleibt dran, bitte neu terminisieren!'+(note?' Notiz: '+note:''),d,wer||null);
+    persist();closeModal();toast(war?('Abgesagt – '+(wer||'der Analyst')+' bleibt dran'):'Abgesagt – Lead liegt wieder ganz oben beim Telefonisten');});
   const bgx=m.querySelector('#cal-bg-x');
   if(bgx)bgx.addEventListener('click',()=>{
     collect();
     if(!d.datumBG){toast('Kein Beratungstermin eingetragen');return;}
-    if(!confirm('Beratungstermin ('+d.datumBG+') auf VERSCHOBEN setzen?\n\nSobald der neue Termin eingetragen, zugeordnet und bestätigt ist, bekommen Kunde und Berater die neue Kalender-Einladung automatisch.'))return;
     const alt=d.datumBG;
-    const bWer=d.berater||d.analyst;
-    if(bWer&&confirm('WhatsApp-Info an '+bWer+' vorbereiten? (falls er/sie gerade nicht in der App ist)'))
-      waNotify(bWer,'❗ CENSA: Beratungstermin '+(d.name||d.org||'—')+' (war '+alt+') wurde ABGESAGT – bitte im CRM bestätigen und neu terminisieren: https://mlcelite.github.io/censa-crm/');
-    d.datumBG='';d.stage='Analyse & Doku';d.status='open';d.wiedervorlage=todayStr();
-    d.notizen=('BG ABGESAGT (war '+alt+') am '+todayStr().split('-').reverse().join('.')+' – neu terminisieren | '+(d.notizen||''));
-    chatSys('❗ Beratungstermin ABGESAGT: '+(d.name||d.org||'—')+' (war '+alt+') – '+(d.berater?('Berater '+d.berater):'Berater')+'/'+(d.analyst||'Analyst')+' bitte neu terminisieren!',d,d.berater||d.analyst||null);
-    persist();closeModal();toast('Abgesagt – Termin muss neu gesetzt werden');});
+    // Dran-Regel: bis der Berater beim Kunden war, bleibt der ANALYST dran – danach (Folge-BG) der BERATER
+    const bWar=((d.bgDone||[]).length>0||terminVorbei(alt))&&!!(d.berater||'').trim();
+    const wer=bWar?(d.berater||'').trim():((d.analyst||'').trim()||(d.berater||'').trim());
+    const rl=bWar?'Berater':((d.analyst||'').trim()?'Analyst':'Berater');
+    if(!confirm('Beratungstermin ('+alt+') auf VERSCHOBEN setzen?\n\nDran bleibt: '+rl+' '+(wer||'— noch niemand —')+(bWar?' (der Berater war schon beim Kunden).':' (der Berater war noch nicht beim Kunden).')+'\n\nSobald der neue Termin eingetragen ist, bekommen Kunde und Berater die neue Kalender-Einladung automatisch.'))return;
+    const note=(prompt('Kurze Notiz dazu (optional) – z. B. „erst in 2 Monaten" oder Grund:','')||'').trim();
+    if(wer&&confirm('WhatsApp-Info an '+wer+' vorbereiten? (falls er/sie gerade nicht in der App ist)'))
+      waNotify(wer,'❗ CENSA: Beratungstermin '+(d.name||d.org||'—')+' (war '+alt+') wurde ABGESAGT – bitte im CRM bestätigen und neu terminisieren: https://mlcelite.github.io/censa-crm/');
+    d.datumBG='';d.stage=bWar?'Beratung / Angebot':'Analyse & Doku';d.status='open';d.wiedervorlage=todayStr();
+    d.notizen=('BG ABGESAGT (war '+alt+') am '+todayStr().split('-').reverse().join('.')+' – neu terminisieren'+(note?': '+note:'')+' | '+(d.notizen||''));
+    chatSys('❗ Beratungstermin ABGESAGT: '+(d.name||d.org||'—')+' (war '+alt+') – '+rl+' '+(wer||'')+' bleibt dran, bitte neu terminisieren!'+(note?' Notiz: '+note:''),d,wer||null);
+    persist();closeModal();toast('Abgesagt – '+(wer||rl)+' bleibt dran');});
+  const fbg=m.querySelector('#m-folgebg');
+  if(fbg)fbg.addEventListener('click',()=>{ // 🔁 Folge-BG: Berater war dort, es gibt einen weiteren Beratungstermin → ab jetzt bleibt der Berater dran
+    collect();
+    const alt=(d.datumBG||'').trim();
+    if(!alt){toast('Bitte zuerst den Beratungstermin eintragen und speichern');return;}
+    const neu=(prompt('Folge-Beratung am … (z. B. 02.12. 10:00)\n\nDer bisherige Termin ('+alt+') wird als durchgeführt abgelegt. Ab jetzt bleibt der Berater dran.','')||'').trim();
+    if(!neu)return;
+    if(!parseTermin(neu)){toast('Datum nicht erkannt – bitte so schreiben: 02.12. 10:00');return;}
+    d.bgDone=(d.bgDone||[]).concat([{datum:alt,ts:new Date().toISOString(),von:chatName()||''}]);
+    d.datumBG=neu;d.status='open';d.stage='Beratung / Angebot';
+    histAdd(d,'Folge-BG '+d.bgDone.length+': '+neu+' (vorher '+alt+')');
+    const be=(d.berater||'').trim();
+    chatSys('🔁 Folge-Beratung: '+(d.name||d.org||'—')+' – '+neu+' · dran bleibt: '+(be?('Berater '+be):'Berater (noch nicht zugeordnet)'),d,be||null);
+    if(be&&!externCal(d,'berater'))zuordDirekt(d,'berater'); // neue Kalender-Einladung an Berater + Kunde
+    persist();openModal(d.id);toast('🔁 Folge-BG eingetragen – '+(be||'der Berater')+' bleibt dran');
+  });
   m.querySelector('#m-save').addEventListener('click',()=>{
     if(m.__anPending&&m.__anPending()&&!confirm('⚠ '+m.__anPending()+' gewählte Datei(en)/Scan-Seiten wurden noch NICHT abgegeben und gehen verloren!\n\nZum Hochladen zuerst „📤 Abgeben" drücken.\n\nTrotzdem ohne die Dateien speichern?'))return;
     collect();d.status='open';
