@@ -541,7 +541,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-N";
+const APP_VERSION="19.11-O";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2712,6 +2712,27 @@ function markChatSeen(){
 
 /* ---------- Aufgaben-Box (offene Bestätigungen) + WhatsApp-Info ---------- */
 let __todoShown=false;
+/* v19.11-O (Melanies Meldung: „Aufgaben-Fenster poppt beim Anmelden nicht mehr auf"): Bisher wurde nur EINMAL geprüft –
+   beim ersten Chat-Paket. Waren Team oder Kunden da noch nicht geladen, blieb das Fenster für die ganze Sitzung zu.
+   Jetzt wird nach dem Anmelden bis zu 30 Sekunden lang geprüft, bis alle Daten da sind, und das Fenster öffnet sich,
+   sobald es etwas gibt: Bestätigungen, Termine von heute, fehlende Termine oder liegen gebliebene Kunden – für ALLE. */
+let __todoTimer=null,__todoTries=0;
+function todoAutoOpen(){
+  if(__todoShown||MODE!=='db'||!AUTH_USER)return;
+  __todoTries++;
+  const geladen=TEAM.length>0&&(state.deals.length>0||__todoTries>6); // Team + Kunden da (oder wirklich leere Datenbank)
+  if(!geladen){if(__todoTries>15)__todoShown=true;return;}
+  if(document.getElementById('ov').classList.contains('show')||document.getElementById('loginOv').classList.contains('show'))return; // nichts überdecken – später nochmal
+  let etwas=false;
+  try{etwas=myAcksOpen().length>0||todayTermine().length>0||terminAufgaben().length>0||liegenGeblieben().length>0;}catch(e){}
+  if(etwas){__todoShown=true;openTodo(true);return;}
+  if(__todoTries>4)__todoShown=true; // Daten sind da und es gibt nichts → kein leeres Fenster
+}
+function todoAutoStart(){
+  if(__todoTimer)clearInterval(__todoTimer);
+  __todoTries=0;
+  __todoTimer=setInterval(()=>{if(__todoShown||__todoTries>15){clearInterval(__todoTimer);__todoTimer=null;return;}todoAutoOpen();},2000);
+}
 function waNotify(person,text){
   const mm=teamByAnyName(person);
   const tel=((mm&&mm.tel)||'').replace(/\D/g,'');
@@ -6227,7 +6248,7 @@ lsLoad();render();
         zuordUrgenz(); // 3-Std-Urgenz prüfen (Admin-Sitzungen, max. alle 15 Min)
         if(isAdmin())markDirty('steuerung'); // Zuordnungs-Status-Panel aktuell halten
         updateChatLog();updateTodoBadge();
-        if(!__todoShown){__todoShown=true;if(myAcksOpen().length||(!isAdmin()&&(liegenGeblieben().length||terminAufgaben().length)))openTodo();}
+        if(!__todoShown&&!__todoTimer)todoAutoStart();
       },err=>{});
       wocheCol=fs.collection('woche');WOCHE_WK='';
       actCol=fs.collection('activity');
@@ -6245,6 +6266,7 @@ lsLoad();render();
         STATS_SINCE=(s.exists&&(s.data()||{}).since)||'';
         if(isAdmin())markDirty('steuerung');
       },err=>{});
+      todoAutoStart(); // Aufgaben-Fenster beim Anmelden
       setTimeout(ehgAutoRemind,5000);
       setTimeout(wgCheck,9000);if(!window.__wgTimer)window.__wgTimer=setInterval(wgCheck,300000);
       setTimeout(inboxImport,4000);
