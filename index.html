@@ -541,7 +541,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-L";
+const APP_VERSION="19.11-M";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -4214,11 +4214,15 @@ function dispoPanel(){
     const blocks=[['analyst','📊 Offene Analysen','Analysen'],['berater','🤝 Offene Beratungen','Beratungen']].map(bl=>{
       const rolle=bl[0];
       const ts=offene.filter(t=>t.rolle===rolle);
+      // v19.11-M: auch hier zuerst vergangene + aktuelle Termine, „später" (> 30 Tage) ans Ende
+      const zt=t=>{const z=terminZeit(t.wann);return z?z.getTime():null;};
+      const grenze=Date.now()+SPAETER_TAGE*86400000;
+      ts.sort((a,b)=>{const za=zt(a),zb=zt(b);const k=z=>z==null?1:(z>grenze?2:0);return k(za)-k(zb)||((za||0)-(zb||0));});
       const pers=TEAM.filter(m=>hasRole(m,rolle));
       const rows=ts.slice(0,30).map(t=>{
         const d=state.deals.find(x=>x.id===t.tid.replace(/_(ag|bg)$/,''));
         const fixName=d?((d[rolle]||'').trim()||t.warte):t.warte;
-        return `<div class="gl" ${d?`data-id="${esc(d.id)}"`:'style="cursor:default"'}><span class="gn">${esc(d?(d.name||d.org||'—'):'—')}</span><span class="ph">${esc(t.wann||'')} · ${esc(t.ort||'')}</span>${t.warte?`<span class="tg od">⏳ ${esc(t.warte)} hat noch nicht angenommen</span><button class="mini-btn" data-dsfix="${esc(t.tid)}" style="border-color:var(--good);color:var(--good)">✔ Fix bei ${esc(fixName)} (buchen + raus)</button>`:''}</div>`;
+        return `<div class="gl" ${d?`data-id="${esc(d.id)}"`:'style="cursor:default"'}><span class="gn">${esc(d?(d.name||d.org||'—'):'—')}</span><span class="ph">${esc(t.wann||'')} · ${esc(t.ort||'')}</span>${(zt(t)!=null&&zt(t)>grenze)?'<span class="tg" title="Termin erst in über 30 Tagen – deshalb am Ende">📅 später</span>':''}${t.warte?`<span class="tg od">⏳ ${esc(t.warte)} hat noch nicht angenommen</span><button class="mini-btn" data-dsfix="${esc(t.tid)}" style="border-color:var(--good);color:var(--good)">✔ Fix bei ${esc(fixName)} (buchen + raus)</button>`:''}</div>`;
       }).join('')+(ts.length>30?`<div class="ph" style="padding:4px 2px">… und ${ts.length-30} weitere</div>`:'');
       const selObj=DISPO_SEL[rolle]||{};
       const chips=pers.map(m=>{const on=!!selObj[m.name];return `<button class="mini-btn" data-dsp="${rolle}" data-dsname="${esc(m.name)}" style="${on?'background:var(--brand);border-color:var(--brand);color:#fff':''}">${on?'✓':'👤'} ${esc(m.name)}</button>`;}).join('');
