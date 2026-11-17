@@ -457,7 +457,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="18.11-G";
+const APP_VERSION="18.11-H";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1486,6 +1486,13 @@ function dialerCard(d){
       <button class="ob" data-to="open">Lead öffnen</button>
     </div>
   </div>`;
+}
+function copySync(txt){ // sofortiges Kopieren innerhalb eines Klicks (auch wenn gleich danach ein neues Fenster den Fokus bekommt)
+  let ok=false;
+  try{const ta=document.createElement('textarea');ta.value=txt;ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:0;left:0;width:1px;height:1px;opacity:0';
+    document.body.appendChild(ta);ta.focus();ta.select();ta.setSelectionRange(0,txt.length);ok=document.execCommand('copy');ta.remove();}catch(e){}
+  try{if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(txt).then(()=>{},()=>{});}catch(e){}
+  return ok;
 }
 function copyText(txt,el,okMsg){ // clipboard-API scheitert ASYNCHRON (Promise) – try/catch reicht nicht
   const fallback=()=>{try{
@@ -4582,13 +4589,13 @@ function openModal(id){
       </div>
       <div id="ast-hints" style="font-size:12px;margin:4px 0"></div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:6px">
-        <button type="button" class="btn pri" id="ast-owa" title="Öffnet outlook.office.com mit fertigem Entwurf: alle Adressen im BCC, Betreff und Text ausgefüllt">🌐 Outlook im Browser</button>
+        <button type="button" class="btn pri" id="ast-owa" title="Öffnet Outlook mit fertigem Entwurf (Betreff + Text) und kopiert alle Adressen – im Entwurf auf Bcc tippen und einfügen">🌐 Outlook im Browser</button>
         <button type="button" class="btn" id="ast-mailto" title="Öffnet die Mail-App dieses Geräts (z. B. Outlook- oder Mail-App am Handy) mit BCC, Betreff und Text">📱 Mail-App am Handy</button>
         <button type="button" class="btn" id="ast-gmail">📧 Gmail-Entwurf (mit Anhang)</button>
         <button type="button" class="btn" id="ast-eml">💾 Outlook-Programm am PC (.eml)</button>
       </div>
       <div id="ast-owa-liste"></div>
-      <div style="font-size:11px;color:var(--ink-3);margin-top:5px"><b>EINE Sammel-Mail an alle angehakten Anstalten – alle Adressen im BCC</b> (die Anstalten sehen einander nicht). Betreff und Text sind eure Standard-Vorlage. <b>Vor dem Senden prüfen:</b> Name, Geburtsdatum und Adresse auf der Vollmacht richtig und leserlich? Unterschrift drauf? Richtige Abteilung (LV ≠ Sach)? Danach im „Gesendet"-Ordner nachsehen, ob die Mail wirklich raus ist. ⚠ = keine Mailadresse hinterlegt.</div>
+      <div style="font-size:11px;color:var(--ink-3);margin-top:5px"><b>EINE Sammel-Mail an alle angehakten Anstalten – alle Adressen im BCC</b> (die Anstalten sehen einander nicht). Betreff und Text sind eure Standard-Vorlage. Bei „Outlook im Browser" werden die Adressen kopiert und von euch ins Bcc-Feld eingefügt – Outlook lässt das Bcc-Feld von außen nicht befüllen; die Mail-App am Handy füllt es selbst. <b>Vor dem Senden prüfen:</b> Name, Geburtsdatum und Adresse auf der Vollmacht richtig und leserlich? Unterschrift drauf? Richtige Abteilung (LV ≠ Sach)? Danach im „Gesendet"-Ordner nachsehen, ob die Mail wirklich raus ist. ⚠ = keine Mailadresse hinterlegt.</div>
     </div>`:''}
     ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid ${d.auswertung&&d.auswertung.status==='offen'?'var(--bad)':'var(--line)'};border-radius:12px" id="m-auswsec">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">🧮 Fall-Auswertung <span style="font-weight:500;color:var(--ink-2);font-size:12px">– die Assistenz wertet aus; Analyst &amp; Berater bekommen die Info automatisch als Aufgabe</span></div>
@@ -4873,20 +4880,21 @@ function openModal(id){
       astSec.querySelector('#ast-hints').innerHTML=h.map(a=>`<div style="padding:3px 0;color:${a.m?'var(--ink-2)':'var(--bad)'}">ℹ <b>${esc(a.n)}:</b> ${esc(a.m?a.hint:'keine Mailadresse hinterlegt – wird übersprungen')}</div>`).join('');};
     astSec.querySelectorAll('.ast-ck').forEach(c=>c.addEventListener('change',astHints));astHints();
     // Nach dem Öffnen des Entwurfs: die restlichen Handgriffe als Checkliste + Kopier-Knöpfe (falls BCC/Betreff nicht übernommen wurden)
-    const astHelfer=(sel,vm,was,link)=>{
+    const astHelfer=(sel,vm,was,link,clip)=>{
       const adr=astBccList(sel),host2=astSec.querySelector('#ast-owa-liste');
       host2.innerHTML=`<div style="margin:9px 0;padding:11px 13px;border:1.5px solid var(--brand);border-radius:11px;font-size:13px;line-height:1.5">
-        <div style="font-weight:800;margin-bottom:5px">✅ ${was} – ${sel.length} Anstalt${sel.length===1?'':'en'}, ${adr.length} Adresse${adr.length===1?'':'n'} im BCC</div>
+        <div style="font-weight:800;margin-bottom:5px">✅ ${was} – ${sel.length} Anstalt${sel.length===1?'':'en'}, ${adr.length} Adresse${adr.length===1?'':'n'}</div>
         ${link?`<div style="margin-bottom:6px">Kein Fenster aufgegangen? <a href="${esc(link)}" target="_blank" rel="noopener" style="font-weight:800;color:var(--brand-ink)">Hier antippen</a></div>`:''}
-        <div><b>1.</b> Im Entwurf prüfen, ob die Adressen im <b>BCC</b> stehen. Feld leer? <button type="button" class="mini-btn" data-acp="adr">📋 Adressen kopieren</button> und ins BCC-Feld einfügen.</div>
+        ${clip?`<div><b>1.</b> <b>Adressen ins BCC einfügen:</b> ${clip==='kopiert'?'Die Adressen sind schon kopiert.':'Zuerst'} ${clip==='kopiert'?'':'<button type="button" class="mini-btn" data-acp="adr">📋 Adressen kopieren</button>'} Im Outlook-Entwurf rechts neben „An" auf <b>„Bcc"</b> tippen, ins Bcc-Feld tippen und <b>einfügen</b>. ${clip==='kopiert'?'<button type="button" class="mini-btn" data-acp="adr">📋 nochmal kopieren</button>':''}</div>`
+          :`<div><b>1.</b> Im Entwurf prüfen, ob die Adressen im <b>BCC</b> stehen. Feld leer? <button type="button" class="mini-btn" data-acp="adr">📋 Adressen kopieren</button> und ins BCC-Feld einfügen.</div>`}
         <div style="margin-top:4px"><b>2.</b> <b>📎 Vollmacht anhängen:</b> ${vm?`<a href="${esc(vm.url||'#')}" target="_blank" rel="noopener" style="font-weight:800;color:var(--brand-ink)">${esc(vm.name||'Vollmacht')} öffnen</a>, speichern und in die Mail ziehen.`:'<span style="color:var(--bad);font-weight:700">Es ist keine Vollmacht ausgewählt – bitte unterschriebene Vollmacht anhängen.</span>'}</div>
         <div style="margin-top:4px"><b>3.</b> Senden – und im „Gesendet"-Ordner prüfen, ob die Mail wirklich raus ist.</div>
         <div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap"><button type="button" class="mini-btn" data-acp="sub">📋 Betreff kopieren</button><button type="button" class="mini-btn" data-acp="txt">📋 Text kopieren</button></div>
       </div>`;
       host2.querySelectorAll('[data-acp]').forEach(b2=>b2.addEventListener('click',()=>{const k=b2.dataset.acp;
-        if(k==='adr')copyText(adr.join('; '),null,'📋 '+adr.length+' Adressen kopiert – ins BCC-Feld einfügen');
-        else if(k==='sub')copyText(astSubject(d),null,'📋 Betreff kopiert');
-        else copyText(astMailText(d,sel,null),null,'📋 Text kopiert');}));
+        const t=k==='adr'?adr.join('; '):(k==='sub'?astSubject(d):astMailText(d,sel,null));
+        const ok=copySync(t);
+        toast(ok?(k==='adr'?'📋 '+adr.length+' Adressen kopiert – ins Bcc-Feld einfügen':(k==='sub'?'📋 Betreff kopiert':'📋 Text kopiert')):'Kopieren nicht möglich – bitte von Hand markieren');}));
       host2.scrollIntoView({block:'nearest',behavior:'smooth'});
     };
     const bauen=async()=>{ // gemeinsame Vorarbeit: Auswahl + Vollmacht (Anhang, sonst Link)
@@ -4927,17 +4935,22 @@ function openModal(id){
       b.disabled=false;b.textContent=alt;
     });
     astSec.querySelector('#ast-owa').addEventListener('click',()=>{
-      // Outlook im Browser (euer Postfach auf outlook.office.com): EIN Entwurf, alle Adressen im BCC.
-      // v18.11-G: Adressen mit STRICHPUNKT getrennt – mit Komma hat Outlook die Liste als EINE ungültige Adresse gelesen.
+      /* Outlook im Browser. v18.11-H (Melanies Meldung: „macht Outlook auf, erstellt aber keine Mail"):
+         wieder die Adresse outlook.cloud.microsoft, mit der der Entwurf zuvor erstellt wurde (über outlook.office.com
+         ging der Entwurf bei der Weiterleitung verloren). Der Outlook-Link kennt verlässlich nur Betreff + Text –
+         ein BCC-Feld lässt sich darüber NICHT befüllen. Darum werden die Adressen beim Klick in die Zwischenablage
+         gelegt: im Entwurf auf „Bcc" tippen und einfügen. */
       const sel=selAst().filter(a=>a.m);
       if(!sel.length){toast('Bitte mindestens eine Anstalt (mit Mailadresse) anhaken');return;}
       const vm=vmEntry();
-      const link='https://outlook.office.com/mail/deeplink/compose?bcc='+encodeURIComponent(astBccList(sel).join(';'))
-        +'&subject='+encodeURIComponent(astSubject(d))
+      const adr=astBccList(sel);
+      const kopiert=copySync(adr.join('; ')); // synchron, BEVOR das Outlook-Fenster den Fokus übernimmt
+      const link='https://outlook.cloud.microsoft/mail/deeplink/compose?subject='+encodeURIComponent(astSubject(d))
         +'&body='+encodeURIComponent(astMailText(d,sel,null));
       window.open(link,'_blank'); // EIN Fenster, synchron im Klick = Popup-sicher
-      astHelfer(sel,vm,'Entwurf in Outlook geöffnet',link);
-      histAdd(d,'Sammel-Auskunftsmail vorbereitet (Outlook im Browser, BCC): '+sel.map(a=>a.n).join(', '));
+      astHelfer(sel,vm,'Entwurf in Outlook geöffnet',link,kopiert?'kopiert':'nichtkopiert');
+      toast(kopiert?('📋 '+adr.length+' Adressen kopiert – im Outlook-Entwurf auf „Bcc" tippen und einfügen'):'Entwurf geöffnet – Adressen bitte über „📋 Adressen kopieren" holen');
+      histAdd(d,'Sammel-Auskunftsmail vorbereitet (Outlook im Browser): '+sel.map(a=>a.n).join(', '));
       persist();
     });
     astSec.querySelector('#ast-mailto').addEventListener('click',()=>{
