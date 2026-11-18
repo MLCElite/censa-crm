@@ -541,7 +541,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-P";
+const APP_VERSION="19.11-Q";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2724,7 +2724,7 @@ function todoAutoOpen(){
   if(!geladen){if(__todoTries>15)__todoShown=true;return;}
   if(document.getElementById('ov').classList.contains('show')||document.getElementById('loginOv').classList.contains('show'))return; // nichts überdecken – später nochmal
   let etwas=false;
-  try{etwas=myAcksOpen().length>0||todayTermine().length>0||terminAufgaben().length>0||liegenGeblieben().length>0;}catch(e){}
+  try{etwas=myAcksOpen().length>0||todayTermine().length>0||termineAm(1).length>0||terminAufgaben().length>0||liegenGeblieben().length>0;}catch(e){}
   if(etwas){__todoShown=true;openTodo(true);return;}
   if(__todoTries>4)__todoShown=true; // Daten sind da und es gibt nichts → kein leeres Fenster
 }
@@ -2786,12 +2786,7 @@ async function chatDecline(id){
    2) Ist Google auf DIESEM Gerät nicht verbunden (Token liegt nur lokal im Browser), zeigt der Kopf
       „📅 Google auf diesem Gerät verbinden" – 1 Tipp verbindet und holt die Termine + Leads sofort. */
 function gcalVerbunden(){return !!__gcalTok&&Date.now()<__gcalExp-60000;}
-function todayTermine(){
-  const me=chatName();if(!me)return [];
-  const start=wkStart(0);
-  const ti=Math.floor((new Date().setHours(0,0,0,0)-start.getTime())/86400000);
-  return autoEntries(me,start).filter(e=>e.tag===ti).sort((a,b)=>(a.zeit||'').localeCompare(b.zeit||''));
-}
+function todayTermine(){return termineAm(0);}
 function updateTodoBadge(){
   const gb=document.getElementById('gcalBadge');
   if(gb)gb.classList.toggle('hide',!(GCAL_CLIENT_ID&&MODE==='db'&&chatName()&&!gcalVerbunden()));
@@ -2834,7 +2829,10 @@ function openTodo(force){
     ${acks.map(a=>{const t=a.ts?new Date(a.ts):null;const zeit=t?(String(t.getDate()).padStart(2,'0')+'.'+String(t.getMonth()+1).padStart(2,'0')+'.'):'';
       const canDec=(a.art==='beratung-zuord'||a.art==='analyse-zuord')&&personNames(me).includes((a.ackWer||'').trim().toLowerCase());
       return `<div class="ehrow" style="flex-wrap:wrap"><span class="nm" style="min-width:220px;white-space:normal">${zeit?zeit+' · ':''}${esc(a.text)}</span>${a.dealId?`<button class="mini-btn" data-tdl="${esc(a.dealId)}">Lead öffnen</button>`:''}<button class="mini-btn" style="border-color:var(--good);color:var(--good);font-weight:700" data-tda="${esc(a._id||'')}">✔ Annehmen</button>${canDec?`<button class="mini-btn" style="border-color:var(--bad);color:var(--bad)" data-tdd="${esc(a._id||'')}">✖ Ablehnen</button>`:''}</div>`;}).join('')}
-    ${heute.length?`<div class="ehgt" style="margin-top:14px">📅 Deine Termine heute</div>${heute.map(e=>`<div class="ehrow"><span class="wart" style="background:${WARTC[e.art]||'var(--ink-3)'}">${esc(e.art)}</span><b>${esc(e.zeit)}</b><span class="nm">${esc(e.kunde)}</span><button class="mini-btn" data-tdl="${esc(e.dealId)}">Lead</button></div>`).join('')}`:''}
+    ${(()=>{const zeile=e=>`<div class="ehrow"><span class="wart" style="background:${WARTC[e.art]||'var(--ink-3)'}">${esc(e.art)}</span><b>${esc(e.zeit||'—')}</b><span class="nm">${esc(e.kunde)}${e.ort?` <span style="color:var(--ink-3);font-weight:500">· ${esc(e.ort)}</span>`:''}</span>${e.dealId?`<button class="mini-btn" data-tdl="${esc(e.dealId)}">Lead</button>`:''}</div>`;
+      const morgen=termineAm(1);
+      return (heute.length?`<div class="ehgt" style="margin-top:14px">📅 Deine Termine heute</div>${heute.map(zeile).join('')}`:'')
+        +(morgen.length?`<div class="ehgt" style="margin-top:14px">📅 Morgen</div>${morgen.map(zeile).join('')}`:'');})()}
     ${tal.length?`<div class="ehgt" style="margin-top:14px">📅 Termin fehlt: <span style="color:var(--bad)">${tal.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— bleibt hier, bis ein Termin oder eine Wiedervorlage eingetragen ist</span></div>${tal.slice(0,30).map(x=>`<div class="ehrow"><span class="nm"><b>${esc(x.d.name||x.d.org||'—')}</b> <span style="color:var(--ink-3);font-weight:500">· ${esc(x.txt)}</span></span>${x.alsMgt?`<span class="tg" style="background:var(--warn-bg);color:var(--warn);font-weight:800" title="Du bist bei diesem Termin als MGT dabei – dran ist ${esc(x.z.name||'—')}">🤝 MGT · dran: ${esc(x.z.name||'—')}</span>`:''}${isAdmin()?`<span class="tg" style="background:var(--brand-bg);color:var(--brand-ink);font-weight:800">${ROLLE_IC[x.z.rolle]} ${esc(x.z.name||('kein '+ROLLE_LBL[x.z.rolle]))}</span>${x.mgt?`<span class="tg" title="MGT-Begleitung">🤝 ${esc(x.mgt)}</span>`:''}`:''}<button class="mini-btn" data-tat="${esc(x.d.id)}" data-tart="${x.art}" style="border-color:var(--brand);color:var(--brand-ink);font-weight:800">📅 Termin eintragen</button><button class="mini-btn" data-tdl="${esc(x.d.id)}">Lead öffnen</button></div>`).join('')}${tal.length>30?`<div style="font-size:12px;color:var(--ink-3);margin:4px 0">… und ${tal.length-30} weitere.</div>`:''}`:''}
     ${lgl.length?`<div class="ehgt" style="margin-top:14px">${isAdmin()?'🕰 Ohne Datum und seit über 2 Wochen nicht bearbeitet:':'🕰 Deine Aufgabe – seit über 2 Wochen nichts passiert:'} <span style="color:var(--bad)">${lgl.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— ${isAdmin()?'wer dran ist, steht dabei':'bleibt hier, bis du den Kunden bearbeitest oder ein Datum / eine Wiedervorlage einträgst'}</span></div>${lgl.slice(0,LKMAX).map(x=>`<div class="ehrow"><span class="nm"><b>${esc(x.d.name||x.d.org||'—')}</b> <span style="color:var(--ink-3);font-weight:500">· ${esc(x.d.stage)}</span></span><span class="tg" style="background:var(--brand-bg);color:var(--brand-ink);font-weight:800">${ROLLE_IC[x.z.rolle]} ${esc(x.z.name||('kein '+ROLLE_LBL[x.z.rolle]))}</span><span class="tg od">${x.tage>=0?('seit '+x.tage+' Tagen'):'kein Datum bekannt'}</span><button class="mini-btn" data-tdl="${esc(x.d.id)}">Lead öffnen</button></div>`).join('')}${lgl.length>LKMAX?`<div style="font-size:12px;color:var(--ink-3);margin:4px 0">… und ${lgl.length-LKMAX} weitere.</div>`:''}`:''}
     ${(lk.list.length+lk.kalt)?`<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:14px;font-size:12.5px;color:var(--ink-2)"><span>🧩 Bei <b>${lk.list.length+lk.kalt}</b> Kunden fehlen noch Infos – sie sind rot markiert.</span><button class="mini-btn" id="td-lk">In der Liste anzeigen</button></div>`:''}
@@ -2873,6 +2871,10 @@ function wkStart(off){const t=new Date();t.setHours(0,0,0,0);const day=(t.getDay
 function wkKeyOf(dt){return dt.getFullYear()+'-KW'+String(isoWeek(dt)).padStart(2,'0');}
 function fmtDM(dt){return String(dt.getDate()).padStart(2,'0')+'.'+String(dt.getMonth()+1).padStart(2,'0')+'.';}
 function nameEq(a,b){return (a||'').trim().toLowerCase()===(b||'').trim().toLowerCase();}
+/* v19.11-Q (Melanies Ansage): „Meine Termine" (Aufgaben-Fenster, Knopf oben, Telegram-Wochenübersicht) zeigen auch die
+   Wochenplan-Einträge EG, MGT, KG, TG – nicht nur AG/BG aus den Kunden. Dafür werden diese und die nächste Woche
+   beim Anmelden geladen und hier zwischengespeichert. Private Einträge bleiben draußen. */
+const WCACHE={},WLIVE={};
 async function loadWoche(wk){
   WOCHE_WK=wk;
   if(MODE!=='db'||!wocheCol){WOCHE=[];return;}
@@ -2880,6 +2882,37 @@ async function loadWoche(wk){
     const s=await wocheCol.where('wk','==',wk).limit(600).get();
     WOCHE=s.docs.map(x=>{const o=Object.assign({},x.data());o._id=x.id;return o;});
   }catch(e){WOCHE=[];toast('Wochenplan konnte nicht geladen werden'+(e&&e.code?' ('+e.code+')':''));}
+  if(!WLIVE[wk])WCACHE[wk]=WOCHE;
+}
+function wochePreload(){ // beim Anmelden: diese + nächste Woche mitlesen (live – neue Einträge erscheinen von selbst)
+  if(MODE!=='db'||!wocheCol)return;
+  [0,1].forEach(off=>{
+    const wk=wkKeyOf(wkStart(off));
+    if(WLIVE[wk])return;
+    const neu=s=>{
+      const vorher=termineSig();
+      WCACHE[wk]=s.docs.map(x=>{const o=Object.assign({},x.data());o._id=x.id;return o;});
+      try{updateTodoBadge();}catch(e){}
+      // Aufgaben-Fenster ist gerade offen und die Termine haben sich geändert → neu zeichnen
+      try{const m=document.getElementById('modal'),h=m&&m.querySelector('h2');
+        if(h&&/Deine offenen Aufgaben/.test(h.textContent)&&document.getElementById('ov').classList.contains('show')&&termineSig()!==vorher)openTodo(true);}catch(e){}
+    };
+    try{
+      const q=wocheCol.where('wk','==',wk).limit(600);
+      if(q.onSnapshot){WLIVE[wk]=q.onSnapshot(neu,()=>{WLIVE[wk]=null;});}
+      else q.get().then(neu).catch(()=>{});
+    }catch(e){}
+  });
+}
+function wocheDaten(wk){return (WLIVE[wk]&&WCACHE[wk])?WCACHE[wk]:(WOCHE_WK===wk?WOCHE:(WCACHE[wk]||[]));}
+function termineSig(){try{return [0,1].map(o=>termineAm(o).map(e=>e.art+e.zeit+e.kunde).join('|')).join('#');}catch(e){return '';}}
+function termineAm(off){ // eigene Termine an einem Tag (0 = heute, 1 = morgen): AG/BG aus den Kunden + EG/MGT/KG/TG aus dem Wochenplan
+  const me=chatName();if(!me)return [];
+  const h=new Date();const tag=new Date(h.getFullYear(),h.getMonth(),h.getDate()+off);
+  const start=new Date(tag.getFullYear(),tag.getMonth(),tag.getDate()-((tag.getDay()+6)%7));
+  const ti=(tag.getDay()+6)%7,wk=wkKeyOf(start);
+  return wEntriesFor(me,start,wk,wocheDaten(wk)).filter(e=>e.tag===ti&&e.art!=='PRIVAT'&&!(e.mitschau&&e.dabei===0)&&e.status!=='cancelled'&&e.status!=='moved')
+    .sort((a,b)=>(a.zeit||'').localeCompare(b.zeit||''));
 }
 function autoEntries(person,start){
   const end=new Date(start.getTime()+7*86400000);
@@ -2912,15 +2945,16 @@ function autoEntries(person,start){
   });
   return out;
 }
-function wEntriesFor(person,start,wk){
-  const ovs=WOCHE.filter(e=>e.type==='ov');
+function wEntriesFor(person,start,wk,quelle){ // quelle: Wochenplan-Daten einer bestimmten Woche (Standard: die gerade geladene)
+  const WQ=quelle||WOCHE;
+  const ovs=WQ.filter(e=>e.type==='ov');
   const auto=autoEntries(person,start).map(a=>{
     a._ovId='ov'+(a.dealId+'_'+a.art+'_'+wk).replace(/[^0-9A-Za-z_-]/g,'');
     const ov=ovs.find(o=>o._id===a._ovId);
     if(ov)a.status=ov.status||'';
     return a;
   });
-  const man=WOCHE.filter(e=>e.type!=='ov'&&nameEq(e.name,person)).map(e=>{
+  const man=WQ.filter(e=>e.type!=='ov'&&nameEq(e.name,person)).map(e=>{
     const o={auto:false,gcal:!!e.gcal,_id:e._id,art:e.art||'EG',tag:+e.tag||0,zeit:e.zeit||'',kunde:e.kunde||'',ort:e.ort||'',status:e.status||'',name:person};
     if(o.gcal&&o.art==='PRIVAT'){const pa=gcalArt(o.kunde);if(pa.suffix){o.art=pa.art;o.kunde=pa.rest;}} // früher gespeicherte Einträge („Peschek BG") neu lesen
     return o;});
@@ -3375,7 +3409,7 @@ function wgText(mm,M){ // Wochen-Übersicht für eine Person; M = Zeitpunkt des 
   const zeilen=[];
   [0,1].forEach(w=>{
     const st=new Date(mo.getFullYear(),mo.getMonth(),mo.getDate()+7*w);
-    wDedupe(autoEntries(mm.name,st).filter(e=>!e.mitschau)).forEach(e=>{
+    wEntriesFor(mm.name,st,wkKeyOf(st),wocheDaten(wkKeyOf(st))).filter(e=>!e.mitschau&&e.art!=='PRIVAT'&&e.status!=='cancelled'&&e.status!=='moved').forEach(e=>{
       const tag=new Date(st.getFullYear(),st.getMonth(),st.getDate()+e.tag);
       if(tag<von||tag>=bis)return;
       const d=state.deals.find(x=>x.id===e.dealId);
@@ -3793,6 +3827,7 @@ async function renderWoche(){
   const host=document.getElementById('view-woche');if(!host)return;
   const start=wkStart(__wOff);const wk=wkKeyOf(start);const end=new Date(start.getTime()+6*86400000);
   if(WOCHE_WK!==wk)await loadWoche(wk);
+  if(!WLIVE[wk])WCACHE[wk]=WOCHE; // Zwischenspeicher aktuell halten, solange nicht live mitgelesen wird
   const admin=isAdmin();
   const persons=[...new Set([...TEAM.map(x=>x.name),chatName()])].filter(Boolean).sort();
   if(!__wPerson||!admin)__wPerson=admin?(__wPerson||chatName()||persons[0]||''):(chatName()||'');
@@ -6268,6 +6303,7 @@ lsLoad();render();
         if(!__todoShown&&!__todoTimer)todoAutoStart();
       },err=>{});
       wocheCol=fs.collection('woche');WOCHE_WK='';
+      setTimeout(wochePreload,1500);
       actCol=fs.collection('activity');
       logActivity();
       actUnsub=actCol.orderBy('ts','desc').limit(1500).onSnapshot(snap=>{
