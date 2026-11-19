@@ -541,7 +541,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-R";
+const APP_VERSION="19.11-S";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1094,15 +1094,19 @@ function renderListe(){
     if(!name){toast('Bitte Namen eingeben');return;}
     if(!rows.length){toast('Keine Leads im Filter');return;}
     const lbl={telefonist:'Telefonist',analyst:'Analyst',berater:'Berater'}[role];
-    if(!confirm(rows.length+' gefilterte Leads dem '+lbl+' "'+name+'" zuteilen?'))return;
-    rows.forEach(r=>{
+    // Telefonisten-Übergabe: schon terminisierte Kunden bleiben, wo sie sind
+    const tz=role==='telefonist'?ohneTerminisierte(rows,name):{ziel:rows,bleibt:[]};
+    const ziel=tz.ziel,bleibtN=tz.bleibt.length;
+    if(!ziel.length){toast('Alle '+rows.length+' Kunden im Filter wurden schon terminisiert – sie bleiben bei ihrem Telefonisten');return;}
+    if(!confirm(ziel.length+' gefilterte Leads dem '+lbl+' "'+name+'" zuteilen?'+(bleibtN?'\n\n'+bleibtN+' bereits terminisierte Kunden bleiben bei ihrem Telefonisten und werden NICHT neu zugeteilt.':'')))return;
+    ziel.forEach(r=>{
       if(role==='telefonist'&&(r.telefonist||'').trim()&&r.telefonist!==name){r.telHist=r.telHist||[];if(!r.telHist.includes(r.telefonist))r.telHist.push(r.telefonist);}
       r[role]=name;
       r.geprueft=true;
     });
-    toast('Speichere '+rows.length+' Leads…');
-    const ok=await dbPersistMany(rows);
-    render();toast(ok?(rows.length+' Leads an '+name+' verteilt ✓'):'Zuteilen fehlgeschlagen – bitte erneut versuchen');
+    toast('Speichere '+ziel.length+' Leads…');
+    const ok=await dbPersistMany(ziel);
+    render();toast(ok?(ziel.length+' Leads an '+name+' verteilt ✓'+(bleibtN?' · '+bleibtN+' terminisierte unverändert':'')):'Zuteilen fehlgeschlagen – bitte erneut versuchen');
   });
   const sb=host.querySelector('#splitBtn');
   if(sb)sb.addEventListener('click',()=>{
@@ -1387,11 +1391,30 @@ function splitPlan(rows,names){
   plan.sort((x,y)=>x.name.localeCompare(y.name));
   return plan;
 }
-function openSplitModal(rows){
+/* v19.11-S (Melanies Ansage 19.11.): Wurde ein Kunde schon einmal terminisiert, bleibt er bei seinem Telefonisten –
+   egal in welchem Status er jetzt ist (Termin abgesagt, verschoben, Analyse erfolgt, gewonnen, verloren …).
+   Beim Übergeben ganzer Listen (Bezirk, Branche, Aufteilen) wird er deshalb NICHT neu zugeteilt.
+   Einzeln im Lead umstellen geht weiterhin – das ist dann eine bewusste Entscheidung. */
+function warTerminisiert(d){
+  if(!d)return false;
+  if((d.datumAG||'').trim()||(d.datumBG||'').trim())return true;
+  if(STAGES.indexOf(d.stage)>=2)return true; // Analysetermin vereinbart oder weiter
+  if(d.terminOffen||d.bgOffen||(d.bgDone||[]).length||(d.analyse||[]).length||d.uebergabe)return true;
+  if((d.calls||[]).some(c=>c&&c.outcome==='termin'))return true;
+  return (d.hist||[]).some(h=>/AG-Termin|BG-Termin|Analysetermin|Beratungstermin|Termin (gesetzt|abgesagt|verschoben)|nicht stattgefunden|nicht durchgeführt/i.test((h&&h.txt)||''));
+}
+function ohneTerminisierte(liste,name){ // → {ziel, bleibt}: „bleibt" = schon terminisiert und (noch) nicht bei dieser Person
+  const ziel=[],bleibt=[];
+  (liste||[]).forEach(d=>{(warTerminisiert(d)&&canonName(d.telefonist||'')!==canonName(name||'\u0000')?bleibt:ziel).push(d);});
+  return {ziel,bleibt};
+}
+function openSplitModal(rowsAlle){
+  const rows=rowsAlle.filter(r=>!warTerminisiert(r)),bleibtN=rowsAlle.length-rows.length;
+  if(!rows.length){toast('Alle '+rowsAlle.length+' Kunden im Filter wurden schon terminisiert – sie bleiben bei ihrem Telefonisten');return;}
   const m=document.getElementById('modal');m.classList.add('wide');
   const tele=[...new Set([...TEAM.map(x=>x.name),...state.deals.map(d=>d.telefonist).filter(Boolean)])].filter(Boolean).sort();
   const roleOf=n=>{const mm=TEAM.find(x=>(x.name||'')===n);return mm?mm.rolle:'';};
-  m.innerHTML=`<h2>⚖ Leads aufteilen – bezirksweise</h2><div class="sub">${rows.length} gefilterte Leads. Jeder Telefonist bekommt ganze Bezirke – so telefoniert jeder die Woche über im selben Gebiet und die Termine liegen gebündelt. Die Stückzahl wird dabei so fair wie möglich gehalten (sehr große Bezirke werden bei Bedarf geteilt).</div>
+  m.innerHTML=`<h2>⚖ Leads aufteilen – bezirksweise</h2><div class="sub">${rows.length} gefilterte Leads${bleibtN?` (${bleibtN} bereits terminisierte Kunden bleiben bei ihrem Telefonisten und werden nicht verteilt)`:''}. Jeder Telefonist bekommt ganze Bezirke – so telefoniert jeder die Woche über im selben Gebiet und die Termine liegen gebündelt. Die Stückzahl wird dabei so fair wie möglich gehalten (sehr große Bezirke werden bei Bedarf geteilt).</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">${tele.length?tele.map(t=>{const r=roleOf(t);return `<label class="gptoggle"><input type="checkbox" class="splitT" value="${esc(t)}"> ${esc(t)}${r&&r!=='telefonist'?` <span style="color:var(--ink-3);font-weight:500">(${esc(r)})</span>`:''}</label>`;}).join(''):'<div class="empty-col">Keine Team-Mitglieder gefunden – zuerst unter CEO → Team &amp; Zugänge anlegen.</div>'}</div>
     <div id="splitPrev" style="margin-bottom:12px"></div>
     <div class="modal-foot"><button class="btn pri" id="splitGo">Verteilen</button><button class="btn" id="m-close">Abbrechen</button></div>`;
@@ -2242,7 +2265,7 @@ function renderSteuerung(){
     ${dispoPanel()}
     <div class="panel"><h3>🗺️ Bezirks-Zuteilung – Telefonisten <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— ganzer Bezirk mit einem Klick an einen Telefonisten; Zuteilen gibt neue Kunden (📥 Posteingang) automatisch frei</span></h3>
       ${teNames.length?(bzList.length?`
-      <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-2);margin:0 0 8px;cursor:pointer"><input type="checkbox" id="bzMove" style="width:auto"> auch bereits zugeteilte Kunden umziehen (sonst bekommt der Telefonist nur die noch freien)</label>
+      <label style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-2);margin:0 0 8px;cursor:pointer"><input type="checkbox" id="bzMove" style="width:auto"> auch bereits zugeteilte Kunden umziehen (sonst bekommt der Telefonist nur die noch freien) · schon terminisierte Kunden bleiben immer bei ihrem Telefonisten</label>
       <div class="st-list" style="max-height:430px;overflow:auto">${bzList.map((g,i)=>`<div class="gl" style="cursor:default;flex-wrap:wrap"><span class="gn" style="min-width:110px">${esc(g.bz)}</span><span class="ph tnum">${g.frei} frei · ${g.alle} gesamt</span><span class="ph">${Object.entries(g.wer).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([n,c])=>esc(n)+' '+c).join(' · ')||'—'}</span><select data-bzsel="${i}" style="width:150px;padding:5px 8px;font-size:12px"><option value="">wählen…</option>${teNames.map(n=>`<option>${esc(n)}</option>`).join('')}</select><button class="mini-btn" data-bzass="${i}">Zuteilen</button></div>`).join('')}</div>`:'<div class="empty-col">Keine offenen Kunden in der Anruf-Phase.</div>'):'<div class="empty-col">Noch kein Telefonist im Team angelegt (Team &amp; Zugänge → Rolle „Telefonist“).</div>'}
     </div>
     <div class="panel"><h3>Telefon-Protokoll heute <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— wer hat wann telefoniert, wie lange, mit welchem Ergebnis</span></h3>${protoHtml||'<div class="empty-col">Heute noch keine Anrufe protokolliert.</div>'}</div>
@@ -2299,9 +2322,10 @@ function renderSteuerung(){
     const name=((sel&&sel.value)||'').trim();
     if(!name){toast('Bitte zuerst einen Telefonisten wählen');return;}
     const move=!!(host.querySelector('#bzMove')&&host.querySelector('#bzMove').checked);
-    const ziel=bzPool.filter(d=>(((d.bezirk||'').trim()||'— ohne Bezirk —')===g.bz)&&(move?canonName(d.telefonist||'')!==canonName(name):!(d.telefonist||'').trim()));
-    if(!ziel.length){toast(move?'Bezirk gehört schon komplett '+name:'Keine freien Kunden mehr in '+g.bz+' – Haken „umziehen“ setzen, wenn du den Bezirk komplett übergeben willst');return;}
-    if(!confirm(ziel.length+' Kunden im Bezirk „'+g.bz+'“ an '+name+' zuteilen?'+(move?'\n\nACHTUNG: auch bereits zugeteilte Kunden werden umgezogen!':'')))return;
+    const kand=bzPool.filter(d=>(((d.bezirk||'').trim()||'— ohne Bezirk —')===g.bz)&&(move?canonName(d.telefonist||'')!==canonName(name):!(d.telefonist||'').trim()));
+    const ziel=kand.filter(d=>!warTerminisiert(d)),bleibtN=kand.length-ziel.length; // schon terminisierte Kunden bleiben bei ihrem Telefonisten
+    if(!ziel.length){toast(bleibtN?('In '+g.bz+' sind nur noch bereits terminisierte Kunden übrig ('+bleibtN+') – sie bleiben bei ihrem Telefonisten'):(move?'Bezirk gehört schon komplett '+name:'Keine freien Kunden mehr in '+g.bz+' – Haken „umziehen“ setzen, wenn du den Bezirk komplett übergeben willst'));return;}
+    if(!confirm(ziel.length+' Kunden im Bezirk „'+g.bz+'“ an '+name+' zuteilen?'+(move?'\n\nACHTUNG: auch bereits zugeteilte Kunden werden umgezogen!':'')+(bleibtN?'\n\n'+bleibtN+' bereits terminisierte Kunden bleiben bei ihrem Telefonisten.':'')))return;
     b.disabled=true;b.textContent='Speichert…';
     ziel.forEach(d=>{
       const alt=(d.telefonist||'').trim();
