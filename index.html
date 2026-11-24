@@ -562,7 +562,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-Y";
+const APP_VERSION="19.11-Y2";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -5782,16 +5782,15 @@ function openModal(id){
       <div class="fld tb tb-tel"><label>Wiedervorlage</label><input type="date" id="m-wv" value="${esc(d.wiedervorlage)}"></div>
       <div class="fld tb tb-tel tb-an"><label>Analysetermin (AG)</label><input id="m-dag" value="${esc(d.datumAG||'')}" placeholder="z. B. 22.09. 14:00" title="Beliebig tippen (22.9. 14 · morgen 10 Uhr · 22/9/26 14:30) – gespeichert wird einheitlich TT.MM.JJJJ HH:MM"></div>
       <div class="fld tb tb-an tb-be"><label>Beratungstermin (BG)</label><input id="m-dbg" value="${esc(d.datumBG||'')}" placeholder="z. B. 25.09. 10:00" title="Beliebig tippen (25.9. 10 · morgen 10 Uhr) – gespeichert wird einheitlich TT.MM.JJJJ HH:MM"></div>
-      ${(!isNew&&(parseTermin(d.datumAG)||parseTermin(d.datumBG)))?`<div class="fld full tb tb-tel tb-an tb-be"><label title="Schickt die Kalender-Einladung noch einmal an den Kunden (wenn seine E-Mail eingetragen ist) und an die zugeteilte Person. Ein vorhandener Kalender-Eintrag wird aktualisiert, nicht verdoppelt.">Termin neu verschicken</label>
-        <div style="display:flex;gap:7px;flex-wrap:wrap">
-          ${parseTermin(d.datumAG)?`<button type="button" class="mini-btn tb tb-tel tb-an" data-kal="senden" data-kalrole="analyst" data-kalid="${esc(d.id)}">📨 AG-Termin neu verschicken</button>`:''}
-          ${parseTermin(d.datumBG)?`<button type="button" class="mini-btn tb tb-an tb-be" data-kal="senden" data-kalrole="berater" data-kalid="${esc(d.id)}">📨 BG-Termin neu verschicken</button>`:''}
-        </div>
+      ${(!isNew&&parseTermin(d.datumAG))?`<div class="fld full tb tb-tel"><label title="Schickt die Kalender-Einladung noch einmal an den Kunden (wenn seine E-Mail eingetragen ist) und an die zugeteilte Person. Ein vorhandener Kalender-Eintrag wird aktualisiert, nicht verdoppelt.">Termin neu verschicken</label>
+        <div style="display:flex;gap:7px;flex-wrap:wrap"><button type="button" class="mini-btn" data-kal="senden" data-kalrole="analyst" data-kalid="${esc(d.id)}">📨 AG-Termin neu verschicken</button></div>
       </div>`:''}
-      <div class="fld full tb tb-an tb-be"><label title="Setzt den Termin auf „verschoben": einfach neu terminisieren, zuordnen und bestätigen – Kunde und Analyst/Berater bekommen den neuen Termin automatisch per Kalender-Einladung">Termin verschoben? <span style="font-weight:500;color:var(--ink-3);text-transform:none">— danach neu terminisieren</span></label>
-        <div style="display:flex;gap:7px;flex-wrap:wrap">
+      <div class="fld full tb tb-an tb-be"><label title="Setzt den Termin auf „verschoben": einfach neu terminisieren, zuordnen und bestätigen – Kunde und Analyst/Berater bekommen den neuen Termin automatisch per Kalender-Einladung">Termin verschoben oder neu verschicken</label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button type="button" class="mini-btn" id="cal-ag-x" style="color:var(--bad)" title="Analysetermin abgesagt oder verschoben">❗ AG verschoben</button>
           <button type="button" class="mini-btn" id="cal-bg-x" style="color:var(--bad)" title="Beratungstermin abgesagt oder verschoben">❗ BG verschoben</button>
+          ${(!isNew&&parseTermin(d.datumAG))?`<button type="button" class="mini-btn tb tb-an" data-kal="senden" data-kalrole="analyst" data-kalid="${esc(d.id)}" title="Kalender-Einladung für den Analysetermin noch einmal an Kunde und Analyst schicken">📨 AG neu verschicken</button>`:''}
+          ${(!isNew&&parseTermin(d.datumBG))?`<button type="button" class="mini-btn" data-kal="senden" data-kalrole="berater" data-kalid="${esc(d.id)}" title="Kalender-Einladung für den Beratungstermin noch einmal an Kunde und Berater schicken">📨 BG neu verschicken</button>`:''}
         </div>
       </div>
       <div class="fld full tb tb-be"><label>Folge-Beratung</label>
