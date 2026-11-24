@@ -545,7 +545,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-U";
+const APP_VERSION="19.11-V";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2170,7 +2170,7 @@ function steuerungSecs(host){ // CEO-Seite als Reiter statt Scrollen (Melanies A
     }else if(cur){cur.els.push(el);}
   }
   if(secs.length<2)return;
-  if(host.__sec==null||host.__sec>=secs.length){const di=secs.findIndex(s=>/Tages-Dispo/.test(s.t));host.__sec=di>=0?di:0;}
+  if(host.__sec==null||host.__sec>=secs.length){let di=secs.findIndex(s=>/Termine des Teams/.test(s.t));if(di<0)di=secs.findIndex(s=>/Tages-Dispo/.test(s.t));host.__sec=di>=0?di:0;} // Startseite: Termine des Teams (Melanies Ansage 25.11.)
   const bar=document.createElement('div');
   bar.id='ceoSecs';
   bar.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 12px;position:sticky;top:0;z-index:5;background:var(--bg);padding:7px 0;border-bottom:1px solid var(--line)';
@@ -2182,6 +2182,118 @@ function steuerungSecs(host){ // CEO-Seite als Reiter statt Scrollen (Melanies A
   };
   bar.addEventListener('click',e=>{const b=e.target.closest('[data-cs]');if(!b)return;host.__sec=+b.dataset.cs;show();});
   show();
+}
+/* v19.11-V (Melanies Ansage 25.11.): CEO-Startseite zeigt ALLE Termine des Teams für einen Tag – zum abendlichen
+   Durchgehen mit jedem Geschäftspartner. Quellen: (1) AG/BG aus den Kunden (auch nicht zugeteilte und verlorene),
+   (2) Wochenplan-Einträge (EG, MGT, KG, TG, festgehaltene Verschiebungen), (3) Verlauf: Termine, die für diesen Tag
+   geplant waren und im Kunden geändert wurden. Je Termin: Status + Kontrolle, ob die Folge sauber nachgetragen ist. */
+let __ttOff=0;const __ttGeladen={};
+function ttTag(off){const h=new Date();const tag=new Date(h.getFullYear(),h.getMonth(),h.getDate()+off);
+  const start=new Date(tag.getFullYear(),tag.getMonth(),tag.getDate()-((tag.getDay()+6)%7));
+  return {tag,ende:new Date(tag.getFullYear(),tag.getMonth(),tag.getDate()+1),start,ti:(tag.getDay()+6)%7,wk:wkKeyOf(start)};}
+function tagesTermine(off){
+  const T=ttTag(off),WQ=wocheDaten(T.wk);
+  const amTag=s2=>{const dt=parseTermin(s2);return dt&&dt>=T.tag&&dt<T.ende?dt:null;};
+  const hm=dt=>calPad(dt.getHours())+':'+calPad(dt.getMinutes());
+  const ovs={};WQ.filter(e=>e.type==='ov').forEach(e=>{ovs[e._id]=e;});
+  const out=[],recDa={};
+  state.deals.forEach(d=>{
+    if((d.quelle||'')==='Recruiting'&&d.gp)return;
+    [['AG',d.datumAG,d.analyst,d.mgtAG,'analyst'],['BG',d.datumBG,d.berater,d.mgtBG,'berater']].forEach(x=>{
+      const dt=amTag(x[1]);if(!dt)return;
+      const ovId='ov'+(d.id+'_'+x[0]+'_'+T.wk).replace(/[^0-9A-Za-z_-]/g,'');
+      const st=(ovs[ovId]||{}).status||'',wer=(x[2]||'').trim(),kunde=(d.name||d.org||'—')+((x[0]==='BG'&&(d.bgDone||[]).length)?' · Folge-BG':'');
+      out.push({q:'deal',d,art:x[0],role:x[4],zeit:hm(dt),kunde,wer,mgt:(x[3]||'').trim(),status:st,
+        ent:{auto:true,dealId:d.id,art:x[0],tag:T.ti,zeit:hm(dt),kunde,ort:d.bezirk||d.ort||'',status:st,name:wer,_ovId:ovId}});
+    });
+  });
+  WQ.filter(e=>e.type!=='ov'&&(+e.tag||0)===T.ti).forEach(e=>{
+    let art=e.art||'EG',kunde=e.kunde||'';
+    if(e.gcal&&art==='PRIVAT'){const pa=gcalArt(kunde);if(pa.suffix){art=pa.art;kunde=pa.rest;}}
+    if(art==='PRIVAT')return;
+    if(e.gcal&&(art==='AG'||art==='BG')&&out.some(o=>o.q==='deal'&&o.art===art&&kundeGleich(o.kunde,kunde)))return; // Kalender-Doppel eines Kunden-Termins
+    const d=e.dealRef?state.deals.find(x=>x.id===e.dealRef):null;
+    if(d)recDa[d.id+'|'+art]=1;
+    out.push({q:'plan',d,art,role:art==='BG'?'berater':'analyst',zeit:e.zeit||'',kunde:d?(d.name||d.org||kunde):kunde,wer:(e.name||'').trim(),mgt:'',status:e.status||'',rec:!!e.dealRef,
+      ent:{auto:false,_id:e._id,art,tag:T.ti,zeit:e.zeit||'',kunde,status:e.status||'',name:e.name}});
+  });
+  state.deals.forEach(d=>{ // (3) im Kunden geändert, ohne dass es im Wochenplan festgehalten wurde
+    (d.hist||[]).forEach(h=>{
+      const t=(h&&h.txt)||'';let art='',alt='',grund='moved';
+      let m=t.match(/^(Analysetermin|Beratungstermin) (\S+) \(war ([^)]+)\)/);
+      if(m){art=m[1]==='Analysetermin'?'AG':'BG';alt=m[3];if(/abgesagt/.test(m[2]))grund='cancelled';}
+      else{m=t.match(/^(AG-Termin|BG-Termin|Analysetermin|Beratungstermin): (.+?) → /);if(m){art=/^(AG|Analyse)/.test(m[1])?'AG':'BG';alt=m[2];}}
+      if(!art)return;
+      const dt=amTag(alt);if(!dt)return;
+      if(amTag(art==='AG'?d.datumAG:d.datumBG))return; // steht (wieder) am selben Tag → schon in der Liste
+      if(recDa[d.id+'|'+art])return;
+      recDa[d.id+'|'+art]=1;
+      out.push({q:'verlauf',d,art,role:art==='BG'?'berater':'analyst',zeit:hm(dt),kunde:d.name||d.org||'—',wer:((art==='AG'?d.analyst:d.berater)||'').trim(),mgt:'',status:grund,rec:true,ent:null});
+    });
+  });
+  out.forEach(o=>{o.folge=ttFolge(o,T);});
+  return out.sort((a,b)=>(a.zeit||'').localeCompare(b.zeit||''));
+}
+function ttFolge(o,T){ // → {txt, lvl: 'ok' | 'warn' | 'bad' | ''}: Ist nach dem Termin alles nachgetragen?
+  const d=o.d,jetzt=new Date();
+  const dtHeute=(()=>{const p=(o.zeit||'').split(':');return p.length===2?new Date(T.tag.getFullYear(),T.tag.getMonth(),T.tag.getDate(),+p[0],+p[1]):T.tag;})();
+  if(!o.status){
+    if(o.q==='deal'&&!o.wer)return {txt:'⚠ niemand zugeteilt',lvl:'bad'};
+    return dtHeute<jetzt?{txt:'⚠ noch kein Status eingetragen',lvl:'warn'}:{txt:'steht noch bevor',lvl:''};
+  }
+  if(!d)return {txt:'',lvl:''};
+  if(o.status==='moved'||o.status==='cancelled'){
+    if(d.status==='lost')return {txt:'Kunde als verloren eingetragen',lvl:''};
+    const cur=((o.art==='AG'?d.datumAG:d.datumBG)||'').trim(),dt=parseTermin(cur);
+    if(dt&&dt>=T.ende)return {txt:'✓ neuer Termin: '+cur,lvl:'ok'};
+    if(wvZukunft(d))return {txt:'✓ Wiedervorlage am '+String(d.wiedervorlage||'').split('-').reverse().join('.'),lvl:'ok'};
+    return {txt:'⚠ neuer Termin fehlt – '+(zustaendig(d).name||'niemand')+' muss nachfassen',lvl:'bad'};
+  }
+  if(o.status==='done'&&o.art==='AG'){
+    const teile=[];let lvl='ok';
+    if((d.datumBG||'').trim())teile.push('✓ BG am '+d.datumBG);
+    else if(wvZukunft(d))teile.push('✓ Wiedervorlage am '+String(d.wiedervorlage||'').split('-').reverse().join('.'));
+    else{teile.push('⚠ BG-Termin fehlt');lvl='bad';}
+    try{if(leadLuecken(d).doc){teile.push('⚠ Analyse-PDF / Sprachnachricht fehlt');lvl='bad';}}catch(e){}
+    return {txt:teile.join(' · '),lvl};
+  }
+  if(o.status==='done'&&o.art==='BG'){
+    if(d.status==='won')return {txt:'✓ gewonnen',lvl:'ok'};
+    if(d.status==='lost')return {txt:'verloren',lvl:''};
+    const dt=parseTermin(d.datumBG);
+    if(dt&&dt>=T.ende)return {txt:'✓ Folge-BG am '+d.datumBG,lvl:'ok'};
+    if(wvZukunft(d))return {txt:'✓ Wiedervorlage am '+String(d.wiedervorlage||'').split('-').reverse().join('.'),lvl:'ok'};
+    return {txt:'⚠ Ergebnis offen: Abschluss, Folge-BG oder Wiedervorlage eintragen',lvl:'warn'};
+  }
+  return {txt:'',lvl:''};
+}
+function tagesPanel(){
+  const T=ttTag(__ttOff);
+  if(MODE==='db'&&wocheCol&&!WCACHE[T.wk]&&WOCHE_WK!==T.wk&&!__ttGeladen[T.wk]){ // andere Woche (z. B. gestern am Montag): einmal nachladen
+    __ttGeladen[T.wk]=1;
+    wocheCol.where('wk','==',T.wk).limit(600).get().then(s2=>{WCACHE[T.wk]=s2.docs.map(x=>{const o=Object.assign({},x.data());o._id=x.id;return o;});renderSteuerung();}).catch(()=>{});
+  }
+  const L=tagesTermine(__ttOff);window.__ttList=L;
+  const z=k=>L.filter(o=>o.status===k).length;
+  const offen=L.filter(o=>!o.status).length,nach=L.filter(o=>o.folge.lvl==='bad'||o.folge.lvl==='warn').length;
+  const ST={done:['✔ durchgeführt','var(--good)'],moved:['↗ verschoben','#B7791F'],cancelled:['✖ nicht durchgeführt','var(--bad)'],'':['○ offen','var(--ink-3)']};
+  const FC={ok:'var(--good)',warn:'#B7791F',bad:'var(--bad)','':'var(--ink-3)'};
+  const gruppen={};L.forEach((o,i)=>{o._i=i;const k=o.wer||'— nicht zugeteilt —';(gruppen[k]=gruppen[k]||[]).push(o);});
+  const namen=Object.keys(gruppen).sort((a,b)=>(a.startsWith('—')?-1:0)-(b.startsWith('—')?-1:0)||a.localeCompare(b,'de'));
+  const titel=__ttOff===0?'Heute':__ttOff===-1?'Gestern':__ttOff===1?'Morgen':WG_TAGE[T.ti];
+  const zeile=o=>{
+    const s3=ST[o.status||''];
+    const kn=o.ent?['done','moved','cancelled'].map(k=>`<button type="button" class="mini-btn" data-tt="${o._i}|${k}" title="${ST[k][0].slice(2)}" style="padding:2px 8px${o.status===k?';background:'+ST[k][1]+';color:#fff;border-color:'+ST[k][1]:''}">${ST[k][0].slice(0,1)}</button>`).join(''):'';
+    return `<div class="gl" style="cursor:default;flex-wrap:wrap;gap:6px 10px"><b class="tnum" style="min-width:42px">${esc(o.zeit||'—')}</b><span style="background:${WARTC[o.art]||'var(--ink-3)'};color:#fff;font-size:11px;font-weight:800;border-radius:6px;padding:2px 7px;min-width:34px;text-align:center">${esc(o.art)}</span><span class="gn" style="flex:2;min-width:150px">${esc(o.kunde)}${o.mgt?` <span style="font-weight:500;color:var(--ink-3)">· 🤝 mit ${esc(o.mgt)}</span>`:''}</span><span class="ph" style="font-weight:700;color:${s3[1]};white-space:nowrap">${s3[0]}</span><span class="ph" style="flex:3;min-width:190px;white-space:normal;color:${FC[o.folge.lvl]};font-weight:${o.folge.lvl==='bad'?700:500}">${esc(o.folge.txt)}</span><span style="display:inline-flex;gap:4px;margin-left:auto">${kn}${o.d?`<button type="button" class="mini-btn" data-ttl="${esc(o.d.id)}" style="padding:2px 8px">Kunde</button>`:''}</span></div>`;
+  };
+  return `<div class="panel" style="border-color:var(--brand)" id="ttPanel"><h3>📆 Termine des Teams – ${titel}, ${WG_TAGE[T.ti]} ${fmtDM(T.tag)} <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— zum Durchgehen am Abend: Was hat stattgefunden, was wurde verschoben, was ist nachgetragen?</span></h3>
+    <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin:0 0 10px">
+      <button class="mini-btn" data-ttnav="-1">← Tag zurück</button><button class="mini-btn" data-ttnav="0"${__ttOff===0?' style="border-color:var(--brand);color:var(--brand-ink);font-weight:700"':''}>Heute</button><button class="mini-btn" data-ttnav="1">Tag vor →</button>
+      <span class="kpi">${L.length} Termine</span><span class="kpi" style="color:var(--good)">✔ ${z('done')}</span><span class="kpi" style="color:#B7791F">↗ ${z('moved')}</span><span class="kpi" style="color:var(--bad)">✖ ${z('cancelled')}</span><span class="kpi">○ ${offen} offen</span>${nach?`<span class="kpi" style="background:var(--warn-bg);color:var(--warn);font-weight:700">⚠ ${nach} nachzutragen</span>`:(L.length?'<span class="kpi" style="color:var(--good);font-weight:700">alles nachgetragen 👍</span>':'')}
+    </div>
+    ${L.length?namen.map(n=>`<div class="ehgt" style="margin:10px 0 5px${n.startsWith('—')?';color:var(--bad)':''}">${esc(n)} (${gruppen[n].length})</div><div class="st-list">${gruppen[n].map(zeile).join('')}</div>`).join(''):'<div class="empty-col">Für diesen Tag sind keine Termine eingetragen.</div>'}
+    <div style="font-size:11px;color:var(--ink-3);margin-top:8px">✔ ↗ ✖ setzt den Status wie im Wochenplan. Bei ↗ und ✖ fragt das CRM gleich nach dem neuen Termin. Private Kalendereinträge werden nicht gezeigt.</div>
+  </div>`;
 }
 function renderSteuerung(){
   const host=document.getElementById('view-steuerung');
@@ -2258,6 +2370,7 @@ function renderSteuerung(){
       <button class="btn" id="btnReports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Wochenbericht je Berater</button>
       <button class="btn" id="btnDup">🔍 Duplikat-Check</button>
     </div>
+    ${tagesPanel()}
     ${buchPanel()}
     ${adrPanel()}
     <div class="panel" style="border-color:var(--brand)"><h3>📋 Tages-Dispo – Termine zuordnen <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— am Tagesende neue Termine dem passenden Mitarbeiter zuweisen; die Person sieht es sofort in ihrer Liste und im Chat</span></h3>
@@ -2319,6 +2432,18 @@ function renderSteuerung(){
     if(externCal(d,role)){chatSys('👤 '+(role==='analyst'?'Analyse':'Beratung')+' zugeordnet (EXTERN): '+nm+' → '+name+(term?' ('+term+')':'')+' – Einladung per Kalender',d);toast(nm+' → '+name);}
     else zuordDirekt(d,role); // selbst zugeordnet = entschieden: sofort Kalender, kein Annehmen (Melanies Norm 10.11.)
     render();
+  }));
+  host.querySelectorAll('[data-ttnav]').forEach(b=>b.addEventListener('click',()=>{const v=+b.dataset.ttnav;__ttOff=v===0?0:__ttOff+v;renderSteuerung();const el=document.getElementById('ttPanel');if(el&&el.scrollIntoView)el.scrollIntoView({block:'nearest'});}));
+  host.querySelectorAll('[data-ttl]').forEach(b=>b.addEventListener('click',()=>openModal(b.dataset.ttl)));
+  host.querySelectorAll('[data-tt]').forEach(b=>b.addEventListener('click',async()=>{
+    const p2=b.dataset.tt.split('|'),o=(window.__ttList||[])[+p2[0]];if(!o||!o.ent)return;
+    if(MODE!=='db'||!wocheCol){toast('Nur online möglich');return;}
+    const T=ttTag(__ttOff),next=o.status===p2[1]?'':p2[1];
+    b.disabled=true;
+    if(WOCHE_WK!==T.wk)await loadWoche(T.wk); // Status-Funktionen arbeiten auf der geladenen Woche
+    o.ent.status=o.status;
+    await wSetStatus(o.ent,T.wk,next);
+    renderSteuerung();
   }));
   host.querySelectorAll('[data-bzass]').forEach(b=>b.addEventListener('click',async()=>{
     const g=bzList[+b.dataset.bzass];if(!g)return;
