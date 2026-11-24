@@ -103,6 +103,9 @@
   .mc .l{font-size:11.5px;color:var(--ink-3);font-weight:600;text-transform:uppercase;letter-spacing:.4px}
   .mc .v{font-size:27px;font-weight:800;margin-top:4px;letter-spacing:-.5px;color:var(--brand-ink)}
   .mc.good .v{color:var(--good)} .mc.bad .v{color:var(--bad)}
+  .kalst{font-size:11.5px;line-height:1.4;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:4px 9px;overflow-wrap:anywhere}
+  .kalst summary{cursor:pointer;list-style:none;display:flex;gap:6px;align-items:center;flex-wrap:wrap}.kalst summary::-webkit-details-marker{display:none}
+  .kalst .mini-btn{padding:2px 8px;font-size:11px}
   .panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-bottom:16px;box-shadow:var(--shadow)}
   .panel h3{font-size:13px;font-weight:700;margin:0 0 12px;text-transform:uppercase;letter-spacing:.4px;color:var(--ink-2)}
   .frow{display:flex;align-items:center;gap:10px;margin-bottom:8px}
@@ -542,7 +545,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-T";
+const APP_VERSION="19.11-U";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -3381,9 +3384,125 @@ async function gcalInsert(title,dt,durMin,desc,loc,attendees){
     reminders:{useDefault:true}};
   try{
     const r=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify(body)});
-    return r.ok;
+    if(!r.ok)return false;
+    let j={};try{j=await r.json();}catch(e){}
+    return {id:j.id||'',link:j.htmlLink||'',gaeste:(j.attendees||[]).map(a=>a.email)}; // „wahr" wie bisher, aber mit Nachweis
   }catch(e){return false;}
 }
+/* v19.11-U (Melanies Frage 24.11.: „Woher weiß ich, ob der Kunde den Termin erhalten hat?"):
+   Bisher wurde NICHT festgehalten, ob eine Kalender-Einladung wirklich rausging. Jetzt merkt sich das CRM je Termin
+   (d.kal.analyst / d.kal.berater): wer wann gebucht hat, auf welchem Weg (automatisch oder nur Google-Tab geöffnet),
+   an welche Adressen – und zeigt das im Kunden direkt beim Termin. Von dort: sicher eintragen / erneut senden / Zusage prüfen. */
+function kalDaten(d,role){
+  const an=role!=='berater';
+  const name=((an?d.analyst:d.berater)||'').trim(),termTxt=((an?d.datumAG:d.datumBG)||'').trim();
+  const mgt=((an?d.mgtAG:d.mgtBG)||'').trim();
+  const nm=d.name||d.org||'Kunde';
+  return {an,name,termTxt,dt:parseTermin(termTxt),mgt,nm,
+    title:(an?'Analyse: ':'Beratung: ')+nm,
+    det:'Tel: '+(d.telefon||'-')+(d.briefing?' | '+d.briefing:'')+' | Zugeteilt an: '+name+(mgt?' | MGT dabei: '+mgt:''),
+    loc:[d.strasse,d.plz,d.ort].filter(Boolean).join(', ')||((d.notizen||'').indexOf('CENSA-Büro')>=0?'CENSA Büro, 1230 Wien':''),
+    persMail:teamMail(name),kundeMail:(d.email||'').trim(),
+    att:[(d.email||'').trim(),teamMail(name),mgt?teamMail(mgt):'',OFFICE_MAIL].filter(Boolean)};
+}
+function kalMerk(d,role,weg,res){ // weg: 'auto' (über die Verbindung gebucht) | 'tab' (nur Google-Tab geöffnet) | 'fehler'
+  const K=kalDaten(d,role);
+  d.kal=d.kal||{};
+  const alt=d.kal[role]||{};
+  d.kal[role]={ts:new Date().toISOString(),von:chatName()||'?',weg,ok:weg==='auto'?true:(weg==='tab'?null:false),
+    evId:(res&&res.id)||(weg==='auto'?'':(alt.evId||'')),link:(res&&res.link)||'',termin:K.termTxt,person:K.name,persMail:K.persMail,kundeMail:K.kundeMail};
+  histAdd(d,'📅 Kalender '+(K.an?'AG':'BG')+' '+K.termTxt+': '+(weg==='auto'?'gebucht':weg==='tab'?'nur Google-Tab geöffnet (unbestätigt)':'Buchung fehlgeschlagen')
+    +' · '+K.name+(K.persMail?'':' (keine E-Mail im Team!)')+' · Kunde: '+(K.kundeMail||'KEINE E-Mail – keine Einladung'));
+  try{dbPersist(d);}catch(e){}
+  kalBoxNeu(d,role);
+}
+function kalStatusHtml(d,role){ // einzeilig (damit der Kunde auf eine Seite passt), Details klappen auf
+  const K=kalDaten(d,role);
+  if(!K.termTxt||!K.dt)return '';
+  const k=(d.kal||{})[role];
+  const kopf='<b>📅 Kalender '+(K.an?'AG':'BG')+':</b> ';
+  const btn=(akt,txt,pri)=>`<button type="button" class="mini-btn" data-kal="${akt}" data-kalrole="${role}" data-kalid="${esc(d.id)}"${pri?' style="border-color:var(--brand);color:var(--brand-ink);font-weight:700"':''}>${txt}</button>`;
+  if(!K.name)return `<div class="kalst">${kopf}noch niemand zugeteilt – die Einladung geht erst bei der Zuteilung raus</div>`;
+  const kWarn=K.kundeMail?'':' · <span style="color:var(--bad);font-weight:700">⚠ Kunde ohne E-Mail</span>';
+  const pWarn=K.persMail?'':' · <span style="color:var(--bad);font-weight:700">⚠ '+esc(K.name)+' ohne E-Mail</span>';
+  const kunde=K.kundeMail?('Kunde: '+esc(K.kundeMail)):'<span style="color:var(--bad);font-weight:700">Beim Kunden ist keine E-Mail hinterlegt – er bekommt KEINE Einladung.</span>';
+  const pers=esc(K.name)+(K.persMail?' ('+esc(K.persMail)+')':' <span style="color:var(--bad);font-weight:700">(keine E-Mail unter Team &amp; Zugänge – bekommt KEINE Einladung)</span>');
+  const wann=k&&k.ts?fmtD(k.ts)+' '+new Date(k.ts).toLocaleTimeString('de-AT',{hour:'2-digit',minute:'2-digit'}):'';
+  let kurz,lang,knopf,mehr='';
+  if(!k){
+    kurz='<span style="color:var(--warn);font-weight:700">❓ kein Nachweis</span>';
+    lang='Ob eine Einladung rausging, weiß das CRM bei diesem Termin nicht.';
+    knopf=btn('senden','Jetzt sicher eintragen',true);
+  }else if((k.termin||'')!==K.termTxt||(k.person||'')!==K.name){
+    kurz='<span style="color:var(--warn);font-weight:700">⚠ seither geändert</span>';
+    lang='Im Kalender steht noch: '+esc(k.termin||'—')+' · '+esc(k.person||'—')+'.';
+    knopf=btn('senden','Aktualisieren &amp; neu einladen',true);
+  }else if(k.ok===true){
+    kurz='<span style="color:var(--good);font-weight:700">✅ eingetragen</span>'+(k.antw?' · '+esc(k.antw):'');
+    lang='Eingetragen von '+esc(k.von||'?')+' am '+wann+'.';
+    knopf=btn('pruefen','🔍 Zusage prüfen');
+    mehr=(k.link?`<a class="mini-btn" href="${esc(k.link)}" target="_blank" rel="noopener" style="text-decoration:none">↗ In Google öffnen</a> `:'')+btn('senden','Erneut senden');
+  }else if(k.weg==='tab'){
+    kurz='<span style="color:var(--warn);font-weight:700">⚠ unbestätigt</span>';
+    lang=esc(k.von||'?')+' hat am '+wann+' nur den Google-Tab geöffnet. Ob dort gespeichert und gesendet wurde, weiß das CRM nicht.';
+    knopf=btn('senden','Jetzt sicher eintragen',true);
+  }else{
+    kurz='<span style="color:var(--bad);font-weight:700">❌ fehlgeschlagen</span>';
+    lang='Buchung fehlgeschlagen ('+esc(k.von||'?')+', '+wann+').';
+    knopf=btn('senden','Noch einmal versuchen',true);
+  }
+  return `<details class="kalst"><summary>${kopf}${kurz}${kWarn}${pWarn} ${knopf}</summary><div style="margin-top:5px;color:var(--ink-2)">${lang}<br>Einladung an: ${pers} · ${kunde}${mehr?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px">${mehr}</div>`:''}</div></details>`;
+}
+function kalBoxNeu(d,role){const el=document.getElementById('kal-box-'+role);if(el&&editId===d.id){const offen=!!(el.querySelector('details')||{}).open;el.innerHTML=kalStatusHtml(d,role);const dt=el.querySelector('details');if(dt&&offen)dt.open=true;}}
+async function kalSenden(d,role){
+  const K=kalDaten(d,role);
+  if(!K.dt){toast('Bitte zuerst den Termin mit Datum und Uhrzeit speichern');return;}
+  if(!K.name){toast('Bitte zuerst '+(K.an?'einen Analysten':'einen Berater')+' zuteilen und speichern');return;}
+  const k=(d.kal||{})[role];
+  if(!(k&&k.evId)&&!confirm('Bitte vorher kurz im Google-Kalender nachsehen: Steht der Termin dort schon, entsteht ein zweiter Eintrag und der Kunde bekommt eine zweite Einladung.\n\nJetzt eintragen und einladen?'))return;
+  if(!K.kundeMail&&!confirm('Beim Kunden ist KEINE E-Mail hinterlegt – er bekommt keine Einladung.\n\nNur für '+K.name+' eintragen?'))return;
+  let tok;try{tok=await gcalToken();}catch(e){toast('Google ist auf diesem Gerät nicht verbunden: '+(e&&e.message||'bitte „Google auf diesem Gerät verbinden" tippen'));return;}
+  const end=new Date(K.dt.getTime()+60*60000);
+  const body={summary:K.title,description:K.det,location:K.loc,start:{dateTime:K.dt.toISOString(),timeZone:'Europe/Vienna'},end:{dateTime:end.toISOString(),timeZone:'Europe/Vienna'},attendees:K.att.map(e=>({email:e})),reminders:{useDefault:true}};
+  try{
+    let r=null;
+    if(k&&k.evId){ // vorhandenen Eintrag aktualisieren statt verdoppeln
+      r=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events/'+encodeURIComponent(k.evId)+'?sendUpdates=all',{method:'PATCH',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if(r.status===404||r.status===410)r=null; // liegt in einem anderen Google-Konto oder wurde gelöscht → neu anlegen
+    }
+    if(!r)r=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok){kalMerk(d,role,'fehler');toast('📅 Eintragen fehlgeschlagen ('+r.status+') – bitte Google neu verbinden und noch einmal versuchen');return;}
+    let j={};try{j=await r.json();}catch(e){}
+    kalMerk(d,role,'auto',{id:j.id||'',link:j.htmlLink||''});
+    toast('📅 Eingetragen ✓ – Einladung an '+K.name+(K.kundeMail?' und den Kunden ('+K.kundeMail+')':' (Kunde ohne E-Mail: keine Einladung)'));
+  }catch(e){toast('📅 Eintragen fehlgeschlagen – keine Verbindung zu Google');}
+}
+async function kalPruefen(d,role){
+  const k=(d.kal||{})[role];
+  if(!k||!k.evId){toast('Zu diesem Termin ist kein Kalender-Eintrag gespeichert');return;}
+  let tok;try{tok=await gcalToken();}catch(e){toast('Google ist auf diesem Gerät nicht verbunden');return;}
+  try{
+    const r=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events/'+encodeURIComponent(k.evId),{headers:{Authorization:'Bearer '+tok}});
+    if(r.status===404||r.status===410){toast('Der Eintrag liegt nicht in diesem Google-Konto. Prüfen kann nur, wer gebucht hat: '+(k.von||'?'));return;}
+    if(!r.ok){toast('Prüfen fehlgeschlagen ('+r.status+')');return;}
+    const j=await r.json();
+    if(j.status==='cancelled'){k.antw='Termin wurde in Google gelöscht';}
+    else{
+      const L={accepted:'zugesagt ✅',declined:'abgelehnt ❌',tentative:'vielleicht ❔',needsAction:'noch keine Antwort ⏳'};
+      const gs=(j.attendees||[]).filter(a=>!a.self);
+      k.antw=gs.length?gs.map(a=>((a.email||'').toLowerCase()===(k.kundeMail||'').toLowerCase()?'Kunde':(a.email||'').split('@')[0])+' '+(L[a.responseStatus]||a.responseStatus||'?')).join(' · '):'keine Gäste im Eintrag – es wurde niemand eingeladen';
+    }
+    k.checkTs=new Date().toISOString();
+    try{dbPersist(d);}catch(e){}
+    kalBoxNeu(d,role);toast('Stand aus Google: '+k.antw);
+  }catch(e){toast('Prüfen fehlgeschlagen – keine Verbindung zu Google');}
+}
+document.addEventListener('click',e=>{
+  const b=e.target.closest&&e.target.closest('[data-kal]');if(!b)return;
+  const d=state.deals.find(x=>x.id===b.dataset.kalid);if(!d)return;
+  e.preventDefault();
+  if(b.dataset.kal==='senden')kalSenden(d,b.dataset.kalrole);else kalPruefen(d,b.dataset.kalrole);
+});
 /* Manuelle Zuordnung (Melanies Norm 10.11.2026): Trägt die Dispo selbst einen Analysten/
    Berater ein (Lead-Detail oder Tages-Dispo), ist das ENTSCHIEDEN – Termin sofort aus dem
    Kalender des Zuordnenden buchen (Einladung an Analyst/Berater + Kunde + Office),
@@ -3491,14 +3610,16 @@ function zuordDirekt(d,role){
   const haveTok=!!__gcalTok&&Date.now()<__gcalExp-60000;
   if(GCAL_CLIENT_ID&&haveTok){
     gcalInsert(title,dt,60,det,loc,att).then(ok=>{
-      if(ok)toast('📅 Termin gebucht – '+name+' und der Kunde haben die Kalender-Einladung bekommen');
-      else toast('📅 Kalender-Buchung fehlgeschlagen – bitte „Google-Kalender verbinden" klicken und die Zuordnung kurz neu setzen');
+      kalMerk(d,role,ok?'auto':'fehler',ok||null);
+      if(ok)toast('📅 Termin gebucht – Einladung an '+name+((d.email||'').trim()?' und den Kunden ('+d.email+')':'. ACHTUNG: Beim Kunden ist keine E-Mail hinterlegt, er bekommt keine Einladung'));
+      else toast('📅 Kalender-Buchung fehlgeschlagen – im Kunden beim Termin auf „Jetzt sicher eintragen" tippen');
     });
   }else{
     const w=window.open(calGoogle(title,dt,det,loc,att),'_blank'); // synchron in der Klick-Geste (Popup-Blocker!)
-    setTimeout(()=>toast(w?'📅 Kalender-Tab geöffnet – auf „Speichern" klicken. Tipp: einmal „Google-Kalender verbinden", dann bucht es künftig automatisch':'📅 Popup geblockt – bitte Popups erlauben ODER einmal „Google-Kalender verbinden", dann bucht es automatisch'),80);
+    kalMerk(d,role,w?'tab':'fehler');
+    setTimeout(()=>toast(w?'📅 Nur der Google-Tab wurde geöffnet – dort auf „Speichern" UND „Senden" tippen, sonst bekommt niemand etwas. Sicherer: im Kunden beim Termin „Jetzt sicher eintragen"':'📅 Popup geblockt – im Kunden beim Termin auf „Jetzt sicher eintragen" tippen'),80);
   }
-  chatSys('👤 '+typ+' FIX zugeordnet: '+nm+' → '+name+' ('+termTxt+') – Termin per Kalender-Einladung gebucht, kein Annehmen nötig',d);
+  chatSys('👤 '+typ+' FIX zugeordnet: '+nm+' → '+name+' ('+termTxt+')'+((GCAL_CLIENT_ID&&haveTok)?' – Kalender-Einladung wird gebucht':' – ⚠ Kalender NICHT automatisch gebucht (Google war nicht verbunden)')+', kein Annehmen nötig',d);
 }
 /* Externe Berater/Analysten: Name endet auf "-extern" (z. B. SCHINKO-extern) ->
    kein Bestätigungs-Workflow, stattdessen SOFORT Kalender-Einladung an Extern + Kunde */
@@ -3517,9 +3638,11 @@ function externCal(d,role){
   const haveTok=!!__gcalTok&&Date.now()<__gcalExp-60000;
   if(GCAL_CLIENT_ID&&haveTok){
     gcalInsert(title,dt,60,det,loc,[d.email,mail,OFFICE_MAIL]).then(ok=>{
+      kalMerk(d,role,ok?'auto':'fehler',ok||null);
       toast(ok?('📅 Einladung raus: '+name+' (extern)'+(d.email?' und der Kunde haben':' hat')+' den Termin im Kalender'):'📅 Eintragen fehlgeschlagen – bitte in der Aufgaben-Box „Google-Kalender verbinden" und neu zuordnen');
     });
   }else{
+    kalMerk(d,role,'tab');
     window.open(calGoogle(title,dt,det,loc,[d.email,mail,OFFICE_MAIL]),'_blank');
     toast('📅 Kalender-Tab geöffnet – auf „Speichern" klicken, dann bekommen '+name+' und der Kunde die Einladung');
   }
@@ -4355,7 +4478,7 @@ async function dispoZuteilen(){
       const dt=parseTermin(feld==='analyst'?d.datumAG:d.datumBG);
       const mail=teamMail(erg.zu[tid]);
       if(dt&&mail&&GCAL_CLIENT_ID&&__gcalTok&&Date.now()<__gcalExp-60000){
-        gcalInsert((feld==='analyst'?'Analyse: ':'Beratung: ')+(d.name||d.org||'Kunde'),dt,60,'Tel: '+(d.telefon||'-')+(d.briefing?' | '+d.briefing:''),[d.strasse,d.plz,d.ort].filter(Boolean).join(', '),[d.email,mail,OFFICE_MAIL]);
+        gcalInsert((feld==='analyst'?'Analyse: ':'Beratung: ')+(d.name||d.org||'Kunde'),dt,60,'Tel: '+(d.telefon||'-')+(d.briefing?' | '+d.briefing:''),[d.strasse,d.plz,d.ort].filter(Boolean).join(', '),[d.email,mail,OFFICE_MAIL]).then(ok=>kalMerk(d,feld,ok?'auto':'fehler',ok||null));
       }
       chatSys('🌙 Zugeteilt nach Zusage: '+(d.name||d.org||'—')+' → '+erg.zu[tid]+' ('+(feld==='analyst'?'Analyse':'Beratung')+')',d);
       tgTermin(d,feld,erg.zu[tid]);
@@ -5290,6 +5413,8 @@ function openModal(id){
       <div class="fld tb tb-tel"><label>Wiedervorlage</label><input type="date" id="m-wv" value="${esc(d.wiedervorlage)}"></div>
       <div class="fld tb tb-tel tb-an"><label>Analysetermin (AG)</label><input id="m-dag" value="${esc(d.datumAG||'')}" placeholder="z. B. 22.09. 14:00" title="Beliebig tippen (22.9. 14 · morgen 10 Uhr · 22/9/26 14:30) – gespeichert wird einheitlich TT.MM.JJJJ HH:MM"></div>
       <div class="fld tb tb-an tb-be"><label>Beratungstermin (BG)</label><input id="m-dbg" value="${esc(d.datumBG||'')}" placeholder="z. B. 25.09. 10:00" title="Beliebig tippen (25.9. 10 · morgen 10 Uhr) – gespeichert wird einheitlich TT.MM.JJJJ HH:MM"></div>
+      ${kalStatusHtml(d,'analyst')?`<div class="fld full tb tb-tel tb-an" id="kal-box-analyst" style="margin-bottom:4px">${kalStatusHtml(d,'analyst')}</div>`:''}
+      ${kalStatusHtml(d,'berater')?`<div class="fld full tb tb-be" id="kal-box-berater" style="margin-bottom:4px">${kalStatusHtml(d,'berater')}</div>`:''}
       <div class="fld full tb tb-an tb-be"><label title="Setzt den Termin auf „verschoben": einfach neu terminisieren, zuordnen und bestätigen – Kunde und Analyst/Berater bekommen den neuen Termin automatisch per Kalender-Einladung">Termin verschoben? <span style="font-weight:500;color:var(--ink-3);text-transform:none">— danach neu terminisieren</span></label>
         <div style="display:flex;gap:7px;flex-wrap:wrap">
           <button type="button" class="mini-btn" id="cal-ag-x" style="color:var(--bad)" title="Analysetermin abgesagt oder verschoben">❗ AG verschoben</button>
