@@ -196,8 +196,25 @@
   .lmore>summary::-webkit-details-marker{display:none}
   .lbody>*{margin-bottom:12px}
   .lnotes{display:flex;flex-direction:column;gap:9px}
+  @media (min-width:761px){ /* Notiz-Bausteine einzeln in die Spalten fließen lassen – so verteilt sich die Höhe und alles bleibt auf einer Seite */
+    .lbody .lnotes{display:contents}
+    .lbody .lnotes>*{margin-bottom:9px;break-inside:avoid}
+    .lbody .lnotes #nb-andere:empty{display:none}
+  }
+  @media (min-width:761px) and (max-height:800px){.nneu .nit{-webkit-line-clamp:1}}
   .lnotes .fld{margin-bottom:0}
   .lnotes textarea{resize:vertical;line-height:1.45;min-height:46px}
+  .nbox{border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:5px 8px}
+  .nlist{display:flex;flex-direction:column;gap:4px;max-height:150px;overflow:auto;margin:5px 0}
+  .nneu{margin-bottom:5px}.nneu .nit{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:normal}
+  .nbox .nmore{margin:0 0 5px}.nbox .nmore>summary{list-style:none;cursor:pointer;display:flex;gap:8px;align-items:flex-start}.nbox .nmore>summary::-webkit-details-marker{display:none}
+  .nbox .nmore .nneu{margin:0;flex:1;min-width:0}.nmehr{font-size:11px;font-weight:700;color:var(--brand-ink);white-space:nowrap;padding-top:1px}.nbox .nmore[open] .nmehr{opacity:.5}
+  .nit{font-size:12.5px;line-height:1.4;overflow-wrap:anywhere;white-space:pre-wrap}
+  .nit .nm{font-size:11px;color:var(--ink-3);font-weight:700;white-space:nowrap}
+  .nit .nx{border:0;background:none;color:var(--ink-3);cursor:pointer;font-size:12px;padding:0 3px}
+  .nadd{display:flex;gap:6px;align-items:flex-end}
+  .lnotes .nadd textarea{flex:1;min-height:30px;height:30px;resize:none;padding-top:5px;padding-bottom:5px}
+  @media (max-width:760px){.nlist{max-height:240px}}
   /* ===== v19.11-C: Kunden-Fenster passt am Laptop/PC auf EINE Seite – breites Fenster, Inhalt in Spalten, kompakte Abstände ===== */
   @media (min-width:761px){
     .ov:has(#m-ltabs){padding:12px 12px}
@@ -545,7 +562,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-V";
+const APP_VERSION="19.11-W";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1026,6 +1043,7 @@ function listeDetailHtml(d){
     </div>
     <div class="dfull"><div class="stgs" style="margin:0">${STAGES.map((s,i)=>`<button type="button" class="stg${i===cur?' on':(cur>=0&&i<cur?' done':'')}" data-lstage="${esc(s)}" title="${esc(s)}"><i>${(cur>=0&&i<cur)?'✓':(i+1)}</i>${SHORT[i]}</button>`).join('')}</div></div>
     ${finBlock(d)?`<div class="dfull">${finBlock(d)}</div>`:''}
+    ${notesKurzHtml(d,4)?`<div class="dfull">${notesKurzHtml(d,4)}</div>`:''}
     ${(d.briefing||d.notizen)?`<div class="dfull" style="font-size:12px;color:var(--ink-2);line-height:1.5">${d.briefing?'<b>Briefing:</b> '+esc(d.briefing)+'<br>':''}${d.notizen?'<b>Notizen:</b> '+esc((d.notizen||'').slice(0,240)):''}</div>`:''}
     <div class="dfull" style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
       <button class="btn pri" data-lopen="1" style="padding:7px 13px;font-size:12.5px">Vollansicht öffnen</button>
@@ -1610,6 +1628,7 @@ function dialerCard(d){
     ${OFFICE_MAIL?`<div style="font-size:12.5px;margin:-6px 0 10px;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:7px 11px"><b>✉ Office-Mail für den Kunden:</b> <span class="t-office" style="color:var(--brand-ink);font-weight:700;cursor:pointer" title="Klicken = kopieren">${esc(OFFICE_MAIL)}</span> <span style="color:var(--ink-3)">— „Schicken Sie Ihre Unterlagen einfach an …"</span></div>`:''}
     ${finBlock(d)}
     ${info.html}
+    ${notesKurzHtml(d,3)}
     ${(!info.usedNotizen&&d.notizen)?`<div style="font-size:12px;color:var(--ink-3);margin-bottom:8px;max-height:76px;overflow:auto">${esc(d.notizen)}</div>`:''}
     ${(d.telHist&&d.telHist.length)?`<div class="histline">Frühere Anrufer: ${esc(d.telHist.join(', '))}</div>`:''}
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin:12px 0 8px">Gesprächsergebnis</div>
@@ -1675,7 +1694,7 @@ function wireDialer(host,d){
     if(o==='open'){openModal(d.id);return;}
     d.calls=d.calls||[];d.calls.push(Object.assign({ts:new Date().toISOString(),outcome:o},meta()));
     const noteV=((host.querySelector('#t-note')||{}).value||'').trim();
-    if(noteV)d.notizen=(todayStr().split('-').reverse().join('.')+' '+(ME?ME.name:'')+': '+noteV+(d.notizen?' | '+d.notizen:'')); // Zusammenfassung wandert in die Lead-Notizen
+    if(noteV)noteAdd(d,'tel',noteV); // v19.11-W: Zusammenfassung wandert in die Telefonisten-Notizen (mit Name + Uhrzeit)
     if(o==='termin'){
       let ag=((host.querySelector('#t-ag')||{}).value||'').trim();
       if(ag){const n=terminNorm(ag);if(!n){toast('Termin nicht erkannt – bitte z. B. so: 27.10. 14:00');return;}
@@ -5191,6 +5210,65 @@ function calICS(title,dt,details,loc){
   const a=document.createElement('a');a.href='data:text/calendar;charset=utf-8,'+encodeURIComponent(ics);a.download='censa-termin.ics';a.click();
 }
 function fmtD(ts){const x=ts?new Date(ts):new Date();return String(x.getDate()).padStart(2,'0')+'.'+String(x.getMonth()+1).padStart(2,'0')+'.';}
+/* v19.11-W (Melanies Ansage 25.11.): getrennte Notizen je Rolle – Telefonist, Analyst, Berater.
+   Jede Notiz wird automatisch mit dem Namen der angemeldeten Person und Datum/Uhrzeit versehen (d.notes = [{id,r,von,ts,txt}]).
+   Das alte Sammelfeld d.notizen bleibt als „Frühere Notizen & automatische Einträge" erhalten (n.a.-Stempel, Verschiebungen …). */
+const NOTE_R={tel:['☎','Telefonist'],an:['🔎','Analyst'],be:['💼','Berater']};
+function noteAdd(d,r,txt,von){
+  txt=String(txt||'').trim();if(!d||!txt||!NOTE_R[r])return null;
+  d.notes=d.notes||[];
+  const n={id:'n'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),r,von:von||chatName()||(ME&&ME.name)||'?',ts:new Date().toISOString(),txt:txt.slice(0,2000)};
+  d.notes.push(n);if(d.notes.length>300)d.notes=d.notes.slice(-300);
+  return n;
+}
+function notesVon(d,r){return ((d&&d.notes)||[]).filter(n=>n&&n.r===r).sort((a,b)=>String(b.ts||'').localeCompare(String(a.ts||'')));}
+function noteZeit(ts){const x=new Date(ts);if(isNaN(x))return '';
+  return calPad(x.getDate())+'.'+calPad(x.getMonth()+1)+'.'+(x.getFullYear()!==new Date().getFullYear()?x.getFullYear():'')+' '+calPad(x.getHours())+':'+calPad(x.getMinutes());}
+function noteZeile(n,loeschbar){
+  const darf=loeschbar&&(isAdmin()||nameEq(n.von,chatName()||''));
+  return `<div class="nit"><span class="nm">${esc(noteZeit(n.ts))} · ${esc(n.von||'?')}:</span> ${esc(n.txt)}${darf?` <button type="button" class="nx" data-ndel="${esc(n.id)}" title="Diese Notiz löschen">✕</button>`:''}</div>`;
+}
+function notesBlockHtml(d,r){ // eigener Bereich je Rolle: Verlauf (neueste oben) + Eingabezeile
+  const L=notesVon(d,r),R=NOTE_R[r];
+  const ph=r==='tel'?'Was wurde am Telefon besprochen?':r==='an'?'Nach der Analyse: Eindruck, Bedarf, nächste Schritte':'Nach der Beratung: Ergebnis, Einwände, nächste Schritte';
+  return `<label>${R[0]} Notizen ${R[1]} <span style="font-weight:500;color:var(--ink-3);text-transform:none">— Name &amp; Uhrzeit automatisch</span></label>
+    <div class="nbox">${L.length?(L.length>1?`<details class="nmore"><summary><div class="nneu">${noteZeile(L[0],true)}</div><span class="nmehr">▸ ${L.length-1} frühere</span></summary><div class="nlist">${L.slice(1).map(n=>noteZeile(n,true)).join('')}</div></details>`:`<div class="nneu">${noteZeile(L[0],true)}</div>`):''}
+      <div class="nadd"><textarea rows="1" data-ntxt="${r}" placeholder="${ph}"></textarea><button type="button" class="mini-btn" data-nadd="${r}" style="white-space:nowrap">＋ Notiz</button></div></div>`;
+}
+function notesAndereHtml(d){ // Notizen der anderen Rollen: lesbar, eingeklappt, EINE Zeile je Reiter
+  return ['tel','an','be'].map(t=>{const rs=['tel','an','be'].filter(r=>r!==t&&notesVon(d,r).length);if(!rs.length)return '';
+    return `<details class="lmore tb tb-${t}" style="margin:0"><summary>Notizen der anderen: ${rs.map(r=>NOTE_R[r][0]+' '+NOTE_R[r][1]+' ('+notesVon(d,r).length+')').join(' · ')}</summary>${rs.map(r=>`<div style="font-size:11px;font-weight:800;color:var(--ink-3);margin-top:6px">${NOTE_R[r][0]} ${NOTE_R[r][1]}</div><div class="nlist" style="margin:3px 0 0">${notesVon(d,r).map(n=>noteZeile(n,false)).join('')}</div>`).join('')}</details>`;}).join('');
+}
+function notesKurzHtml(d,max){ // für Listen und den Telefon-Reiter: die neuesten Notizen aller Rollen
+  const L=((d&&d.notes)||[]).slice().sort((a,b)=>String(b.ts||'').localeCompare(String(a.ts||''))).slice(0,max||3);
+  if(!L.length)return '';
+  return `<div style="font-size:12px;color:var(--ink-2);line-height:1.45;margin-bottom:6px">${L.map(n=>`<div style="overflow-wrap:anywhere">${(NOTE_R[n.r]||['📝'])[0]} <b>${esc(noteZeit(n.ts))} · ${esc(n.von||'?')}:</b> ${esc(n.txt)}</div>`).join('')}</div>`;
+}
+function notesNeuZeichnen(d){
+  ['tel','an','be'].forEach(r=>{const el=document.getElementById('nb-'+r);if(el)el.innerHTML=notesBlockHtml(d,r);});
+  const a=document.getElementById('nb-andere');if(a)a.innerHTML=notesAndereHtml(d);
+}
+function notesSpeichern(d){if(state.deals.indexOf(d)>=0){try{dbPersist(d);}catch(e){}return true;}return false;} // neuer Kunde: wird beim Speichern des Kunden mitgesichert
+document.addEventListener('click',e=>{
+  const t=e.target;if(!t||!t.closest)return;
+  const add=t.closest('[data-nadd]'),del=t.closest('[data-ndel]');
+  if(!add&&!del)return;
+  const d=window.__modalDeal;if(!d)return;
+  e.preventDefault();
+  if(add){
+    const r=add.dataset.nadd,ta=document.querySelector('#modal textarea[data-ntxt="'+r+'"]');
+    const v=((ta&&ta.value)||'').trim();if(!v){toast('Bitte zuerst die Notiz eintippen');if(ta)ta.focus();return;}
+    noteAdd(d,r,v);notesNeuZeichnen(d);
+    toast(notesSpeichern(d)?'Notiz gespeichert ✓':'Notiz vermerkt – wird mit dem Kunden gespeichert');
+  }else{
+    if(!confirm('Diese Notiz wirklich löschen?'))return;
+    d.notes=(d.notes||[]).filter(n=>n.id!==del.dataset.ndel);notesNeuZeichnen(d);notesSpeichern(d);
+  }
+});
+document.addEventListener('keydown',e=>{ // Enter speichert, Umschalt+Enter macht eine neue Zeile
+  const t=e.target;if(!t||!t.dataset||!t.dataset.ntxt||e.key!=='Enter'||e.shiftKey)return;
+  e.preventDefault();const b=document.querySelector('#modal [data-nadd="'+t.dataset.ntxt+'"]');if(b)b.click();
+});
 function naStamp(d){const dt=fmtD();d.notizen=('n.a. '+dt+(d.notizen?' | '+d.notizen:''));}
 function histAdd(d,txt){
   d.hist=d.hist||[];
@@ -5463,6 +5541,7 @@ function openModal(id){
   if(id&&!d){toast('Lead nicht gefunden oder für dich nicht sichtbar');return;}
   editId=id;
   const isNew=!id;
+  setTimeout(()=>{window.__modalDeal=d;},0);
   if(!isNew&&leadNeu(d))['datumAG','datumBG'].forEach(k=>{const n=terminNorm(d[k]);if(n)d[k]=n.txt;}); // einheitliches Format (Altbestand: erst beim Bearbeiten, damit kein Jahr falsch geraten wird)
   const rohAG=d.datumAG||'',rohBG=d.datumBG||'';
   const before={wv:d.wiedervorlage||'',ag:d.datumAG||'',bg:d.datumBG||'',an:(d.analyst||'').trim(),be:(d.berater||'').trim(),mga:(d.mgtAG||'').trim(),mgb:(d.mgtBG||'').trim()};
@@ -5610,7 +5689,11 @@ function openModal(id){
     </div>
     <div class="lnotes">
       <div class="fld full tb tb-tel tb-an"><label>Briefing für den Analysten <span style="font-weight:500;color:var(--ink-3)">— Branche, jung/alt, Alleinentscheider, was wurde besprochen</span></label><textarea id="m-brief" rows="2" placeholder="Branche, jung/alt, Alleinentscheider, was wurde besprochen">${esc(d.briefing||'')}</textarea></div>
-      <div class="fld full"><label>Notizen</label><textarea id="m-notiz" rows="3">${esc(d.notizen)}</textarea></div>
+      <div class="fld full tb tb-tel" id="nb-tel">${notesBlockHtml(d,'tel')}</div>
+      <div class="fld full tb tb-an" id="nb-an">${notesBlockHtml(d,'an')}</div>
+      <div class="fld full tb tb-be" id="nb-be">${notesBlockHtml(d,'be')}</div>
+      <div class="fld full" id="nb-andere" style="display:flex;flex-direction:column;gap:4px">${notesAndereHtml(d)}</div>
+      <details class="lmore fld full" id="m-notiz-box" style="margin:0"><summary style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🗂 Frühere Notizen &amp; automatische Einträge${(d.notizen||'').trim()?': <span style="font-weight:500;color:var(--ink-2)">'+esc((d.notizen||'').replace(/\s+/g,' ').slice(0,90))+'</span>':' (leer)'}</summary><textarea id="m-notiz" rows="3" style="margin-top:6px">${esc(d.notizen)}</textarea></details>
     </div>
     ${!isNew?`<div style="margin:2px 0 12px;padding:12px 13px;background:var(--surface-2);border:1.5px solid var(--line);border-radius:12px" id="m-anstsec" class="tb tb-an">
       <div style="font-weight:800;font-size:13.5px;margin-bottom:4px">📧 Auskunftsvollmacht an Anstalten</div>
@@ -5690,6 +5773,7 @@ function openModal(id){
   // Briefing + Notizen zeigen immer den GANZEN Text (wachsen mit, bis 260 px – danach rollt nur das Feld)
   const growTA=()=>m.querySelectorAll('#m-brief,#m-notiz').forEach(t=>{if(!t.getClientRects().length)return;t.style.height='auto';t.style.height=Math.min(Math.max(t.scrollHeight+2,46),260)+'px';});
   m.querySelectorAll('#m-brief,#m-notiz').forEach(t=>t.addEventListener('input',growTA));
+  {const nbx=m.querySelector('#m-notiz-box');if(nbx)nbx.addEventListener('toggle',growTA);}
   const setLT=(t,merken)=>{m.dataset.lt=t;if(merken)LEAD_TAB[d.id]=t;const ak=m.querySelector('#m-akte');if(ak)ak.open=(t==='tel');setTimeout(growTA,0);m.querySelectorAll('#m-ltabs [data-lt]').forEach(b=>b.classList.toggle('on',b.dataset.lt===t));};
   m.querySelectorAll('#m-ltabs [data-lt]').forEach(b=>b.addEventListener('click',()=>setLT(b.dataset.lt,true)));
   setLT(LEAD_TAB[d.id]||leadTabDefault(d,isNew)); // gemerkt wird nur ein selbst gewählter Reiter – sonst entscheidet die Phase
@@ -5934,7 +6018,7 @@ function openModal(id){
           if(set2.length)chatSys('👤 Kundendaten aus der Analyse übernommen: '+set2.join(', ')+((d.partner&&d.partner.name)?' · 👫 Familie: '+d.partner.name:''),d);
         }
         if(STAGES.indexOf(d.stage)<STAGES.indexOf('Analyse & Doku'))d.stage='Analyse & Doku';
-        if(note)d.notizen=(tag+' Analyse-Übergabe ('+who+'): '+note+'\n'+(d.notizen||'')).slice(0,8000);
+        if(note)noteAdd(d,'an','Analyse-Übergabe: '+note,who);
         chatSys('📤 Analyse abgegeben: '+(d.name||d.org||'—')+' von '+who+(neu.length?' · '+neu.length+(neu.length===1?' Datei':' Dateien')+' gespeichert':'')+(note?' – '+note:''),d);
         histAdd(d,'Analyse abgegeben'+(neu.length?' ('+neu.map(x=>x.name).join(', ').slice(0,120)+')':''));
         persist();
