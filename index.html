@@ -562,7 +562,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-Y2";
+const APP_VERSION="19.11-Z";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -3507,60 +3507,221 @@ function astSubject(d){ // Betreff lt. Vorlage: „Auskunftsvollmacht Fam./Herr/
   const nm=((d.name||d.org||'Kunde')+'').trim();
   return 'Auskunftsvollmacht '+((d.partner&&d.partner.name)?'Fam. '+nm+' / '+d.partner.name:nm);
 }
-async function scansZuPdf(files){ // Handy-Scans zu EINEM sauberen PDF bündeln (Melanies Ansage 02.11.: keine losen Fotos mehr)
+/* v19.11-Z (Melanies Ansage 25.11.): Scannen wie „Dokumente scannen" am iPhone – das Blatt wird im Kamerabild erkannt,
+   zugeschnitten, entzerrt (auch schräg fotografiert) und aufgehellt; am Ende entsteht EIN PDF. Alles läuft im Browser.
+   docDetect: helles Blatt vor dunklerem Untergrund finden → 4 Ecken. docWarp: Perspektive geradeziehen. docHell: Papier weiß. */
+function docDetect(src){
+  const W0=src.videoWidth||src.naturalWidth||src.width,H0=src.videoHeight||src.naturalHeight||src.height;
+  if(!W0||!H0)return null;
+  const w=Math.min(240,W0),sc=w/W0,h=Math.max(8,Math.round(H0*sc)),n=w*h;
+  const cv=docDetect.cv||(docDetect.cv=document.createElement('canvas'));cv.width=w;cv.height=h;
+  const cx=cv.getContext('2d',{willReadFrequently:true});
+  try{cx.drawImage(src,0,0,w,h);}catch(e){return null;}
+  const px=cx.getImageData(0,0,w,h).data,g=new Uint8Array(n),bl=new Uint8Array(n);
+  for(let i=0;i<n;i++)g[i]=(px[i*4]*77+px[i*4+1]*150+px[i*4+2]*29)>>8;
+  for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const i=y*w+x;bl[i]=(g[i-w-1]+g[i-w]+g[i-w+1]+g[i-1]+g[i]+g[i+1]+g[i+w-1]+g[i+w]+g[i+w+1])/9;}
+  const hist=new Uint32Array(256);for(let i=0;i<n;i++)hist[bl[i]]++;
+  let sum=0;for(let t=0;t<256;t++)sum+=t*hist[t];
+  let sB=0,wB=0,mx=0,thr=127,mDunkel=0,mHell=255;
+  for(let t=0;t<256;t++){wB+=hist[t];if(!wB)continue;const wF=n-wB;if(!wF)break;sB+=t*hist[t];const mB=sB/wB,mF=(sum-sB)/wF,v=wB*wF*(mB-mF)*(mB-mF);if(v>mx){mx=v;thr=t;mDunkel=mB;mHell=mF;}}
+  if(mHell-mDunkel<28)return null; // kein klarer Unterschied Blatt/Untergrund (z. B. weißes Blatt auf weißem Tisch)
+  const lab=new Int32Array(n),st=new Int32Array(n);let best=0,bestN=0,cur=0;
+  for(let s0=0;s0<n;s0++){
+    if(lab[s0]||bl[s0]<=thr)continue;
+    cur++;let top=0,cnt=0;st[top++]=s0;lab[s0]=cur;
+    while(top){const i=st[--top];cnt++;const x=i%w;
+      if(x>0&&!lab[i-1]&&bl[i-1]>thr){lab[i-1]=cur;st[top++]=i-1;}
+      if(x<w-1&&!lab[i+1]&&bl[i+1]>thr){lab[i+1]=cur;st[top++]=i+1;}
+      if(i>=w&&!lab[i-w]&&bl[i-w]>thr){lab[i-w]=cur;st[top++]=i-w;}
+      if(i<n-w&&!lab[i+w]&&bl[i+w]>thr){lab[i+w]=cur;st[top++]=i+w;}}
+    if(cnt>bestN){bestN=cnt;best=cur;}
+  }
+  if(bestN<n*0.10||bestN>n*0.97)return null;
+  let tl=null,tr=null,br=null,blp=null,sMin=1e9,sMax=-1e9,dMin=1e9,dMax=-1e9;
+  for(let i=0;i<n;i++){if(lab[i]!==best)continue;const x=i%w,y=(i-x)/w,sm=x+y,df=x-y;
+    if(sm<sMin){sMin=sm;tl=[x,y];}if(sm>sMax){sMax=sm;br=[x,y];}if(df>dMax){dMax=df;tr=[x,y];}if(df<dMin){dMin=df;blp=[x,y];}}
+  const q=[tl,tr,br,blp];
+  const fl=Math.abs((q[0][0]*q[1][1]-q[1][0]*q[0][1])+(q[1][0]*q[2][1]-q[2][0]*q[1][1])+(q[2][0]*q[3][1]-q[3][0]*q[2][1])+(q[3][0]*q[0][1]-q[0][0]*q[3][1]))/2;
+  if(fl<n*0.10)return null;
+  const fuell=bestN/fl;if(fuell<0.72||fuell>1.2)return null; // keine saubere Viereck-Form → lieber ganze Aufnahme
+  return q.map(pt=>[Math.min(W0,Math.max(0,(pt[0]+0.5)/sc)),Math.min(H0,Math.max(0,(pt[1]+0.5)/sc))]);
+}
+function docWarp(src,quad,maxSeite){ // src: Canvas · quad: [ol, or, ur, ul] in Bildpunkten → gerade gezogenes Canvas
+  const d2=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1]);
+  let W=Math.max(d2(quad[0],quad[1]),d2(quad[3],quad[2])),H=Math.max(d2(quad[0],quad[3]),d2(quad[1],quad[2]));
+  const k=Math.min(1,(maxSeite||1700)/Math.max(W,H));W=Math.max(2,Math.round(W*k));H=Math.max(2,Math.round(H*k));
+  const sw=src.width,sh=src.height,sd=src.getContext('2d',{willReadFrequently:true}).getImageData(0,0,sw,sh).data;
+  const out=document.createElement('canvas');out.width=W;out.height=H;
+  const ox=out.getContext('2d'),od=ox.createImageData(W,H),o=od.data;
+  const x0=quad[0][0],y0=quad[0][1],x1=quad[1][0],y1=quad[1][1],x2=quad[2][0],y2=quad[2][1],x3=quad[3][0],y3=quad[3][1];
+  const dx1=x1-x2,dx2=x3-x2,dx3=x0-x1+x2-x3,dy1=y1-y2,dy2=y3-y2,dy3=y0-y1+y2-y3;
+  let a,b,c,d,e,f,g,h;
+  if(Math.abs(dx3)<1e-9&&Math.abs(dy3)<1e-9){a=x1-x0;b=x3-x0;c=x0;d=y1-y0;e=y3-y0;f=y0;g=0;h=0;}
+  else{const den=dx1*dy2-dx2*dy1||1e-9;g=(dx3*dy2-dx2*dy3)/den;h=(dx1*dy3-dx3*dy1)/den;a=x1-x0+g*x1;b=x3-x0+h*x3;c=x0;d=y1-y0+g*y1;e=y3-y0+h*y3;f=y0;}
+  for(let y=0;y<H;y++){
+    const v=y/(H-1);
+    for(let x=0;x<W;x++){
+      const u=x/(W-1),den=g*u+h*v+1;
+      let sx=(a*u+b*v+c)/den,sy=(d*u+e*v+f)/den;
+      if(sx<0)sx=0;else if(sx>sw-1.001)sx=sw-1.001;if(sy<0)sy=0;else if(sy>sh-1.001)sy=sh-1.001;
+      const ix=sx|0,iy=sy|0,fx=sx-ix,fy=sy-iy,i0=(iy*sw+ix)*4,i1=i0+4,i2=i0+sw*4,i3=i2+4,oi=(y*W+x)*4;
+      const w00=(1-fx)*(1-fy),w10=fx*(1-fy),w01=(1-fx)*fy,w11=fx*fy;
+      o[oi]=sd[i0]*w00+sd[i1]*w10+sd[i2]*w01+sd[i3]*w11;
+      o[oi+1]=sd[i0+1]*w00+sd[i1+1]*w10+sd[i2+1]*w01+sd[i3+1]*w11;
+      o[oi+2]=sd[i0+2]*w00+sd[i1+2]*w10+sd[i2+2]*w01+sd[i3+2]*w11;
+      o[oi+3]=255;
+    }
+  }
+  ox.putImageData(od,0,0);
+  return out;
+}
+function docHell(cv){ // Scan-Look: Papier wird weiß, Schrift dunkel (Farben bleiben erhalten)
+  const cx=cv.getContext('2d',{willReadFrequently:true}),im=cx.getImageData(0,0,cv.width,cv.height),p=im.data,n=cv.width*cv.height;
+  const hist=new Uint32Array(256);
+  for(let i=0;i<n;i+=3){const j=i*4;hist[(p[j]*77+p[j+1]*150+p[j+2]*29)>>8]++;}
+  const ges=Math.ceil(n/3);let lo=0,hi=255,acc=0;
+  for(let t=0;t<256;t++){acc+=hist[t];if(acc>=ges*0.02){lo=t;break;}}
+  acc=0;for(let t=255;t>=0;t--){acc+=hist[t];if(acc>=ges*0.30){hi=t;break;}} // oberes Drittel = Papier
+  if(hi-lo<40)return cv;
+  const k=250/(hi-lo),lut=new Uint8ClampedArray(256);
+  for(let t=0;t<256;t++)lut[t]=(t-lo)*k;
+  for(let i=0;i<n;i++){const j=i*4;p[j]=lut[p[j]];p[j+1]=lut[p[j+1]];p[j+2]=lut[p[j+2]];}
+  cx.putImageData(im,0,0);
+  return cv;
+}
+function docSeite(roh,quad){ // rohes Kamerabild + Ecken → fertige Seite (zugeschnitten, entzerrt, aufgehellt)
+  if(!quad){ // nichts erkannt → ganze Aufnahme, nur verkleinert
+    const k=Math.min(1,1700/Math.max(roh.width,roh.height)),c=document.createElement('canvas');
+    c.width=Math.round(roh.width*k);c.height=Math.round(roh.height*k);c.getContext('2d').drawImage(roh,0,0,c.width,c.height);return c;
+  }
+  return docHell(docWarp(roh,quad,1700));
+}
+function canvasDatei(cv,name){
+  const du=cv.toDataURL('image/jpeg',0.86),b=atob(du.split(',')[1]),u=new Uint8Array(b.length);
+  for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);
+  const f=new File([u],name,{type:'image/jpeg'});f.__scan=true;f.__crop=true;f.__du=du;return f;
+}
+function bildZuCanvas(f,maxSeite){
+  return new Promise((res,rej)=>{const url=URL.createObjectURL(f),i=new Image();
+    i.onload=()=>{const k=Math.min(1,(maxSeite||2200)/Math.max(i.width,i.height)),c=document.createElement('canvas');
+      c.width=Math.max(1,Math.round(i.width*k));c.height=Math.max(1,Math.round(i.height*k));c.getContext('2d').drawImage(i,0,0,c.width,c.height);URL.revokeObjectURL(url);res(c);};
+    i.onerror=e=>{URL.revokeObjectURL(url);rej(e);};i.src=url;});
+}
+async function scansZuPdf(files){ // Scans/Fotos zu EINEM PDF bündeln; Scan-Seiten füllen das Blatt, Hoch-/Querformat je Seite
   const lib=window.jspdf&&window.jspdf.jsPDF;if(!lib||!files.length)return null;
   try{
-    const pdf=new lib({unit:'mm',format:'a4'});
-    let first=true;
+    let pdf=null;
     for(const f of files){
-      const url=URL.createObjectURL(f);
-      const img=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url;});
-      const sc=Math.min(1,1500/Math.max(img.width,img.height)); // kleiner = schnellerer Handy-Upload, Lesbarkeit bleibt
-      const cv=document.createElement('canvas');
-      cv.width=Math.max(1,Math.round(img.width*sc));cv.height=Math.max(1,Math.round(img.height*sc));
-      cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
-      URL.revokeObjectURL(url);
-      const pw=210,ph=297,rand=8;
+      let cv=await bildZuCanvas(f,f.__crop?1700:2200);
+      if(f.__scan&&!f.__crop){ // Foto aus der Handy-Kamera (ohne Live-Scanner): Blatt nachträglich erkennen und zuschneiden
+        let q=null;try{q=docDetect(cv);}catch(e){}
+        cv=docSeite(cv,q);
+      }else if(Math.max(cv.width,cv.height)>1700){const k=1700/Math.max(cv.width,cv.height),c=document.createElement('canvas');c.width=Math.round(cv.width*k);c.height=Math.round(cv.height*k);c.getContext('2d').drawImage(cv,0,0,c.width,c.height);cv=c;}
+      const quer=cv.width>cv.height;
+      if(!pdf)pdf=new lib({unit:'mm',format:'a4',orientation:quer?'l':'p'});else pdf.addPage('a4',quer?'l':'p');
+      const pw=quer?297:210,ph=quer?210:297,rand=f.__scan?3:8;
       const r=Math.min((pw-2*rand)/cv.width,(ph-2*rand)/cv.height);
-      if(!first)pdf.addPage();first=false;
-      pdf.addImage(cv.toDataURL('image/jpeg',0.8),'JPEG',(pw-cv.width*r)/2,(ph-cv.height*r)/2,cv.width*r,cv.height*r);
+      pdf.addImage(cv.toDataURL('image/jpeg',0.82),'JPEG',(pw-cv.width*r)/2,(ph-cv.height*r)/2,cv.width*r,cv.height*r);
     }
-    return pdf.output('blob');
+    return pdf?pdf.output('blob'):null;
   }catch(e){return null;}
 }
-function scanOverlay(){ // 📷 Mehrseiten-Scanner (Melanies Ansage 02.11.): Kamera bleibt offen, Seite für Seite auslösen, Fertig = alle Seiten
+function scanEcken(roh,quad){ // Ecken von Hand korrigieren (wie am iPhone) → Promise<quad | null>
+  return new Promise(res=>{
+    const ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:#000;z-index:10001;display:flex;flex-direction:column;touch-action:none';
+    ov.innerHTML='<div style="color:#ddd;font-size:13px;padding:10px 14px;text-align:center">Ecken auf die Ränder des Blatts ziehen</div>'
+      +'<div id="se-b" style="flex:1;min-height:0;position:relative;margin:0 14px"></div>'
+      +'<div style="display:flex;gap:10px;justify-content:space-between;padding:12px 14px calc(14px + env(safe-area-inset-bottom));background:#111">'
+      +'<button type="button" id="se-x" style="background:none;border:1.5px solid #666;color:#eee;border-radius:10px;padding:10px 14px;font-size:14px">Abbrechen</button>'
+      +'<button type="button" id="se-all" style="background:none;border:1.5px solid #666;color:#eee;border-radius:10px;padding:10px 14px;font-size:14px">Ganzes Bild</button>'
+      +'<button type="button" id="se-ok" style="background:#0C806D;border:none;color:#fff;border-radius:10px;padding:12px 16px;font-size:14px;font-weight:800">✓ Übernehmen</button></div>';
+    document.body.appendChild(ov);
+    const box=ov.querySelector('#se-b'),bw=box.clientWidth,bh=box.clientHeight;
+    const k=Math.min(bw/roh.width,bh/roh.height),dw=roh.width*k,dh=roh.height*k,ox=(bw-dw)/2,oy=(bh-dh)/2;
+    const img=document.createElement('canvas');img.width=Math.round(dw);img.height=Math.round(dh);img.getContext('2d').drawImage(roh,0,0,img.width,img.height);
+    img.style.cssText='position:absolute;left:'+ox+'px;top:'+oy+'px;width:'+dw+'px;height:'+dh+'px';
+    box.appendChild(img);
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('style','position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none');
+    const poly=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    poly.setAttribute('fill','rgba(62,198,174,.18)');poly.setAttribute('stroke','#3EC6AE');poly.setAttribute('stroke-width','3');
+    svg.appendChild(poly);box.appendChild(svg);
+    const voll=()=>[[0,0],[roh.width,0],[roh.width,roh.height],[0,roh.height]];
+    let q=(quad||voll()).map(pt=>pt.slice());
+    const griffe=[];
+    const zeichne=()=>{poly.setAttribute('points',q.map(pt=>(ox+pt[0]*k)+','+(oy+pt[1]*k)).join(' '));
+      griffe.forEach((g,i)=>{g.style.left=(ox+q[i][0]*k-22)+'px';g.style.top=(oy+q[i][1]*k-22)+'px';});};
+    for(let i=0;i<4;i++){
+      const g=document.createElement('div');
+      g.style.cssText='position:absolute;width:44px;height:44px;border-radius:50%;border:3px solid #3EC6AE;background:rgba(255,255,255,.25);touch-action:none';
+      g.addEventListener('pointerdown',e=>{g.setPointerCapture(e.pointerId);e.preventDefault();});
+      g.addEventListener('pointermove',e=>{if(!g.hasPointerCapture(e.pointerId))return;const r=box.getBoundingClientRect();
+        q[i]=[Math.min(roh.width,Math.max(0,(e.clientX-r.left-ox)/k)),Math.min(roh.height,Math.max(0,(e.clientY-r.top-oy)/k))];zeichne();});
+      box.appendChild(g);griffe.push(g);
+    }
+    zeichne();
+    const zu=v=>{ov.remove();res(v);};
+    ov.querySelector('#se-x').addEventListener('click',()=>zu(null));
+    ov.querySelector('#se-all').addEventListener('click',()=>{q=voll();zeichne();});
+    ov.querySelector('#se-ok').addEventListener('click',()=>zu(q));
+  });
+}
+function scanOverlay(){ // 📷 Dokument-Scanner: Blatt wird live erkannt (grüner Rahmen), Seite für Seite auslösen, Fertig = alle Seiten
   return new Promise(async res=>{
     let stream=null;
     try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:2560},height:{ideal:1920}},audio:false});}
-    catch(e){return res(null);} // keine Kamera / keine Erlaubnis -> Aufrufer nutzt den alten Einzelfoto-Weg
+    catch(e){return res(null);} // keine Kamera / keine Erlaubnis -> Aufrufer nutzt den Einzelfoto-Weg (Blatt wird dort nachträglich erkannt)
     const tag=todayStr().split('-').reverse().join('.');
     const ov=document.createElement('div');
     ov.style.cssText='position:fixed;inset:0;background:#000;z-index:10000;display:flex;flex-direction:column';
-    ov.innerHTML='<video autoplay playsinline muted style="flex:1;min-height:0;width:100%;object-fit:contain;background:#000"></video>'
+    ov.innerHTML='<div id="sc-hint" style="color:#ddd;font-size:13px;padding:9px 14px;text-align:center;background:#111">Blatt auf einen dunkleren Untergrund legen – der grüne Rahmen zeigt, was gescannt wird</div>'
+      +'<div style="flex:1;min-height:0;position:relative"><video autoplay playsinline muted style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000"></video>'
+      +'<svg id="sc-svg" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"><polygon id="sc-poly" fill="rgba(62,198,174,.16)" stroke="#3EC6AE" stroke-width="3" points=""/></svg></div>'
       +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px calc(14px + env(safe-area-inset-bottom));background:#111">'
       +'<button type="button" id="sc-abbr" style="background:none;border:1.5px solid #666;color:#eee;border-radius:10px;padding:10px 14px;font-size:14px">✖ Abbrechen</button>'
       +'<div style="display:flex;align-items:center;gap:10px">'
-      +'<img id="sc-thumb" style="width:44px;height:58px;object-fit:cover;border-radius:6px;border:1.5px solid #555;display:none">'
+      +'<img id="sc-thumb" title="Antippen, um die Ecken der letzten Seite zu korrigieren" style="width:44px;height:58px;object-fit:cover;border-radius:6px;border:1.5px solid #3EC6AE;display:none;cursor:pointer">'
       +'<button type="button" id="sc-shot" style="width:72px;height:72px;border-radius:50%;border:5px solid #fff;background:#e33;color:#fff;font-size:13px;font-weight:800">📷</button>'
       +'</div>'
       +'<button type="button" id="sc-ok" style="background:#0C806D;border:none;color:#fff;border-radius:10px;padding:12px 16px;font-size:14px;font-weight:800">✅ Fertig (<span id="sc-n">0</span>)</button>'
       +'</div>';
     document.body.appendChild(ov);
     const video=ov.querySelector('video');video.srcObject=stream;
-    const pages=[];
-    const ende=out=>{try{stream.getTracks().forEach(t=>t.stop());}catch(e){}ov.remove();res(out);};
+    const poly=ov.querySelector('#sc-poly'),hint=ov.querySelector('#sc-hint'),th=ov.querySelector('#sc-thumb');
+    const pages=[];let letzte=null,liveQ=null;
+    const lage=()=>{ // wo liegt das Videobild im Element (object-fit: contain)?
+      const r=video.getBoundingClientRect(),vw=video.videoWidth,vh=video.videoHeight;if(!vw||!vh)return null;
+      const k=Math.min(r.width/vw,r.height/vh);return {k,ox:(r.width-vw*k)/2,oy:(r.height-vh*k)/2};
+    };
+    const timer=setInterval(()=>{ // Live-Erkennung, etwa 2× pro Sekunde
+      if(!video.videoWidth)return;
+      let q=null;try{q=docDetect(video);}catch(e){}
+      liveQ=q;const L=lage();
+      poly.setAttribute('points',(q&&L)?q.map(pt=>(L.ox+pt[0]*L.k)+','+(L.oy+pt[1]*L.k)).join(' '):'');
+      hint.textContent=q?'Blatt erkannt – jetzt auslösen':'Blatt auf einen dunkleren Untergrund legen – der grüne Rahmen zeigt, was gescannt wird';
+      hint.style.color=q?'#3EC6AE':'#ddd';
+    },450);
+    const ende=out=>{clearInterval(timer);try{stream.getTracks().forEach(t=>t.stop());}catch(e){}ov.remove();res(out);};
+    const zeige=()=>{ov.querySelector('#sc-n').textContent=pages.length;if(pages.length){th.src=pages[pages.length-1].__du;th.style.display='block';}};
     ov.querySelector('#sc-shot').addEventListener('click',()=>{
       if(!video.videoWidth)return;
       // SYNCHRON einfrieren – auch bei schnellem Tippen darf keine Seite verloren gehen
-      const cv=document.createElement('canvas');cv.width=video.videoWidth;cv.height=video.videoHeight;
-      cv.getContext('2d').drawImage(video,0,0);
-      const du=cv.toDataURL('image/jpeg',0.9);
-      const b=atob(du.split(',')[1]);const u=new Uint8Array(b.length);for(let i2=0;i2<b.length;i2++)u[i2]=b.charCodeAt(i2);
-      const f=new File([u],'Scan '+tag+' Seite '+(pages.length+1)+'.jpg',{type:'image/jpeg'});
-      f.__scan=true;pages.push(f);
-      ov.querySelector('#sc-n').textContent=pages.length;
-      const th=ov.querySelector('#sc-thumb');th.src=du;th.style.display='block';
+      const roh=document.createElement('canvas');roh.width=video.videoWidth;roh.height=video.videoHeight;
+      roh.getContext('2d').drawImage(video,0,0);
+      let q=null;try{q=docDetect(roh)||liveQ;}catch(e){q=liveQ;}
+      const f=canvasDatei(docSeite(roh,q),'Scan '+tag+' Seite '+(pages.length+1)+'.jpg');
+      pages.push(f);letzte={roh,quad:q,i:pages.length-1};
+      zeige();
+      if(!q)toast('Blatt nicht erkannt – ganze Aufnahme übernommen. Vorschau antippen, um die Ecken zu setzen');
       video.style.opacity='.25';setTimeout(()=>{video.style.opacity='1';},140); // Blitz-Feedback
+    });
+    th.addEventListener('click',async()=>{ // letzte Seite: Ecken von Hand korrigieren
+      if(!letzte)return;
+      const q=await scanEcken(letzte.roh,letzte.quad);if(!q)return;
+      letzte.quad=q;
+      pages[letzte.i]=canvasDatei(docSeite(letzte.roh,q),pages[letzte.i].name);
+      zeige();
     });
     ov.querySelector('#sc-ok').addEventListener('click',()=>ende(pages));
     ov.querySelector('#sc-abbr').addEventListener('click',()=>{
@@ -5840,7 +6001,7 @@ function openModal(id){
         <input type="file" id="an-file" accept="application/pdf,image/*" multiple style="display:none">
         <input type="file" id="an-scan" accept="image/*" capture="environment" style="display:none">
         <button type="button" class="btn" id="an-pick">📄 PDF / Foto wählen</button>
-        <button type="button" class="btn" id="an-scanbtn" title="Öffnet am Handy direkt die Kamera – jede Seite einzeln abfotografieren, die Scans sammeln sich">📷 Scannen</button>
+        <button type="button" class="btn" id="an-scanbtn" title="Dokument-Scanner: Das Blatt wird erkannt, zugeschnitten und gerade gezogen – Seite für Seite auslösen, am Ende entsteht ein PDF">📷 Scannen</button>
         <button type="button" class="btn" id="an-rec">🎙️ Sprachnotiz aufnehmen</button>
         <input type="file" id="an-audio" multiple style="display:none">
         <button type="button" class="btn" id="an-audiobtn" title="Schon aufgenommene Sprachnachricht vom Handy auswählen (WhatsApp, Sprachmemos, Diktiergerät …)">🎵 Sprachnachricht hochladen</button>
@@ -6093,7 +6254,7 @@ function openModal(id){
       if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia){
         const pages=await scanOverlay();
         if(pages!==null){ // null = Kamera nicht verfügbar -> Fallback
-          if(pages.length){pages.forEach(f=>selFiles.push(f));anTxt();toast(pages.length+' Seite'+(pages.length===1?'':'n')+' aufgenommen – beim Abgeben wird daraus 1 PDF');}
+          if(pages.length){pages.forEach(f=>selFiles.push(f));anTxt();toast(pages.length+' Seite'+(pages.length===1?'':'n')+' gescannt – beim Abgeben wird daraus 1 PDF');}
           return;
         }
       }
