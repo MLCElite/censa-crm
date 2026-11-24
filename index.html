@@ -562,7 +562,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-W";
+const APP_VERSION="19.11-X";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2005,6 +2005,12 @@ async function mergeDeals(ids){
     base.telHist=[...new Set([...(base.telHist||[]),...(o.telHist||[])])];
     base.ehS=[...(base.ehS||[]),...(o.ehS||[])];
     base.ehA=[...(base.ehA||[]),...(o.ehA||[])];
+    { // v19.11-X: auch Rollen-Notizen, Analyse-Dateien und Anstalten mitnehmen (gingen beim Zusammenführen bisher verloren)
+      const ids=new Set((base.notes||[]).map(n=>n.id));base.notes=[...(base.notes||[]),...(o.notes||[]).filter(n=>!ids.has(n.id))];
+      const fid=new Set((base.analyse||[]).map(f=>f.id||f.url));base.analyse=[...(base.analyse||[]),...(o.analyse||[]).filter(f=>!fid.has(f.id||f.url))];
+      base.anstalten=[...new Set([...(base.anstalten||[]),...(o.anstalten||[])])];
+      if(!base.kal&&o.kal)base.kal=o.kal;
+    }
     if(o.gp)base.gp=true;
     if(o.geprueft!==false)base.geprueft=o.geprueft===undefined?base.geprueft:(base.geprueft===false?o.geprueft:base.geprueft);
     if(!base.uebergabe&&o.uebergabe)base.uebergabe=o.uebergabe;
@@ -2091,6 +2097,111 @@ async function repRestore(baseId,histTs,names){ // legt die weggelöschten Kunde
   try{chatSys('↩ Duplikat-Reparatur: '+names.join(', ')+' wieder als eigene Kunden angelegt (getrennt von „'+(base.name||base.org||'—')+'").',base);}catch(e){}
   if(typeof markDirty==='function'){markDirty('liste');markDirty('pipe');}
   return ok!==false;
+}
+/* v19.11-X (Melanies Ansage 25.11., Beispiel Kozak bei Julia Teveli): Steht derselbe Kunde am selben Tag zweimal
+   mit derselben Terminart im System (zwei Leads), wird daraus EIN Kunde:
+   • gleiche Uhrzeit und eindeutig dieselbe Person → automatisch zusammenführen (rückgängig über den Duplikat-Check)
+   • verschiedene Uhrzeiten → Info + Nachfrage an die zuständige Person (Analyst bei AG, Berater bei BG) als Aufgabe;
+     nach der Antwort wird mit der richtigen Uhrzeit zusammengeführt. „Zwei verschiedene Kunden" beendet die Nachfrage. */
+function terminDoppel(){
+  const h0=new Date();h0.setHours(0,0,0,0);
+  const hm=dt=>calPad(dt.getHours())+':'+calPad(dt.getMinutes());
+  const TIT=['mag','dr','ing','msc','bsc','mba','herr','frau','dipl','fh','jun','sen','gmbh','kg','og','eu'];
+  const toks=x=>new Set(String(x||'').toLowerCase().replace(/\(.*?\)/g,' ').replace(/[^a-zäöüß ]/g,' ').split(/\s+/).filter(w=>w.length>=2&&!TIT.includes(w)));
+  const teil=(a,b)=>{const A=toks(a),B=toks(b);if(!A.size||!B.size)return false;const kl=A.size<=B.size?A:B,gr=A.size<=B.size?B:A;return [...kl].every(w=>gr.has(w));};
+  const tel9=d=>{const t=(d.telefon||'').replace(/\D/g,'');return t.length>=9?t.slice(-9):'';};
+  const gleichKunde=(a,b)=>(tel9(a)&&tel9(a)===tel9(b))||[a.name,a.org].some(x=>(x||'').trim()&&[b.name,b.org].some(y=>(y||'').trim()&&kundeGleich(x,y)));
+  const sicher=(a,b)=>(tel9(a)&&tel9(a)===tel9(b)&&(teil(a.name,b.name)||!toks(a.name).size||!toks(b.name).size))||teil(a.name,b.name)||(!!(a.org||'').trim()&&teil(a.org,b.org)&&(!toks(a.name).size||!toks(b.name).size));
+  const nichtDup=(a,b)=>(a.keinDup||[]).includes(b.id)||(b.keinDup||[]).includes(a.id);
+  const out=[];
+  ['AG','BG'].forEach(art=>{
+    const feld=art==='AG'?'datumAG':'datumBG',rolle=art==='AG'?'analyst':'berater';
+    const proTag={};
+    state.deals.forEach(d=>{
+      if(d.status!=='open'||((d.quelle||'')==='Recruiting'&&d.gp))return;
+      const dt=parseTermin(d[feld]);if(!dt||dt<h0)return;
+      const k=dt.getFullYear()+'-'+calPad(dt.getMonth()+1)+'-'+calPad(dt.getDate());
+      (proTag[k]=proTag[k]||[]).push({d,dt,zeit:hm(dt)});
+    });
+    Object.keys(proTag).forEach(k=>{
+      const L=proTag[k];if(L.length<2)return;
+      const frei=L.slice();
+      while(frei.length){
+        const g=[frei.shift()];
+        for(let i=0;i<g.length;i++)for(let j=frei.length-1;j>=0;j--){if(gleichKunde(g[i].d,frei[j].d)&&!nichtDup(g[i].d,frei[j].d)){g.push(frei[j]);frei.splice(j,1);}}
+        if(g.length<2)continue;
+        g.sort((a,b)=>a.zeit.localeCompare(b.zeit));
+        const zeiten=[...new Set(g.map(x=>x.zeit))];
+        const wer=[...new Set(g.map(x=>(x.d[rolle]||'').trim()).filter(Boolean))];
+        const alleSicher=g.every((x,i)=>g.every((y,j)=>i===j||sicher(x.d,y.d)));
+        const antw=g.map(x=>x.d.dopAntwort).find(a=>a&&a.tag===k&&a.art===art&&zeiten.includes(a.zeit));
+        out.push({key:art+'|'+k+'|'+g.map(x=>x.d.id).sort().join(','),art,feld,rolle,tag:k,items:g,deals:g.map(x=>x.d),zeiten,wer,
+          name:g[0].d.name||g[0].d.org||'Kunde',auto:zeiten.length===1&&alleSicher&&wer.length<=1,antw:antw||null});
+      }
+    });
+  });
+  return out;
+}
+function doppelText(c){const t=c.tag.split('-');return (c.art==='AG'?'Analysetermin':'Beratungstermin')+' am '+t[2]+'.'+t[1]+'. – '+c.items.map(x=>x.zeit+' Uhr („'+(x.d.name||x.d.org||'—')+'"'+((x.d.telefonist||'').trim()?', angelegt über '+x.d.telefonist:'')+')').join(' und ');}
+function doppelAufgaben(){ // Nachfragen für die angemeldete Person (Admin sieht alle)
+  const me=chatName(),pn=me?personNames(me):[];
+  return terminDoppel().filter(c=>!c.auto&&!c.antw&&(isAdmin()||c.wer.some(w=>pn.includes(w.toLowerCase()))));
+}
+async function doppelZusammen(c,zeit,wie){ // führt die Leads zusammen und setzt die richtige Uhrzeit (nur Admin-Gerät)
+  const quelle=c.items.find(x=>x.zeit===zeit)||c.items[0];
+  const terminTxt=quelle.d[c.feld];
+  const namen=c.deals.map(d=>d.name||d.org||'—');
+  const base=await mergeDeals(c.deals.map(d=>d.id));
+  if(!base)return null;
+  base[c.feld]=terminTxt;delete base.dopAntwort;delete base.dopGefragt;
+  histAdd(base,'👥 Doppelter Termin bereinigt ('+wie+'): '+(c.art==='AG'?'AG':'BG')+' '+terminTxt+' gilt – zusammengeführt aus '+namen.join(' + '));
+  await dbPersist(base);
+  return base;
+}
+let __dopBusy=false,__dopLast=0;
+async function doppelCheck(force){ // Automatik – läuft nur am Admin-Gerät (dort liegen Lösch-Recht und Telegram-Bot)
+  if(__dopBusy||MODE!=='db'||!isAdmin()||!dealsCol)return;
+  if(!force&&Date.now()-__dopLast<60000)return;
+  __dopBusy=true;__dopLast=Date.now();
+  try{
+    let geaendert=false;
+    for(const c of terminDoppel()){
+      if(c.auto){
+        const b=await doppelZusammen(c,c.zeiten[0],'gleiche Uhrzeit, automatisch');
+        if(b){geaendert=true;chatSys('🔗 Doppelter Termin: „'+c.name+'" stand am '+c.tag.split('-').reverse().slice(0,2).join('.')+'. zweimal mit derselben Uhrzeit ('+c.zeiten[0]+') im System – zu EINEM Kunden zusammengeführt. Rückgängig: CEO → Duplikat-Check.',b);}
+      }else if(c.antw){
+        const b=await doppelZusammen(c,c.antw.zeit,'Antwort von '+(c.antw.von||'?'));
+        if(b){geaendert=true;chatSys('🔗 Doppelter Termin geklärt: Bei „'+c.name+'" stimmt laut '+(c.antw.von||'?')+' '+c.antw.zeit+' Uhr – zu EINEM Kunden zusammengeführt.',b);}
+      }else if(!c.deals.every(d=>d.dopGefragt===c.key)){ // noch nicht nachgefragt → Info + Nachfrage
+        const txt='👥 Doppelter Termin – bitte klären: '+doppelText(c)+'. Welche Uhrzeit stimmt? Bitte im CRM im Aufgaben-Fenster antworten.';
+        const ziel=c.wer.length?c.wer:['__admin__'];
+        ziel.forEach(w=>{try{chatSys(txt,c.deals[0],w);}catch(e){}try{if(w!=='__admin__')tgInfo(w,'CENSA – '+txt);}catch(e){}});
+        c.deals.forEach(d=>{d.dopGefragt=c.key;histAdd(d,'👥 Doppelter Termin erkannt – Nachfrage an '+(c.wer.join(', ')||'Führungskraft'));});
+        await dbPersistMany(c.deals);
+      }
+    }
+    if(geaendert){render();try{updateTodoBadge();}catch(e){}}
+  }catch(e){}
+  __dopBusy=false;
+}
+async function doppelAntwort(key,zeit){ // Klick im Aufgaben-Fenster
+  const c=terminDoppel().find(x=>x.key===key);if(!c){toast('Schon erledigt');return;}
+  const me=chatName()||'?';
+  if(zeit==='__zwei__'){ // zwei verschiedene Kunden → nie wieder als Doppel melden
+    c.deals.forEach(a=>{a.keinDup=[...new Set([...(a.keinDup||[]),...c.deals.filter(b=>b!==a).map(b=>b.id)])];histAdd(a,'👥 Kein Doppel: laut '+me+' zwei verschiedene Kunden/Termine');});
+    await dbPersistMany(c.deals);
+    chatSys('👥 '+me+': Bei „'+c.name+'" am '+c.tag.split('-').reverse().slice(0,2).join('.')+'. sind es zwei verschiedene Termine ('+c.zeiten.join(' und ')+') – bleibt getrennt.',c.deals[0],'__admin__');
+    toast('Vermerkt – bleibt getrennt');
+  }else if(isAdmin()){
+    const b=await doppelZusammen(c,zeit,'entschieden von '+me);
+    toast(b?('🔗 Zusammengeführt – es gilt '+zeit+' Uhr'):'Zusammenführen fehlgeschlagen');
+  }else{ // Antwort festhalten – zusammengeführt wird am Gerät der Führungskraft
+    c.deals.forEach(d=>{d.dopAntwort={tag:c.tag,art:c.art,zeit,von:me,ts:new Date().toISOString()};histAdd(d,'👥 Doppelter Termin: laut '+me+' stimmt '+zeit+' Uhr');});
+    await dbPersistMany(c.deals);
+    chatSys('👥 '+me+' hat geantwortet: Bei „'+c.name+'" stimmt '+zeit+' Uhr ('+(c.art==='AG'?'Analyse':'Beratung')+' am '+c.tag.split('-').reverse().slice(0,2).join('.')+'.). Die beiden Einträge werden zusammengeführt.',c.deals[0],'__admin__');
+    toast('Danke – '+zeit+' Uhr ist vermerkt, die Einträge werden zusammengeführt');
+  }
+  render();try{updateTodoBadge();}catch(e){}
 }
 async function openDupCheck(){
   try{
@@ -2251,6 +2362,8 @@ function tagesTermine(off){
     });
   });
   out.forEach(o=>{o.folge=ttFolge(o,T);});
+  try{const DP=terminDoppel();out.forEach(o=>{if(o.q!=='deal'||!o.d)return;const c=DP.find(x=>x.art===o.art&&x.deals.includes(o.d));if(!c)return;
+    o.folge={txt:'👥 doppelt ('+c.zeiten.join(' / ')+') – '+(c.auto?'wird zusammengeführt':c.antw?('laut '+c.antw.von+' stimmt '+c.antw.zeit):('Nachfrage läuft bei '+(c.wer.join(', ')||'dir')))+(o.folge.txt&&o.folge.lvl!==''?' · '+o.folge.txt:''),lvl:'warn'};});}catch(e){}
   return out.sort((a,b)=>(a.zeit||'').localeCompare(b.zeit||''));
 }
 function ttFolge(o,T){ // → {txt, lvl: 'ok' | 'warn' | 'bad' | ''}: Ist nach dem Termin alles nachgetragen?
@@ -2897,7 +3010,7 @@ function todoAutoOpen(){
   if(!geladen){if(__todoTries>15)__todoShown=true;return;}
   if(document.getElementById('ov').classList.contains('show')||document.getElementById('loginOv').classList.contains('show'))return; // nichts überdecken – später nochmal
   let etwas=false;
-  try{etwas=myAcksOpen().length>0||todayTermine().length>0||termineAm(1).length>0||terminAufgaben().length>0||liegenGeblieben().length>0;}catch(e){}
+  try{etwas=myAcksOpen().length>0||doppelAufgaben().length>0||todayTermine().length>0||termineAm(1).length>0||terminAufgaben().length>0||liegenGeblieben().length>0;}catch(e){}
   if(etwas){__todoShown=true;openTodo(true);return;}
   if(__todoTries>4)__todoShown=true; // Daten sind da und es gibt nichts → kein leeres Fenster
 }
@@ -2974,7 +3087,10 @@ function updateTodoBadge(){
   if(lg)parts.push((isAdmin()?'🕰 liegen geblieben <b>':'🕰 bitte bearbeiten <b>')+lg+'</b>');
   let ta=0;try{ta=terminAufgaben().length;}catch(e){}
   if(ta)parts.splice(n?1:0,0,'📅 Termin fehlt <b>'+ta+'</b>');
-  el.classList.toggle('hide',!n&&!h&&!lg&&!ta);
+  let dp=0;try{dp=doppelAufgaben().length;}catch(e){}
+  if(dp)parts.splice(n?1:0,0,'👥 Doppelter Termin <b>'+dp+'</b>');
+  try{doppelCheck();}catch(e){}
+  el.classList.toggle('hide',!n&&!h&&!lg&&!ta&&!dp);
   el.innerHTML=parts.join(' · ');
 }
 async function gcalConnectHere(){
@@ -2988,13 +3104,14 @@ async function gcalConnectHere(){
 }
 function openTodo(force){
   const acks=myAcksOpen();
-  if(!force&&!acks.length&&(isAdmin()||(!liegenGeblieben().length&&!terminAufgaben().length)))return; // eigene liegen gebliebene Kunden öffnen das Aufgaben-Fenster ebenfalls
+  if(!force&&!acks.length&&(isAdmin()||(!liegenGeblieben().length&&!terminAufgaben().length&&!doppelAufgaben().length)))return; // eigene liegen gebliebene Kunden öffnen das Aufgaben-Fenster ebenfalls
   const me=chatName();
   const heute=todayTermine();
   const od=isAdmin()?[]:visibleDeals().filter(d=>d.status==='open'&&isOverdue(d));
   const lk=myLuecken();const LKMAX=30;
   const lgl=liegenGeblieben();
   const tal=terminAufgaben();
+  let dop=[];try{dop=doppelAufgaben();}catch(e){}
   const m=document.getElementById('modal');m.classList.remove('wide');
   m.innerHTML=`<h2>📌 Deine offenen Aufgaben</h2>
     <div class="sub">${acks.length?(acks.length+' Bestätigung'+(acks.length>1?'en':'')+' offen – bitte kurz abarbeiten'):'Alles bestätigt 👍'}</div>
@@ -3006,6 +3123,7 @@ function openTodo(force){
       const morgen=termineAm(1);
       return (heute.length?`<div class="ehgt" style="margin-top:14px">📅 Deine Termine heute</div>${heute.map(zeile).join('')}`:'')
         +(morgen.length?`<div class="ehgt" style="margin-top:14px">📅 Morgen</div>${morgen.map(zeile).join('')}`:'');})()}
+    ${dop.length?`<div class="ehgt" style="margin-top:14px">👥 Doppelter Termin: <span style="color:var(--bad)">${dop.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— derselbe Kunde steht am selben Tag zweimal drin. Welche Uhrzeit stimmt?</span></div>${dop.slice(0,15).map(c=>`<div class="ehrow" style="flex-wrap:wrap;gap:6px"><span class="nm" style="flex:1 1 220px"><b>${esc(c.name)}</b> <span style="color:var(--ink-3);font-weight:500">· ${esc(doppelText(c))}</span></span>${c.zeiten.map(z=>`<button class="mini-btn" data-dop="${esc(c.key)}" data-dopz="${z}" style="border-color:var(--brand);color:var(--brand-ink);font-weight:700">${z} stimmt</button>`).join('')}<button class="mini-btn" data-dop="${esc(c.key)}" data-dopz="__zwei__">Zwei verschiedene Termine</button></div>`).join('')}`:''}
     ${tal.length?`<div class="ehgt" style="margin-top:14px">📅 Termin fehlt: <span style="color:var(--bad)">${tal.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— bleibt hier, bis ein Termin oder eine Wiedervorlage eingetragen ist</span></div>${tal.slice(0,30).map(x=>`<div class="ehrow"><span class="nm"><b>${esc(x.d.name||x.d.org||'—')}</b> <span style="color:var(--ink-3);font-weight:500">· ${esc(x.txt)}</span></span>${x.alsMgt?`<span class="tg" style="background:var(--warn-bg);color:var(--warn);font-weight:800" title="Du bist bei diesem Termin als MGT dabei – dran ist ${esc(x.z.name||'—')}">🤝 MGT · dran: ${esc(x.z.name||'—')}</span>`:''}${isAdmin()?`<span class="tg" style="background:var(--brand-bg);color:var(--brand-ink);font-weight:800">${ROLLE_IC[x.z.rolle]} ${esc(x.z.name||('kein '+ROLLE_LBL[x.z.rolle]))}</span>${x.mgt?`<span class="tg" title="MGT-Begleitung">🤝 ${esc(x.mgt)}</span>`:''}`:''}<button class="mini-btn" data-tat="${esc(x.d.id)}" data-tart="${x.art}" style="border-color:var(--brand);color:var(--brand-ink);font-weight:800">📅 Termin eintragen</button><button class="mini-btn" data-tdl="${esc(x.d.id)}">Lead öffnen</button></div>`).join('')}${tal.length>30?`<div style="font-size:12px;color:var(--ink-3);margin:4px 0">… und ${tal.length-30} weitere.</div>`:''}`:''}
     ${lgl.length?`<div class="ehgt" style="margin-top:14px">${isAdmin()?'🕰 Ohne Datum und seit über 2 Wochen nicht bearbeitet:':'🕰 Deine Aufgabe – seit über 2 Wochen nichts passiert:'} <span style="color:var(--bad)">${lgl.length}</span> <span style="text-transform:none;font-weight:500;color:var(--ink-3)">— ${isAdmin()?'wer dran ist, steht dabei':'bleibt hier, bis du den Kunden bearbeitest oder ein Datum / eine Wiedervorlage einträgst'}</span></div>${lgl.slice(0,LKMAX).map(x=>`<div class="ehrow"><span class="nm"><b>${esc(x.d.name||x.d.org||'—')}</b> <span style="color:var(--ink-3);font-weight:500">· ${esc(x.d.stage)}</span></span><span class="tg" style="background:var(--brand-bg);color:var(--brand-ink);font-weight:800">${ROLLE_IC[x.z.rolle]} ${esc(x.z.name||('kein '+ROLLE_LBL[x.z.rolle]))}</span><span class="tg od">${x.tage>=0?('seit '+x.tage+' Tagen'):'kein Datum bekannt'}</span><button class="mini-btn" data-tdl="${esc(x.d.id)}">Lead öffnen</button></div>`).join('')}${lgl.length>LKMAX?`<div style="font-size:12px;color:var(--ink-3);margin:4px 0">… und ${lgl.length-LKMAX} weitere.</div>`:''}`:''}
     ${(lk.list.length+lk.kalt)?`<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:14px;font-size:12.5px;color:var(--ink-2)"><span>🧩 Bei <b>${lk.list.length+lk.kalt}</b> Kunden fehlen noch Infos – sie sind rot markiert.</span><button class="mini-btn" id="td-lk">In der Liste anzeigen</button></div>`:''}
@@ -3019,6 +3137,7 @@ function openTodo(force){
     gcalConnectHere().then(ok=>{if(ok)openTodo(true);else{tg.disabled=false;tg.textContent='Jetzt verbinden';}});
   });
   m.querySelectorAll('[data-tdl]').forEach(b=>b.addEventListener('click',()=>openModal(b.dataset.tdl)));
+  m.querySelectorAll('[data-dop]').forEach(b=>b.addEventListener('click',async()=>{b.disabled=true;await doppelAntwort(b.dataset.dop,b.dataset.dopz);openTodo(true);}));
   m.querySelectorAll('[data-tat]').forEach(b=>b.addEventListener('click',()=>{
     const d=state.deals.find(x=>x.id===b.dataset.tat);if(!d)return;
     const art=b.dataset.tart==='BG'?'BG':'AG';
