@@ -562,7 +562,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-X";
+const APP_VERSION="19.11-Y";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1633,8 +1633,7 @@ function dialerCard(d){
     ${(d.telHist&&d.telHist.length)?`<div class="histline">Frühere Anrufer: ${esc(d.telHist.join(', '))}</div>`:''}
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-3);margin:12px 0 8px">Gesprächsergebnis</div>
     <div style="display:flex;gap:7px;margin-bottom:7px;flex-wrap:wrap"><input id="t-ag" placeholder="AG-Termin: 27.10. 14:00" style="width:175px;padding:7px 9px;font-size:12.5px"><input id="t-dur" type="number" min="0" placeholder="Dauer (Min.)" style="width:110px;padding:7px 9px;font-size:12.5px"><input id="t-email" type="email" value="${esc(d.email||'')}" placeholder="E-Mail des Kunden" style="flex:1;min-width:170px;padding:7px 9px;font-size:12.5px"></div>
-    <div style="display:flex;gap:7px;margin-bottom:7px;flex-wrap:wrap"><input id="t-note" placeholder="Zusammenfassung des Gesprächs → wird in die Notizen übernommen" style="flex:1;min-width:180px;padding:7px 9px;font-size:12.5px"></div>
-    <div style="display:flex;gap:7px;margin-bottom:9px;flex-wrap:wrap"><input id="t-brief" value="${esc(d.briefing||'')}" placeholder="Briefing für den Analysten – Branche, jung/alt, Entscheider, was wurde besprochen" style="flex:1;min-width:180px;padding:7px 9px;font-size:12.5px"></div>
+    <div style="display:flex;gap:7px;margin-bottom:7px;flex-wrap:wrap"><input id="t-note" placeholder="Zusammenfassung des Gesprächs → wird in die Notizen übernommen" style="flex:1;min-width:180px;padding:7px 9px;font-size:12.5px"></div><div style="height:2px"></div>
     <div class="obtns">
       <button class="ob termin" data-to="termin"><span class="d"></span>Termin vereinbart</button>
       <button class="ob rueckruf" data-to="rueckruf"><span class="d"></span>Rückruf</button>
@@ -3138,12 +3137,12 @@ function openTodo(force){
   });
   m.querySelectorAll('[data-tdl]').forEach(b=>b.addEventListener('click',()=>openModal(b.dataset.tdl)));
   m.querySelectorAll('[data-dop]').forEach(b=>b.addEventListener('click',async()=>{b.disabled=true;await doppelAntwort(b.dataset.dop,b.dataset.dopz);openTodo(true);}));
-  m.querySelectorAll('[data-tat]').forEach(b=>b.addEventListener('click',()=>{
+  m.querySelectorAll('[data-tat]').forEach(b=>b.addEventListener('click',async()=>{
     const d=state.deals.find(x=>x.id===b.dataset.tat);if(!d)return;
     const art=b.dataset.tart==='BG'?'BG':'AG';
-    const ein=prompt((art==='BG'?'Beratungstermin':'Analysetermin')+' für '+(d.name||d.org||'Kunde')+'\n\n(z. B. 25.11. 14:00 oder „morgen 10 Uhr")',' ');
-    if(ein===null||!ein.trim())return;
-    const r=terminSetzen(d,art,ein,'aus den Aufgaben');
+    const antw=await terminDialog({titel:(art==='BG'?'Beratungstermin':'Analysetermin')+' eintragen',text:(d.name||d.org||'Kunde'),mail:d.email,ohne:'Abbrechen'});
+    if(!antw)return;
+    const r=terminSetzen(d,art,antw.txt,'aus den Aufgaben');
     if(r){toast('📅 Termin eingetragen: '+r);render();updateTodoBadge();openTodo(true);}
   }));
   const tlk=m.querySelector('#td-lk');
@@ -3285,6 +3284,17 @@ async function wSetStatus(ent,wk,next){
     try{await wocheCol.doc(ent._id).update({status:next});}catch(e){toast('Speichern fehlgeschlagen');return;}
     const i=WOCHE.findIndex(x=>x._id===ent._id);
     if(i>=0)WOCHE[i].status=next;
+    // v19.11-Y: Termin steht nur als Kalender-Eintrag im Plan (der Kunde im CRM hat ein anderes oder kein Datum) → trotzdem nach dem neuen Termin fragen
+    if((next==='moved'||next==='cancelled')&&(ent.art==='AG'||ent.art==='BG')&&!/→ neu|neuer Termin offen/.test(ent.kunde||'')){
+      const d=state.deals.find(x=>x.status==='open'&&[x.name,x.org].some(n=>(n||'').trim()&&kundeGleich(n,ent.kunde)));
+      if(d){
+        const an=ent.art==='AG',grund=next==='moved'?'verschoben':'abgesagt',alt=((an?d.datumAG:d.datumBG)||'').trim();
+        const antw=await terminDialog({titel:(an?'Analysetermin':'Beratungstermin')+' '+grund,text:(d.name||d.org||'Kunde')+'. Gibt es schon einen neuen Termin? Wenn nicht, bleibt das als Aufgabe stehen, bis einer eingetragen ist.',mail:d.email});
+        if(antw){if(!antw.senden)window.__kalOhneKunde=d.id;const r=terminSetzen(d,ent.art,antw.txt,'Wochenplan, '+grund);window.__kalOhneKunde=null;if(r)toast('📅 Neuer Termin eingetragen: '+r);}
+        else{const r=terminAbsage(d,ent.art,alt,grund,'');toast('Als Aufgabe eingetragen – '+(r.wer||r.rl)+' bleibt dran, bis ein neuer Termin steht');}
+        render();try{updateTodoBadge();}catch(e){}
+      }else toast('Für „'+(ent.kunde||'')+'" gibt es noch keinen Kunden im CRM – zuerst im Wochenplan als Lead anlegen, dann kann der neue Termin verschickt werden');
+    }
   }
   renderWoche();
 }
@@ -3665,8 +3675,8 @@ function kalDaten(d,role){
     title:(an?'Analyse: ':'Beratung: ')+nm,
     det:'Tel: '+(d.telefon||'-')+(d.briefing?' | '+d.briefing:'')+' | Zugeteilt an: '+name+(mgt?' | MGT dabei: '+mgt:''),
     loc:[d.strasse,d.plz,d.ort].filter(Boolean).join(', ')||((d.notizen||'').indexOf('CENSA-Büro')>=0?'CENSA Büro, 1230 Wien':''),
-    persMail:teamMail(name),kundeMail:(d.email||'').trim(),
-    att:[(d.email||'').trim(),teamMail(name),mgt?teamMail(mgt):'',OFFICE_MAIL].filter(Boolean)};
+    persMail:teamMail(name),kundeMail:(window.__kalOhneKunde===d.id?'':(d.email||'').trim()),
+    att:[(window.__kalOhneKunde===d.id?'':(d.email||'').trim()),teamMail(name),mgt?teamMail(mgt):'',OFFICE_MAIL].filter(Boolean)};
 }
 function kalMerk(d,role,weg,res){ // weg: 'auto' (über die Verbindung gebucht) | 'tab' (nur Google-Tab geöffnet) | 'fehler'
   const K=kalDaten(d,role);
@@ -3717,28 +3727,35 @@ function kalStatusHtml(d,role){ // einzeilig (damit der Kunde auf eine Seite pas
   return `<details class="kalst"><summary>${kopf}${kurz}${kWarn}${pWarn} ${knopf}</summary><div style="margin-top:5px;color:var(--ink-2)">${lang}<br>Einladung an: ${pers} · ${kunde}${mehr?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:5px">${mehr}</div>`:''}</div></details>`;
 }
 function kalBoxNeu(d,role){const el=document.getElementById('kal-box-'+role);if(el&&editId===d.id){const offen=!!(el.querySelector('details')||{}).open;el.innerHTML=kalStatusHtml(d,role);const dt=el.querySelector('details');if(dt&&offen)dt.open=true;}}
-async function kalSenden(d,role){
+async function kalBuchen(d,role,tok){ // legt den Termin in Google an bzw. aktualisiert den vorhandenen → Google schickt die Einladungen
   const K=kalDaten(d,role);
-  if(!K.dt){toast('Bitte zuerst den Termin mit Datum und Uhrzeit speichern');return;}
-  if(!K.name){toast('Bitte zuerst '+(K.an?'einen Analysten':'einen Berater')+' zuteilen und speichern');return;}
+  if(!K.dt)return {ok:false,grund:'kein Termin'};
+  if(!K.att.length)return {ok:false,grund:'keine E-Mail'};
   const k=(d.kal||{})[role];
-  if(!(k&&k.evId)&&!confirm('Bitte vorher kurz im Google-Kalender nachsehen: Steht der Termin dort schon, entsteht ein zweiter Eintrag und der Kunde bekommt eine zweite Einladung.\n\nJetzt eintragen und einladen?'))return;
-  if(!K.kundeMail&&!confirm('Beim Kunden ist KEINE E-Mail hinterlegt – er bekommt keine Einladung.\n\nNur für '+K.name+' eintragen?'))return;
-  let tok;try{tok=await gcalToken();}catch(e){toast('Google ist auf diesem Gerät nicht verbunden: '+(e&&e.message||'bitte „Google auf diesem Gerät verbinden" tippen'));return;}
   const end=new Date(K.dt.getTime()+60*60000);
   const body={summary:K.title,description:K.det,location:K.loc,start:{dateTime:K.dt.toISOString(),timeZone:'Europe/Vienna'},end:{dateTime:end.toISOString(),timeZone:'Europe/Vienna'},attendees:K.att.map(e=>({email:e})),reminders:{useDefault:true}};
   try{
     let r=null;
-    if(k&&k.evId){ // vorhandenen Eintrag aktualisieren statt verdoppeln
+    if(k&&k.evId){
       r=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events/'+encodeURIComponent(k.evId)+'?sendUpdates=all',{method:'PATCH',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify(body)});
       if(r.status===404||r.status===410)r=null; // liegt in einem anderen Google-Konto oder wurde gelöscht → neu anlegen
     }
     if(!r)r=await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify(body)});
-    if(!r.ok){kalMerk(d,role,'fehler');toast('📅 Eintragen fehlgeschlagen ('+r.status+') – bitte Google neu verbinden und noch einmal versuchen');return;}
+    if(!r.ok){kalMerk(d,role,'fehler');return {ok:false,grund:'Google meldet Fehler '+r.status};}
     let j={};try{j=await r.json();}catch(e){}
     kalMerk(d,role,'auto',{id:j.id||'',link:j.htmlLink||''});
-    toast('📅 Eingetragen ✓ – Einladung an '+K.name+(K.kundeMail?' und den Kunden ('+K.kundeMail+')':' (Kunde ohne E-Mail: keine Einladung)'));
-  }catch(e){toast('📅 Eintragen fehlgeschlagen – keine Verbindung zu Google');}
+    return {ok:true,K};
+  }catch(e){return {ok:false,grund:'keine Verbindung zu Google'};}
+}
+function kalAnWen(K){return [K.kundeMail?'Kunde ('+K.kundeMail+')':'',K.name?K.name+(K.persMail?'':' – ohne E-Mail im Team, bekommt nichts'):''].filter(Boolean).join(' und ');}
+async function kalSenden(d,role){ // Knopf „Termin neu verschicken"
+  const K=kalDaten(d,role);
+  if(!K.dt){toast('Bitte zuerst den Termin mit Datum und Uhrzeit speichern');return;}
+  if(!K.kundeMail&&!K.persMail){toast('Niemand zum Einladen: Beim Kunden ist keine E-Mail eingetragen'+(K.name?' und '+K.name+' hat keine E-Mail im Team':' und es ist noch niemand zugeteilt'));return;}
+  if(!confirm((K.an?'Analysetermin':'Beratungstermin')+' am '+K.termTxt+' neu verschicken?\n\nEinladung an: '+kalAnWen(K)+(K.kundeMail?'':'\n\nACHTUNG: Beim Kunden ist keine E-Mail eingetragen – er bekommt nichts.')))return;
+  let tok;try{tok=await gcalToken();}catch(e){toast('Google ist auf diesem Gerät nicht verbunden: '+(e&&e.message||'bitte „Google auf diesem Gerät verbinden" tippen'));return;}
+  const r=await kalBuchen(d,role,tok);
+  toast(r.ok?('📨 Termin verschickt an '+kalAnWen(K)):('📨 Verschicken fehlgeschlagen ('+r.grund+') – bitte Google neu verbinden und noch einmal versuchen'));
 }
 async function kalPruefen(d,role){
   const k=(d.kal||{})[role];
@@ -3872,15 +3889,14 @@ function zuordDirekt(d,role){
   }
   const haveTok=!!__gcalTok&&Date.now()<__gcalExp-60000;
   if(GCAL_CLIENT_ID&&haveTok){
-    gcalInsert(title,dt,60,det,loc,att).then(ok=>{
-      kalMerk(d,role,ok?'auto':'fehler',ok||null);
-      if(ok)toast('📅 Termin gebucht – Einladung an '+name+((d.email||'').trim()?' und den Kunden ('+d.email+')':'. ACHTUNG: Beim Kunden ist keine E-Mail hinterlegt, er bekommt keine Einladung'));
-      else toast('📅 Kalender-Buchung fehlgeschlagen – im Kunden beim Termin auf „Jetzt sicher eintragen" tippen');
+    kalBuchen(d,role,__gcalTok).then(r=>{
+      if(r.ok)toast('📅 Termin verschickt – Einladung an '+name+((d.email||'').trim()?' und den Kunden ('+d.email+')':'. ACHTUNG: Beim Kunden ist keine E-Mail hinterlegt, er bekommt keine Einladung'));
+      else toast('📅 Kalender-Einladung fehlgeschlagen – im Kunden auf „Termin neu verschicken" tippen');
     });
   }else{
     const w=window.open(calGoogle(title,dt,det,loc,att),'_blank'); // synchron in der Klick-Geste (Popup-Blocker!)
     kalMerk(d,role,w?'tab':'fehler');
-    setTimeout(()=>toast(w?'📅 Nur der Google-Tab wurde geöffnet – dort auf „Speichern" UND „Senden" tippen, sonst bekommt niemand etwas. Sicherer: im Kunden beim Termin „Jetzt sicher eintragen"':'📅 Popup geblockt – im Kunden beim Termin auf „Jetzt sicher eintragen" tippen'),80);
+    setTimeout(()=>toast(w?'📅 Nur der Google-Tab wurde geöffnet – dort auf „Speichern" UND „Senden" tippen, sonst bekommt niemand etwas. Sicherer: im Kunden „Termin neu verschicken"':'📅 Popup geblockt – im Kunden auf „Termin neu verschicken" tippen'),80);
   }
   chatSys('👤 '+typ+' FIX zugeordnet: '+nm+' → '+name+' ('+termTxt+')'+((GCAL_CLIENT_ID&&haveTok)?' – Kalender-Einladung wird gebucht':' – ⚠ Kalender NICHT automatisch gebucht (Google war nicht verbunden)')+', kein Annehmen nötig',d);
 }
@@ -5021,7 +5037,7 @@ function udoc(type){
       <li><b>Einmal terminisiert, bleibt der Kunde beim Telefonisten.</b> Er wird bei Listen-Übergaben nicht neu verteilt.</li></ul></div>
 
     <div class="zg"><h4>6 · Wenn du telefonierst${ich('telefon')}</h4><div class="mt">Reiter „Telefon" · Ziel jedes Anrufs: ein Analysetermin</div><ul>
-      <li>Vor dem Anruf das <b>Briefing</b> im Kunden lesen.</li>
+      <li>Vor dem Anruf die <b>Notizen</b> im Kunden lesen.</li>
       <li>Nach jedem Anruf <b>genau ein Ergebnis</b> klicken: „Termin vereinbart", „Rückruf", „Nicht erreicht" oder „Kein Interesse".</li>
       <li><b>Termin vereinbart:</b> Datum und Uhrzeit sind Pflicht. Prüfe Name, Firma, Telefonnummer und Adresse. Wer den Termin wahrnimmt, teilt die Führungskraft am Abend zu.</li>
       <li><b>Rückruf:</b> Wiedervorlage-Datum eintragen, sonst geht der Kunde unter.</li>
@@ -5563,9 +5579,50 @@ function terminSetzen(d,art,txt,quelle){ // neuen Termin eintragen (einheitliche
   const wer=(d[rolle]||'').trim();
   chatSys('📅 '+(an?'Analysetermin':'Beratungstermin')+' '+(alt?'GEÄNDERT (war '+alt+')':'gesetzt')+': '+(d.name||d.org||'—')+' – '+n.txt+(wer?'':' · Zuordnung über die Tages-Dispo'),d,alt?(wer||null):null);
   if(wer&&!externCal(d,rolle))zuordDirekt(d,rolle); // neue Kalender-Einladung + Telegram an die zugeteilte Person (und die MGT-Begleitung)
-  else{const mg=mgtVon(d,an?'AG':'BG');if(mg)tgInfo(mg,'🤝 CENSA – du bist als MGT dabei: '+(an?'ANALYSE':'BERATUNG')+' '+(d.name||d.org||'—')+'\nNeuer Termin: '+n.txt+(wer?'':'\n(noch niemand zugeteilt)'));}
+  else{const mg=mgtVon(d,an?'AG':'BG');if(mg)tgInfo(mg,'🤝 CENSA – du bist als MGT dabei: '+(an?'ANALYSE':'BERATUNG')+' '+(d.name||d.org||'—')+'\nNeuer Termin: '+n.txt+(wer?'':'\n(noch niemand zugeteilt)'));
+    if(!wer&&(d.email||'').trim()&&GCAL_CLIENT_ID&&gcalVerbunden())kalBuchen(d,rolle,__gcalTok).then(r=>{if(r.ok)toast('📨 Neuer Termin an den Kunden ('+d.email+') verschickt');}); // v19.11-Y
+  }
   d.upd=new Date().toISOString();dbPersist(d);
   return n.txt;
+}
+/* v19.11-Y (Melanies Meldung 25.11., Fall Rodic: „verschoben geklickt, aber es kam kein Fenster"): Die Abfrage des neuen
+   Termins lief über das Browser-Fenster prompt() – das wird am iPad/Handy teils unterdrückt. Jetzt ein eigenes Fenster im CRM.
+   Steht beim Kunden eine E-Mail, bekommt er den neuen Termin direkt per Kalender-Einladung (Haken ist vorausgewählt). */
+function terminDialog(o){ // → Promise<{txt, senden} | null>   (null = kein neuer Termin / abgebrochen)
+  return new Promise(res=>{
+    const alt=document.getElementById('tdlg');if(alt)alt.remove();
+    const w=document.createElement('div');w.id='tdlg';
+    w.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(15,20,30,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+    const mail=(o.mail||'').trim();
+    w.innerHTML=`<div style="background:var(--surface);color:var(--ink);border-radius:16px;max-width:440px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.35)">
+      <div style="font-size:17px;font-weight:800;margin-bottom:4px">${esc(o.titel||'Neuer Termin')}</div>
+      <div style="font-size:13px;color:var(--ink-2);margin-bottom:12px;line-height:1.45">${esc(o.text||'')}</div>
+      <label style="font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)">Neuer Termin mit Uhrzeit</label>
+      <input id="tdlg-in" placeholder="z. B. 27.11. 14:00 oder morgen 10 Uhr" autocomplete="off" style="width:100%;margin:4px 0 4px;padding:11px 12px;font-size:16px">
+      <div id="tdlg-err" style="font-size:12.5px;color:var(--bad);min-height:18px"></div>
+      ${mail?`<label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin:6px 0 2px;cursor:pointer"><input type="checkbox" id="tdlg-send" checked style="width:auto;margin-top:2px"> <span>Kunde bekommt den neuen Termin sofort per Kalender-Einladung<br><span style="color:var(--ink-3)">${esc(mail)}</span></span></label>`:`<div style="font-size:12.5px;color:var(--warn);margin:6px 0 2px">Beim Kunden ist keine E-Mail eingetragen – er bekommt keine Einladung.</div>`}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+        <button type="button" class="btn pri" id="tdlg-ok">Neuen Termin speichern</button>
+        <button type="button" class="btn" id="tdlg-no">${esc(o.ohne||'Noch kein neuer Termin')}</button>
+      </div></div>`;
+    document.body.appendChild(w);
+    const inp=w.querySelector('#tdlg-in'),err=w.querySelector('#tdlg-err');
+    const zu=v=>{w.remove();res(v);};
+    const ok=()=>{
+      const n=terminNorm(inp.value);
+      if(!n){err.textContent='Datum nicht erkannt – bitte z. B. so: 27.11. 14:00';inp.focus();return;}
+      if(!n.zeit){err.textContent='Bitte auch die Uhrzeit angeben, z. B. '+n.txt+' 14:00';inp.focus();return;}
+      const cb=w.querySelector('#tdlg-send'),senden=!!(cb&&cb.checked);
+      // Google-Anmeldung MUSS direkt im Klick starten (sonst blockt der Browser das Fenster) – nur nötig, wenn noch nicht verbunden
+      const fertig=()=>zu({txt:n.txt,senden});
+      if(senden&&GCAL_CLIENT_ID&&!gcalVerbunden()){gcalToken().then(fertig,()=>{toast('Google nicht verbunden – der Termin wird gespeichert, die Einladung bitte danach über „Termin neu verschicken" senden');fertig();});}
+      else fertig();
+    };
+    w.querySelector('#tdlg-ok').addEventListener('click',ok);
+    w.querySelector('#tdlg-no').addEventListener('click',()=>zu(null));
+    inp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();ok();}});
+    setTimeout(()=>{try{inp.focus();}catch(e){}},60);
+  });
 }
 async function wTerminNachfrage(ent,wk,next){ // direkt nach dem Klick im Wochenplan
   if(!ent.auto||ent.mitschau||!next)return;
@@ -5575,14 +5632,8 @@ async function wTerminNachfrage(ent,wk,next){ // direkt nach dem Klick im Wochen
   if(next==='moved'||next==='cancelled'){
     const grund=next==='moved'?'verschoben':'abgesagt';
     const alt=((an?d.datumAG:d.datumBG)||'').trim();
-    let neu=null;
-    for(let i=0;i<3;i++){ // bis zu 3 Versuche, falls das Datum nicht erkannt wird
-      const ein=prompt((an?'Analysetermin':'Beratungstermin')+' von '+nm+' '+grund+'.\n\nNeuer Termin? (z. B. 25.11. 14:00 oder „morgen 10 Uhr")\n\nLeer lassen, wenn noch kein neuer Termin feststeht – dann bleibt das als Aufgabe stehen.',' ');
-      if(ein===null||!ein.trim())break;
-      const n=terminNorm(ein);
-      if(n&&n.zeit){neu=n.txt;break;}
-      alert(n?'Bitte auch die Uhrzeit angeben, z. B. '+n.txt+' 14:00':'Datum nicht erkannt – bitte z. B. so: 25.11. 14:00');
-    }
+    const antw=await terminDialog({titel:(an?'Analysetermin':'Beratungstermin')+' '+grund,text:nm+(alt?' · bisher '+alt:'')+'. Gibt es schon einen neuen Termin? Wenn nicht, bleibt das als Aufgabe stehen, bis einer eingetragen ist.',mail:d.email});
+    const neu=antw?antw.txt:null;
     // alter Termin bleibt als Eintrag mit Status im Wochenplan stehen (für das Wochengespräch), der Kunde bekommt den neuen
     try{
       const rid='w'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -5593,7 +5644,8 @@ async function wTerminNachfrage(ent,wk,next){ // direkt nach dem Klick im Wochen
     }catch(e){}
     if(neu){
       d.notizen=((an?'AG ':'BG ')+grund.toUpperCase()+' (war '+(alt||'—')+') am '+todayStr().split('-').reverse().join('.')+' → neu '+neu+' | '+(d.notizen||''));
-      terminSetzen(d,ent.art,neu,'Wochenplan, '+grund);
+      if(antw&&!antw.senden)window.__kalOhneKunde=d.id; // Haken entfernt → Kunde wird diesmal nicht eingeladen
+      terminSetzen(d,ent.art,neu,'Wochenplan, '+grund);window.__kalOhneKunde=null;
       toast('📅 Neuer Termin eingetragen: '+neu);
     }else{
       const r=terminAbsage(d,ent.art,alt,grund,'');
@@ -5605,14 +5657,8 @@ async function wTerminNachfrage(ent,wk,next){ // direkt nach dem Klick im Wochen
     let ch=false;
     if(STAGES.indexOf(d.stage)<3){d.stage='Analyse & Doku';histAdd(d,'Analyse durchgeführt (im Wochenplan bestätigt)');ch=true;}
     if(!(d.datumBG||'').trim()&&!wvZukunft(d)){
-      let neu=null;
-      for(let i=0;i<3;i++){
-        const ein=prompt('Analyse bei '+nm+' durchgeführt ✔\n\nIst der BERATUNGS-Termin schon ausgemacht? (z. B. 02.12. 10:00)\n\nLeer lassen, wenn er noch offen ist – dann bleibt das als Aufgabe stehen.',' ');
-        if(ein===null||!ein.trim())break;
-        const n=terminNorm(ein);
-        if(n&&n.zeit){neu=n.txt;break;}
-        alert(n?'Bitte auch die Uhrzeit angeben, z. B. '+n.txt+' 10:00':'Datum nicht erkannt – bitte z. B. so: 02.12. 10:00');
-      }
+      const antw=await terminDialog({titel:'Analyse durchgeführt ✔',text:nm+': Ist der Beratungstermin schon ausgemacht? Wenn nicht, bleibt das als Aufgabe stehen.',mail:d.email,ohne:'Beratungstermin noch offen'});
+      const neu=antw?antw.txt:null;
       if(neu){terminSetzen(d,'BG',neu,'nach der Analyse im Wochenplan');toast('📅 Beratungstermin eingetragen: '+neu);ch=false;}
       else{d.bgOffen={seit:new Date().toISOString()};ch=true;toast('Als Aufgabe eingetragen: Beratungstermin für '+nm+' fehlt noch');}
     }
@@ -5736,8 +5782,12 @@ function openModal(id){
       <div class="fld tb tb-tel"><label>Wiedervorlage</label><input type="date" id="m-wv" value="${esc(d.wiedervorlage)}"></div>
       <div class="fld tb tb-tel tb-an"><label>Analysetermin (AG)</label><input id="m-dag" value="${esc(d.datumAG||'')}" placeholder="z. B. 22.09. 14:00" title="Beliebig tippen (22.9. 14 · morgen 10 Uhr · 22/9/26 14:30) – gespeichert wird einheitlich TT.MM.JJJJ HH:MM"></div>
       <div class="fld tb tb-an tb-be"><label>Beratungstermin (BG)</label><input id="m-dbg" value="${esc(d.datumBG||'')}" placeholder="z. B. 25.09. 10:00" title="Beliebig tippen (25.9. 10 · morgen 10 Uhr) – gespeichert wird einheitlich TT.MM.JJJJ HH:MM"></div>
-      ${kalStatusHtml(d,'analyst')?`<div class="fld full tb tb-tel tb-an" id="kal-box-analyst" style="margin-bottom:4px">${kalStatusHtml(d,'analyst')}</div>`:''}
-      ${kalStatusHtml(d,'berater')?`<div class="fld full tb tb-be" id="kal-box-berater" style="margin-bottom:4px">${kalStatusHtml(d,'berater')}</div>`:''}
+      ${(!isNew&&(parseTermin(d.datumAG)||parseTermin(d.datumBG)))?`<div class="fld full tb tb-tel tb-an tb-be"><label title="Schickt die Kalender-Einladung noch einmal an den Kunden (wenn seine E-Mail eingetragen ist) und an die zugeteilte Person. Ein vorhandener Kalender-Eintrag wird aktualisiert, nicht verdoppelt.">Termin neu verschicken</label>
+        <div style="display:flex;gap:7px;flex-wrap:wrap">
+          ${parseTermin(d.datumAG)?`<button type="button" class="mini-btn tb tb-tel tb-an" data-kal="senden" data-kalrole="analyst" data-kalid="${esc(d.id)}">📨 AG-Termin neu verschicken</button>`:''}
+          ${parseTermin(d.datumBG)?`<button type="button" class="mini-btn tb tb-an tb-be" data-kal="senden" data-kalrole="berater" data-kalid="${esc(d.id)}">📨 BG-Termin neu verschicken</button>`:''}
+        </div>
+      </div>`:''}
       <div class="fld full tb tb-an tb-be"><label title="Setzt den Termin auf „verschoben": einfach neu terminisieren, zuordnen und bestätigen – Kunde und Analyst/Berater bekommen den neuen Termin automatisch per Kalender-Einladung">Termin verschoben? <span style="font-weight:500;color:var(--ink-3);text-transform:none">— danach neu terminisieren</span></label>
         <div style="display:flex;gap:7px;flex-wrap:wrap">
           <button type="button" class="mini-btn" id="cal-ag-x" style="color:var(--bad)" title="Analysetermin abgesagt oder verschoben">❗ AG verschoben</button>
@@ -5807,7 +5857,6 @@ function openModal(id){
       </details>
     </div>
     <div class="lnotes">
-      <div class="fld full tb tb-tel tb-an"><label>Briefing für den Analysten <span style="font-weight:500;color:var(--ink-3)">— Branche, jung/alt, Alleinentscheider, was wurde besprochen</span></label><textarea id="m-brief" rows="2" placeholder="Branche, jung/alt, Alleinentscheider, was wurde besprochen">${esc(d.briefing||'')}</textarea></div>
       <div class="fld full tb tb-tel" id="nb-tel">${notesBlockHtml(d,'tel')}</div>
       <div class="fld full tb tb-an" id="nb-an">${notesBlockHtml(d,'an')}</div>
       <div class="fld full tb tb-be" id="nb-be">${notesBlockHtml(d,'be')}</div>
@@ -5963,7 +6012,7 @@ function openModal(id){
     betLesen();
     const gpEl=m.querySelector('#m-gp');if(gpEl)d.gp=gpEl.checked;
     const potEl=m.querySelector('#m-pot');if(potEl)d.potenzial=potEl.value;
-    d.briefing=m.querySelector('#m-brief').value;
+    {const bfE=m.querySelector('#m-brief');if(bfE)d.briefing=bfE.value;} // Feld entfernt (v19.11-Y) – vorhandene Inhalte bleiben gespeichert
     d.umsatz=m.querySelector('#m-umsatz').value;d.gewinn=m.querySelector('#m-gewinn').value;d.anlage=m.querySelector('#m-anlage').value;
     const saEl=m.querySelector('#m-sach');if(saEl)d.sachanlage=saEl.value;const faEl=m.querySelector('#m-finanz');if(faEl)d.finanzanlage=faEl.value;
     const sc=sp.querySelector('.stg.on');d.stage=sc?sc.dataset.s:d.stage;
