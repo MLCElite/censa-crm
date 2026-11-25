@@ -562,7 +562,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-Z";
+const APP_VERSION="19.11-Z2";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -3510,7 +3510,7 @@ function astSubject(d){ // Betreff lt. Vorlage: „Auskunftsvollmacht Fam./Herr/
 /* v19.11-Z (Melanies Ansage 25.11.): Scannen wie „Dokumente scannen" am iPhone – das Blatt wird im Kamerabild erkannt,
    zugeschnitten, entzerrt (auch schräg fotografiert) und aufgehellt; am Ende entsteht EIN PDF. Alles läuft im Browser.
    docDetect: helles Blatt vor dunklerem Untergrund finden → 4 Ecken. docWarp: Perspektive geradeziehen. docHell: Papier weiß. */
-function docDetect(src){
+function docDetect(src){ // v19.11-Z2: robuster – der Untergrund wird vom Bildrand her „weggeflutet"; dunkle Kästen/Tabellen IM Blatt stören nicht mehr
   const W0=src.videoWidth||src.naturalWidth||src.width,H0=src.videoHeight||src.naturalHeight||src.height;
   if(!W0||!H0)return null;
   const w=Math.min(240,W0),sc=w/W0,h=Math.max(8,Math.round(H0*sc)),n=w*h;
@@ -3520,30 +3520,41 @@ function docDetect(src){
   const px=cx.getImageData(0,0,w,h).data,g=new Uint8Array(n),bl=new Uint8Array(n);
   for(let i=0;i<n;i++)g[i]=(px[i*4]*77+px[i*4+1]*150+px[i*4+2]*29)>>8;
   for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){const i=y*w+x;bl[i]=(g[i-w-1]+g[i-w]+g[i-w+1]+g[i-1]+g[i]+g[i+1]+g[i+w-1]+g[i+w]+g[i+w+1])/9;}
-  const hist=new Uint32Array(256);for(let i=0;i<n;i++)hist[bl[i]]++;
-  let sum=0;for(let t=0;t<256;t++)sum+=t*hist[t];
+  const hist=new Uint32Array(256);for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++)hist[bl[y*w+x]]++;
+  const nn=(w-2)*(h-2);let sum=0;for(let t=0;t<256;t++)sum+=t*hist[t];
   let sB=0,wB=0,mx=0,thr=127,mDunkel=0,mHell=255;
-  for(let t=0;t<256;t++){wB+=hist[t];if(!wB)continue;const wF=n-wB;if(!wF)break;sB+=t*hist[t];const mB=sB/wB,mF=(sum-sB)/wF,v=wB*wF*(mB-mF)*(mB-mF);if(v>mx){mx=v;thr=t;mDunkel=mB;mHell=mF;}}
-  if(mHell-mDunkel<28)return null; // kein klarer Unterschied Blatt/Untergrund (z. B. weißes Blatt auf weißem Tisch)
-  const lab=new Int32Array(n),st=new Int32Array(n);let best=0,bestN=0,cur=0;
+  for(let t=0;t<256;t++){wB+=hist[t];if(!wB)continue;const wF=nn-wB;if(!wF)break;sB+=t*hist[t];const mB=sB/wB,mF=(sum-sB)/wF,v=wB*wF*(mB-mF)*(mB-mF);if(v>mx){mx=v;thr=t;mDunkel=mB;mHell=mF;}}
+  if(mHell-mDunkel<22)return null; // kein klarer Unterschied Blatt/Untergrund (z. B. weißes Blatt auf weißem Tisch)
+  // (1) Untergrund = dunkle Pixel, die vom Bildrand aus erreichbar sind (der 1-Pixel-Rand ist nach dem Weichzeichnen 0 = dunkel)
+  const aussen=new Uint8Array(n),st=new Int32Array(n);let top=0;
+  for(let x=0;x<w;x++){st[top++]=x;aussen[x]=1;const j=(h-1)*w+x;st[top++]=j;aussen[j]=1;}
+  for(let y=1;y<h-1;y++){const i=y*w;st[top++]=i;aussen[i]=1;st[top++]=i+w-1;aussen[i+w-1]=1;}
+  while(top){const i=st[--top],x=i%w;
+    if(x>0&&!aussen[i-1]&&bl[i-1]<=thr){aussen[i-1]=1;st[top++]=i-1;}
+    if(x<w-1&&!aussen[i+1]&&bl[i+1]<=thr){aussen[i+1]=1;st[top++]=i+1;}
+    if(i>=w&&!aussen[i-w]&&bl[i-w]<=thr){aussen[i-w]=1;st[top++]=i-w;}
+    if(i<n-w&&!aussen[i+w]&&bl[i+w]<=thr){aussen[i+w]=1;st[top++]=i+w;}}
+  // (2) größte zusammenhängende Fläche, die NICHT Untergrund ist = das Blatt (samt Schrift, Tabellen, Logos)
+  const lab=new Int32Array(n);let best=0,bestN=0,cur=0;
   for(let s0=0;s0<n;s0++){
-    if(lab[s0]||bl[s0]<=thr)continue;
-    cur++;let top=0,cnt=0;st[top++]=s0;lab[s0]=cur;
+    if(lab[s0]||aussen[s0])continue;
+    cur++;top=0;let cnt=0;st[top++]=s0;lab[s0]=cur;
     while(top){const i=st[--top];cnt++;const x=i%w;
-      if(x>0&&!lab[i-1]&&bl[i-1]>thr){lab[i-1]=cur;st[top++]=i-1;}
-      if(x<w-1&&!lab[i+1]&&bl[i+1]>thr){lab[i+1]=cur;st[top++]=i+1;}
-      if(i>=w&&!lab[i-w]&&bl[i-w]>thr){lab[i-w]=cur;st[top++]=i-w;}
-      if(i<n-w&&!lab[i+w]&&bl[i+w]>thr){lab[i+w]=cur;st[top++]=i+w;}}
+      if(x>0&&!lab[i-1]&&!aussen[i-1]){lab[i-1]=cur;st[top++]=i-1;}
+      if(x<w-1&&!lab[i+1]&&!aussen[i+1]){lab[i+1]=cur;st[top++]=i+1;}
+      if(i>=w&&!lab[i-w]&&!aussen[i-w]){lab[i-w]=cur;st[top++]=i-w;}
+      if(i<n-w&&!lab[i+w]&&!aussen[i+w]){lab[i+w]=cur;st[top++]=i+w;}}
     if(cnt>bestN){bestN=cnt;best=cur;}
   }
-  if(bestN<n*0.10||bestN>n*0.97)return null;
-  let tl=null,tr=null,br=null,blp=null,sMin=1e9,sMax=-1e9,dMin=1e9,dMax=-1e9;
+  if(bestN<n*0.08||bestN>n*0.96)return null;
+  let tl=null,tr=null,br=null,blp=null,sMin=1e9,sMax=-1e9,dMin=1e9,dMax=-1e9,xa=1e9,xb=-1,ya=1e9,yb=-1;
   for(let i=0;i<n;i++){if(lab[i]!==best)continue;const x=i%w,y=(i-x)/w,sm=x+y,df=x-y;
+    if(x<xa)xa=x;if(x>xb)xb=x;if(y<ya)ya=y;if(y>yb)yb=y;
     if(sm<sMin){sMin=sm;tl=[x,y];}if(sm>sMax){sMax=sm;br=[x,y];}if(df>dMax){dMax=df;tr=[x,y];}if(df<dMin){dMin=df;blp=[x,y];}}
-  const q=[tl,tr,br,blp];
+  let q=[tl,tr,br,blp];
   const fl=Math.abs((q[0][0]*q[1][1]-q[1][0]*q[0][1])+(q[1][0]*q[2][1]-q[2][0]*q[1][1])+(q[2][0]*q[3][1]-q[3][0]*q[2][1])+(q[3][0]*q[0][1]-q[0][0]*q[3][1]))/2;
-  if(fl<n*0.10)return null;
-  const fuell=bestN/fl;if(fuell<0.72||fuell>1.2)return null; // keine saubere Viereck-Form → lieber ganze Aufnahme
+  const fuell=fl>0?bestN/fl:0;
+  if(fl<n*0.08||fuell<0.72||fuell>1.2)q=[[xa,ya],[xb,ya],[xb,yb],[xa,yb]]; // keine saubere Viereck-Form (z. B. stark gedreht) → wenigstens der umschließende Rahmen
   return q.map(pt=>[Math.min(W0,Math.max(0,(pt[0]+0.5)/sc)),Math.min(H0,Math.max(0,(pt[1]+0.5)/sc))]);
 }
 function docWarp(src,quad,maxSeite){ // src: Canvas · quad: [ol, or, ur, ul] in Bildpunkten → gerade gezogenes Canvas
@@ -3626,11 +3637,11 @@ async function scansZuPdf(files){ // Scans/Fotos zu EINEM PDF bündeln; Scan-Sei
     return pdf?pdf.output('blob'):null;
   }catch(e){return null;}
 }
-function scanEcken(roh,quad){ // Ecken von Hand korrigieren (wie am iPhone) → Promise<quad | null>
+function scanEcken(roh,quad,titel){ // Ecken von Hand korrigieren (wie am iPhone) → Promise<quad | null>
   return new Promise(res=>{
     const ov=document.createElement('div');
     ov.style.cssText='position:fixed;inset:0;background:#000;z-index:10001;display:flex;flex-direction:column;touch-action:none';
-    ov.innerHTML='<div style="color:#ddd;font-size:13px;padding:10px 14px;text-align:center">Ecken auf die Ränder des Blatts ziehen</div>'
+    ov.innerHTML='<div style="color:#ddd;font-size:13px;padding:10px 14px;text-align:center">'+esc(titel||'Ecken auf die Ränder des Blatts ziehen')+'</div>'
       +'<div id="se-b" style="flex:1;min-height:0;position:relative;margin:0 14px"></div>'
       +'<div style="display:flex;gap:10px;justify-content:space-between;padding:12px 14px calc(14px + env(safe-area-inset-bottom));background:#111">'
       +'<button type="button" id="se-x" style="background:none;border:1.5px solid #666;color:#eee;border-radius:10px;padding:10px 14px;font-size:14px">Abbrechen</button>'
@@ -3676,12 +3687,13 @@ function scanOverlay(){ // 📷 Dokument-Scanner: Blatt wird live erkannt (grün
     const ov=document.createElement('div');
     ov.style.cssText='position:fixed;inset:0;background:#000;z-index:10000;display:flex;flex-direction:column';
     ov.innerHTML='<div id="sc-hint" style="color:#ddd;font-size:13px;padding:9px 14px;text-align:center;background:#111">Blatt auf einen dunkleren Untergrund legen – der grüne Rahmen zeigt, was gescannt wird</div>'
-      +'<div style="flex:1;min-height:0;position:relative"><video autoplay playsinline muted style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000"></video>'
-      +'<svg id="sc-svg" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"><polygon id="sc-poly" fill="rgba(62,198,174,.16)" stroke="#3EC6AE" stroke-width="3" points=""/></svg></div>'
+      +'<div style="flex:1;min-height:0;position:relative"><video autoplay playsinline muted style="position:absolute;left:0;top:0;width:100%;height:100%;object-fit:contain;background:#000"></video>'
+      +'<svg id="sc-svg" style="position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none"><polygon id="sc-poly" fill="rgba(62,198,174,.16)" stroke="#3EC6AE" stroke-width="3" points=""/></svg>'
+      +'<img id="sc-vor" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);max-width:70%;max-height:70%;border:3px solid #3EC6AE;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,.6);display:none;pointer-events:none"></div>'
       +'<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px calc(14px + env(safe-area-inset-bottom));background:#111">'
       +'<button type="button" id="sc-abbr" style="background:none;border:1.5px solid #666;color:#eee;border-radius:10px;padding:10px 14px;font-size:14px">✖ Abbrechen</button>'
       +'<div style="display:flex;align-items:center;gap:10px">'
-      +'<img id="sc-thumb" title="Antippen, um die Ecken der letzten Seite zu korrigieren" style="width:44px;height:58px;object-fit:cover;border-radius:6px;border:1.5px solid #3EC6AE;display:none;cursor:pointer">'
+      +'<div id="sc-thumbw" style="display:none;text-align:center;cursor:pointer"><img id="sc-thumb" style="width:52px;height:68px;object-fit:cover;border-radius:6px;border:2px solid #3EC6AE;display:block;margin:0 auto"><span style="color:#3EC6AE;font-size:10.5px;font-weight:700">Ecken ändern</span></div>'
       +'<button type="button" id="sc-shot" style="width:72px;height:72px;border-radius:50%;border:5px solid #fff;background:#e33;color:#fff;font-size:13px;font-weight:800">📷</button>'
       +'</div>'
       +'<button type="button" id="sc-ok" style="background:#0C806D;border:none;color:#fff;border-radius:10px;padding:12px 16px;font-size:14px;font-weight:800">✅ Fertig (<span id="sc-n">0</span>)</button>'
@@ -3699,29 +3711,35 @@ function scanOverlay(){ // 📷 Dokument-Scanner: Blatt wird live erkannt (grün
       let q=null;try{q=docDetect(video);}catch(e){}
       liveQ=q;const L=lage();
       poly.setAttribute('points',(q&&L)?q.map(pt=>(L.ox+pt[0]*L.k)+','+(L.oy+pt[1]*L.k)).join(' '):'');
-      hint.textContent=q?'Blatt erkannt – jetzt auslösen':'Blatt auf einen dunkleren Untergrund legen – der grüne Rahmen zeigt, was gescannt wird';
+      hint.textContent=q?'Blatt erkannt – jetzt auslösen':'Kein Blatt erkannt: dunklerer Untergrund hilft. Du kannst trotzdem auslösen und setzt die Ecken danach selbst.';
       hint.style.color=q?'#3EC6AE':'#ddd';
     },450);
     const ende=out=>{clearInterval(timer);try{stream.getTracks().forEach(t=>t.stop());}catch(e){}ov.remove();res(out);};
-    const zeige=()=>{ov.querySelector('#sc-n').textContent=pages.length;if(pages.length){th.src=pages[pages.length-1].__du;th.style.display='block';}};
+    const thw=ov.querySelector('#sc-thumbw'),vor=ov.querySelector('#sc-vor');let vorT=null;
+    const zeige=kurz=>{ov.querySelector('#sc-n').textContent=pages.length;if(!pages.length)return;
+      const du=pages[pages.length-1].__du;th.src=du;thw.style.display='block';
+      if(kurz){vor.src=du;vor.style.display='block';clearTimeout(vorT);vorT=setTimeout(()=>{vor.style.display='none';},1100);} // kurz groß zeigen, was gescannt wurde
+    };
     ov.querySelector('#sc-shot').addEventListener('click',()=>{
       if(!video.videoWidth)return;
       // SYNCHRON einfrieren – auch bei schnellem Tippen darf keine Seite verloren gehen
-      const roh=document.createElement('canvas');roh.width=video.videoWidth;roh.height=video.videoHeight;
-      roh.getContext('2d').drawImage(video,0,0);
-      let q=null;try{q=docDetect(roh)||liveQ;}catch(e){q=liveQ;}
-      const f=canvasDatei(docSeite(roh,q),'Scan '+tag+' Seite '+(pages.length+1)+'.jpg');
-      pages.push(f);letzte={roh,quad:q,i:pages.length-1};
-      zeige();
-      if(!q)toast('Blatt nicht erkannt – ganze Aufnahme übernommen. Vorschau antippen, um die Ecken zu setzen');
+      const vw=video.videoWidth,vh=video.videoHeight,kk=Math.min(1,2400/Math.max(vw,vh)); // begrenzen: schont den Speicher am Handy
+      const roh=document.createElement('canvas');roh.width=Math.round(vw*kk);roh.height=Math.round(vh*kk);
+      roh.getContext('2d').drawImage(video,0,0,roh.width,roh.height);
+      let q=null;try{q=docDetect(roh)||(liveQ?liveQ.map(pt=>[pt[0]*kk,pt[1]*kk]):null);}catch(e){q=null;}
       video.style.opacity='.25';setTimeout(()=>{video.style.opacity='1';},140); // Blitz-Feedback
+      const nimm=qq=>{const f=canvasDatei(docSeite(roh,qq),'Scan '+tag+' Seite '+(pages.length+1)+'.jpg');pages.push(f);letzte={roh,quad:qq,i:pages.length-1};zeige(true);};
+      if(q){nimm(q);return;}
+      // Blatt nicht erkannt → Ecken sofort von Hand setzen (wie am iPhone), damit trotzdem nur das Blatt im PDF landet
+      const mx=roh.width*0.06,my=roh.height*0.06;
+      scanEcken(roh,[[mx,my],[roh.width-mx,my],[roh.width-mx,roh.height-my],[mx,roh.height-my]],'Blatt nicht automatisch erkannt – bitte die vier Ecken auf die Blattränder ziehen').then(qq=>{if(qq)nimm(qq);});
     });
-    th.addEventListener('click',async()=>{ // letzte Seite: Ecken von Hand korrigieren
+    thw.addEventListener('click',async()=>{ // letzte Seite: Ecken von Hand korrigieren
       if(!letzte)return;
       const q=await scanEcken(letzte.roh,letzte.quad);if(!q)return;
       letzte.quad=q;
       pages[letzte.i]=canvasDatei(docSeite(letzte.roh,q),pages[letzte.i].name);
-      zeige();
+      zeige(true);
     });
     ov.querySelector('#sc-ok').addEventListener('click',()=>ende(pages));
     ov.querySelector('#sc-abbr').addEventListener('click',()=>{
@@ -6261,7 +6279,20 @@ function openModal(id){
       scIn.click();
     });
     fIn.addEventListener('change',()=>grab(fIn,false));
-    scIn.addEventListener('change',()=>grab(scIn,true));
+    scIn.addEventListener('change',async()=>{ // v19.11-Z2: Foto aus der normalen Kamera → Blatt erkennen, Ecken kurz bestätigen, zugeschnitten übernehmen
+      const fs2=Array.from(scIn.files||[]);scIn.value='';
+      for(const f of fs2){
+        try{
+          const roh=await bildZuCanvas(f,2400);
+          let q=null;try{q=docDetect(roh);}catch(e){}
+          const mx=roh.width*0.06,my=roh.height*0.06;
+          const qq=await scanEcken(roh,q||[[mx,my],[roh.width-mx,my],[roh.width-mx,roh.height-my],[mx,roh.height-my]],q?'Blatt erkannt – Ecken prüfen und übernehmen':'Bitte die vier Ecken auf die Blattränder ziehen');
+          scanN++;
+          selFiles.push(canvasDatei(docSeite(roh,qq||null),'Scan '+todayStr().split('-').reverse().join('.')+' Nr.'+scanN+'.jpg'));
+        }catch(e){scanN++;try{f.__scan=true;}catch(_){}selFiles.push(f);}
+      }
+      anTxt();
+    });
     anSec.querySelector('#an-rec').addEventListener('click',async e2=>{
       const b=e2.currentTarget;
       if(rec&&rec.state==='recording'){rec.stop();return;}
