@@ -562,7 +562,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.12-A";
+const APP_VERSION="19.12-B";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -798,7 +798,7 @@ function visibleDeals(){
   const hit=x=>my.includes((x||'').trim().toLowerCase());
   return state.deals.filter(d=>{
     if(d.geprueft===false)return false;
-    if(d.gp||(d.quelle||'')==='Recruiting')return false;
+    if((d.gp&&!d.gpKunde)||(d.quelle||'')==='Recruiting')return false;
     return hit(d.telefonist)||hit(d.analyst)||hit(d.berater);
   });
 }
@@ -3238,7 +3238,7 @@ function openTodo(force){
 /* ---------- Wochenplan: persönlich (auto + manuell) und Team (IVP-Format) ---------- */
 let wocheCol=null, WOCHE=[], WOCHE_WK='', __wOff=0, __wPerson='', __wTeam=false;
 const WDAYS=['Mo','Di','Mi','Do','Fr','Sa','So'];
-const WARTC={AG:'var(--firma)',BG:'var(--good)',MGT:'var(--warn)',EG:'#3A3FB0',KG:'#0E7490',TG:'#8E5BC0',PRIVAT:'#6b7280',INFO:'#64748b',WG:'#7c3aed'};
+const WARTC={AG:'var(--firma)',BG:'var(--good)',MGT:'var(--warn)',EG:'#3A3FB0',KG:'#0E7490',TG:'#8E5BC0',PRIVAT:'#6b7280',INFO:'#64748b',WG:'#7c3aed',SP:'#BE185D'};
 function wkStart(off){const t=new Date();t.setHours(0,0,0,0);const day=(t.getDay()+6)%7;t.setDate(t.getDate()-day+off*7);return t;}
 function wkKeyOf(dt){return dt.getFullYear()+'-KW'+String(isoWeek(dt)).padStart(2,'0');}
 function fmtDM(dt){return String(dt.getDate()).padStart(2,'0')+'.'+String(dt.getMonth()+1).padStart(2,'0')+'.';}
@@ -3328,9 +3328,10 @@ function wEntriesFor(person,start,wk,quelle){ // quelle: Wochenplan-Daten einer 
   });
   const man=WQ.filter(e=>e.type!=='ov'&&nameEq(e.name,person)).map(e=>{
     const o={auto:false,gcal:!!e.gcal,_id:e._id,art:e.art||'EG',tag:+e.tag||0,zeit:e.zeit||'',kunde:e.kunde||'',ort:e.ort||'',status:e.status||'',name:person};
-    if(o.gcal&&o.art==='PRIVAT'){const pa=gcalArt(o.kunde);if(pa.suffix){o.art=pa.art;o.kunde=pa.rest;}} // früher gespeicherte Einträge („Peschek BG") neu lesen
+    if(e.dealRef){o.dealRef=e.dealRef;return o;} // alter Termin eines Kunden (verschoben/abgesagt) – bleibt, wie er ist
+    if(o.gcal&&o.art==='PRIVAT'){const pa=gcalArt(o.kunde);if(pa.art!=='PRIVAT'){o.art=pa.art;o.kunde=pa.rest;}} // früher gespeicherte Einträge („Peschek BG", „Sponsoring Huber") neu lesen
     if(o.gcal&&(o.art==='AG'||o.art==='BG'||o.art==='PRIVAT')&&kalGespraech(o.kunde,person)){o.art='WG';} // v19.12-A: Wochen-/Monatsgespräch ist kein Kundentermin
-    else if(o.gcal){ // v19.11-Z3: gehört der Kalender-Eintrag zu einem Kunden, den es schon gibt? Reine Notizen („BG follow up Balint") sind kein eigener Termin
+    else if(o.gcal||o.art==='AG'||o.art==='BG'){ // v19.11-Z3: gehört der Eintrag (Kalender oder von Hand) zu einem Kunden, den es schon gibt? Reine Notizen („BG follow up Balint") sind kein eigener Termin
       const info=kalInfo(o.kunde);
       if(info&&(o.art==='AG'||o.art==='BG')){o.kArt=o.art;o.art='INFO';}
       if(o.art==='AG'||o.art==='BG'||o.art==='INFO'||(info&&o.art==='PRIVAT')){
@@ -3357,7 +3358,7 @@ function kalLead(o,start,wk,person){ // bestehender Kunde zu einem Kalender-Eint
   const hm=(o.zeit||'').split(':').map(Number);
   const dt=new Date(start.getFullYear(),start.getMonth(),start.getDate()+(+o.tag||0),isNaN(hm[0])?9:hm[0],hm[1]||0);
   let d=null;
-  try{d=leadFuerKalender({id:kalEvId(o._id,wk,person),summary:o.kunde,location:o.ort||'',description:''},o.kunde,dt,state.deals,person).d||null;}catch(e){}
+  try{d=leadFuerKalender({id:kalEvId(o._id,wk,person),summary:o.kunde,location:o.ort||'',description:''},o.kunde,dt,kundenBasis(),person).d||null;}catch(e){}
   __kalLeadC.m.set(key,d);return d;
 }
 function wKalLeadLine(e){ // Kalender-Eintrag gehört zu einem bestehenden Kunden → statt „Lead anlegen" den Kunden zeigen
@@ -3375,13 +3376,13 @@ function wDedupe(list){ // derselbe Termin aus Lead UND Google-Kalender (oder zw
   const autos=list.filter(e=>e.auto);
   const out=[];
   list.forEach(e=>{
-    if(e.gcal){
-      // (1) Kalender-Eintrag gehört zu einem Lead, der am selben Tag schon im Plan steht
+    if(e.gcal||(!e.auto&&!e.dealRef&&(e.art==='AG'||e.art==='BG'))){
+      // (1) Kalender-Eintrag (oder von Hand eingetragener AG/BG) gehört zu einem Lead, der am selben Tag schon im Plan steht
       const kn=kalName(e.kunde);
       if(autos.some(a=>{if(a.tag!==e.tag)return false;if(e.leadId&&a.dealId===e.leadId)return true;const d=dealOf(a),g=gid(d);
         return (g&&(e._id||'').indexOf(g)>=0)||namen(a).some(n=>kundeGleich(n,e.kunde)||(kn&&kundeGleich(n,kn)));}))return;
       // (2) derselbe Termin steht zweimal im Kalender (z. B. eigener Eintrag + Einladung)
-      if(out.some(o=>o.gcal&&o.tag===e.tag&&o.zeit===e.zeit&&kundeGleich(o.kunde,e.kunde)))return;
+      if(e.gcal&&out.some(o=>o.gcal&&o.tag===e.tag&&o.zeit===e.zeit&&kundeGleich(o.kunde,e.kunde)))return;
     }else if(e.auto&&!e.mgt&&!e.mitschau){
       // (3) zwei Leads für denselben Kunden (Doppel-Lead) mit identischem Termin
       if(out.some(o=>o.auto&&!o.mgt&&!o.mitschau&&o.dealId!==e.dealId&&o.art===e.art&&o.tag===e.tag&&o.zeit===e.zeit&&namen(o).some(n=>namen(e).some(n2=>kundeGleich(n,n2)))))return;
@@ -4297,8 +4298,11 @@ function leadFuerKalender(ev,kunde,dt,deals,person){
 }
 function gcalArt(title){
   const t=(title||'').trim();
-  const m=t.match(/^(AG|BG|MGT|EG|KG|TG|PRIVAT)\b[\s:\-–]*/i);
+  const m=t.match(/^(AG|BG|MGT|EG|KG|TG|SP|PRIVAT)\b[\s:\-–]*/i);
   if(m)return {art:m[1].toUpperCase(),rest:t.slice(m[0].length).trim()};
+  // v19.12-B: ausgeschrieben – Einstellungsgespräch = EG, Kooperation = KG, Tippgeber = TG, Sponsoring = SP
+  const mw=t.match(/^(einstellungsgespr(?:ä|ae)ch|kooperationsgespr(?:ä|ae)ch|kooperation|koop|tippgeber|sponsoring|sponsor)(?![a-zäöüß])[\s:\-–]*/i);
+  if(mw){const w=mw[1].toLowerCase();return {art:w[0]==='e'?'EG':w[0]==='k'?'KG':w[0]==='t'?'TG':'SP',rest:t.slice(mw[0].length).trim()};}
   // v18.11-D (Melanies Ansage 18.11.): Kürzel darf auch HINTEN stehen – „Peschek BG", „Peschek – AG", „Peschek (BG)"
   const m2=t.match(/^(.*[^\s:\-–,(\/])[\s:\-–,(\/]+(AG|BG)\)?\s*$/i);
   if(m2&&m2[1].trim().length>=2)return {art:m2[2].toUpperCase(),rest:m2[1].trim(),suffix:true};
@@ -4319,9 +4323,10 @@ async function wLeadAusKalender(ent,start,wk){
   if(suf&&evId.endsWith(suf))evId=evId.slice(0,-suf.length);
   const loc=(ent.ort||'').trim();
   const feld=art==='BG'?'datumBG':'datumAG',rolle=art==='BG'?'berater':'analyst';
-  const fund=leadFuerKalender({id:evId,summary:kunde,location:loc,description:''},kunde,dt,state.deals,person);
+  const fund=leadFuerKalender({id:evId,summary:kunde,location:loc,description:''},kunde,dt,kundenBasis(),person);
   if(fund.d){ // Kunde gibt es schon → nichts doppelt anlegen
     const m=fund.d;
+    if(art==='AG'&&gpZuKunde(m,art,ts,person))dbPersist(m);
     if(m.status==='open'&&!(m[feld]||'').trim()){
       m[feld]=ts;if(!(m[rolle]||'').trim())m[rolle]=person;if(!m.gcalId&&evId)m.gcalId=evId;
       terminStage(m);histAdd(m,'Termin aus dem Google-Kalender von '+person+' übernommen: '+art+' '+ts);
@@ -4333,7 +4338,7 @@ async function wLeadAusKalender(ent,start,wk){
   }
   if(fund.aehnlich.length&&!confirm('Ein ähnlicher Kunde ist schon angelegt:\n\n• '+fund.aehnlich.join('\n• ')+'\n\n„'+kunde+'" trotzdem als NEUEN Lead anlegen?\n\n(Abbrechen = nichts anlegen)'))return;
   const d=blank();
-  d.name=kunde;d.gcalId=evId;d.quelle='Google Kalender';
+  d.name=kunde;d.gcalId=ent.gcal?evId:'';d.quelle=ent.gcal?'Google Kalender':'Wochenplan';
   if(/gesmbh|gmbh|ges\.m\.b\.h/i.test(kunde)){d.kundentyp='GmbH';d.org=kunde;}
   if(loc){if(loc.length<=60)d.ort=loc;const pm=/\b([1-9]\d{3})\b/.exec(loc);if(pm){d.plz=pm[1];d.bezirk=bezFromPLZ(pm[1]);}}
   d[feld]=ts;d[rolle]=person;
@@ -4411,7 +4416,7 @@ async function gcalLeadImport(tok,person){
   const items=(await r.json()).items||[];
   const privat=/\b(privat|urlaub|frei|arzt|zahnarzt|friseur|geburtstag|feiertag|essen|mittag|training|schule|kinder|team|meeting|büro|buero|jour)\b/i;
   const norm=s=>(s||'').toLowerCase().replace(/gesmbh|gmbh|ges\.m\.b\.h\.?|& ?co ?kg|e\.u\./g,'').replace(/[^a-z0-9äöüß]/g,'').slice(0,30);
-  const neu=[],upd=[],verknuepft=[];
+  const neu=[],upd=[],verknuepft=[],gpNeu=[];
   items.forEach(ev=>{
     if(!ev||ev.status==='cancelled'||!(ev.start&&ev.start.dateTime))return;
     const t=(ev.summary||'').trim();
@@ -4420,6 +4425,11 @@ async function gcalLeadImport(tok,person){
     if(kalInfo(t))return; // v19.11-Z3: „BG follow up Balint", „Info …", „Rückruf …" = Notiz zum Kunden, daraus wird nie ein neuer Lead/Termin
     const pa=gcalArt(t);let art=pa.art,kunde=pa.rest;
     if(art==='PRIVAT'){if(!(ev.location||'').trim()||privat.test(t))return;art='AG';kunde=t;}
+    if(GP_ART[art]){ // v19.12-B: Einstellungsgespräch, Kooperation, Tippgeber, Sponsoring → GP-Liste statt Kunden-Lead
+      const rg=gpAusTermin(person,art,kunde,new Date(ev.start.dateTime),ev.id,(ev.location||'').trim());
+      if(rg&&!rg.gleich){if(rg.neu){state.deals.push(rg.d);gpNeu.push(rg.d);}else if(!upd.includes(rg.d)&&!gpNeu.includes(rg.d))upd.push(rg.d);}
+      return;
+    }
     if(art!=='AG'&&art!=='BG')return;
     kunde=(kunde||'').trim();
     const key=norm(kunde);
@@ -4428,10 +4438,11 @@ async function gcalLeadImport(tok,person){
     const ts=calPad(dt.getDate())+'.'+calPad(dt.getMonth()+1)+'.'+dt.getFullYear()+' '+calPad(dt.getHours())+':'+calPad(dt.getMinutes());
     const loc=(ev.location||'').trim();
     // 🔎 Kunde schon vorhanden? → KEIN zweiter Lead; Termin + Kalender-Verknüpfung beim bestehenden Kunden ergänzen
-    const fund=leadFuerKalender(ev,kunde,dt,state.deals.concat(neu),person);
+    const fund=leadFuerKalender(ev,kunde,dt,kundenBasis().concat(neu),person);
     if(fund.d){
       const m=fund.d;if(neu.includes(m))return;
       let ch=false;
+      if(art==='AG'&&gpZuKunde(m,art,ts,person))ch=true;
       if(!m.gcalId){m.gcalId=ev.id;ch=true;}
       if(m.status==='open'){
         const feld=art==='BG'?'datumBG':'datumAG',rolle=art==='BG'?'berater':'analyst';
@@ -4445,6 +4456,7 @@ async function gcalLeadImport(tok,person){
       if(ch&&!upd.includes(m))upd.push(m);
       return;
     }
+    if(art==='BG')return; // v19.12-B: zu einer Beratung muss es den Kunden schon geben – daraus wird nie automatisch ein Lead (steht im Kalender-Check)
     const d=blank();
     d.name=kunde;d.gcalId=ev.id;d.quelle='Google Kalender';
     if(/gesmbh|gmbh|ges\.m\.b\.h/i.test(kunde)){d.kundentyp='GmbH';d.org=kunde;}
@@ -4458,6 +4470,9 @@ async function gcalLeadImport(tok,person){
   if(upd.length){
     if(await dbPersistMany(upd))verknuepft.forEach(v=>chatSys('📅 Termin aus dem Google-Kalender von '+person+' beim bestehenden Kunden eingetragen: '+(v.d.name||v.d.org||'—')+' – '+v.txt+' (kein neuer Lead angelegt)',v.d));
   }
+  if(gpNeu.length){
+    if(await dbPersistMany(gpNeu))gpNeu.forEach(d=>{try{chatSys('👥 Neu in der GP-Liste: '+(d.name||'—')+' – '+(GP_ART[d.gpArt]||'')+' ('+person+')',null,'__admin__');}catch(e){}});
+  }
   if(!neu.length)return 0;
   if(!(await dbPersistMany(neu)))return 0;
   neu.forEach(d=>{state.deals.push(d);chatSys('📅 Neuer Lead aus dem Google-Kalender von '+person+': '+(d.name||'')+' – '+(d.datumBG?('Beratung '+d.datumBG):('Analyse '+d.datumAG))+((d.notizen||'').indexOf('Möglicher Doppler')>=0?' · ⚠ ähnlicher Kunde vorhanden – bitte prüfen':''),d);});
@@ -4466,7 +4481,8 @@ async function gcalLeadImport(tok,person){
 /* ---------- v19.11-Z4 (Melanies Ansage 28.11.): Kalender-Check – findet Fehler im Google-Kalender einer Person und erklärt, wie es im CRM richtig geht ---------- */
 const KAL_REGELN=[
   ['Kundentermine zuerst im CRM eintragen.','Kunde öffnen und den Termin dort eintragen. Das CRM schickt ihn als Einladung in deinen Google-Kalender und an den Kunden. Nicht zusätzlich von Hand in den Kalender schreiben, sonst steht er doppelt.'],
-  ['Direkt im Kalender? Dann mit Kürzel am Anfang.','„AG Vorname Nachname" für eine Analyse, „BG Vorname Nachname" für eine Beratung. Den Namen genau so schreiben wie im CRM. Ohne Kürzel zählt der Eintrag nicht als Termin.'],
+  ['Direkt im Kalender? Dann mit Kürzel am Anfang.','„AG Vorname Nachname" für eine Analyse: Gibt es den Kunden noch nicht, wird ein Lead angelegt. „BG Vorname Nachname" für eine Beratung: Den Kunden muss es schon geben, also den Namen genau wie im CRM schreiben. Ohne Kürzel zählt der Eintrag nicht als Termin.'],
+  ['EG, KG, TG und SP sind keine Kunden.','EG = Einstellungsgespräch, KG = Kooperation, TG = Tippgeber, SP = Sponsoring. Diese Kontakte kommen in die GP-Liste der Führungskraft, nicht in die Kundenliste. Wird später ein AG daraus, wird derselbe Eintrag zum Kunden.'],
   ['Immer mit Uhrzeit, nie ganztägig.','Die Adresse gehört ins Feld „Ort", Telefonnummer oder E-Mail in die Beschreibung. Daran erkennt das CRM den Kunden sicher.'],
   ['Erinnerung statt Termin? „follow up" dazuschreiben.','Zum Beispiel „BG follow up Balint", „Info Huber" oder „Rückruf Maier". Das gilt als Notiz zum Kunden: kein neuer Lead, kein zweiter Termin.'],
   ['Verschoben oder abgesagt? Im CRM ändern.','Im Wochenplan beim Termin ↗ oder ✖ tippen und den neuen Termin eintragen. Nur im Kalender verschieben reicht nicht, dann stimmen Kalender und CRM nicht mehr überein.'],
@@ -4492,14 +4508,15 @@ function kalCheck(person,extraStart){
     });
     L.forEach(x=>{
       n++;if((x.e.ts||'')>letzter)letzter=x.e.ts;
-      if(['MGT','EG','KG','TG','WG'].includes(x.art)||kalGespraech(x.kunde,person))return;
+      if(x.art==='PRIVAT'){const pa2=gcalArt(x.kunde);if(GP_ART[pa2.art])x.art=pa2.art;}
+      if(['MGT','EG','KG','TG','SP','WG'].includes(x.art)||kalGespraech(x.kunde,person))return;
       const tagD=new Date(start.getFullYear(),start.getMonth(),start.getDate()+x.tag);
       const hm=x.zeit.split(':').map(Number);
       const dt=new Date(tagD.getFullYear(),tagD.getMonth(),tagD.getDate(),isNaN(hm[0])?9:hm[0],hm[1]||0);
       const wann=WDAYS[x.tag]+' '+fmtDM(tagD)+(x.zeit?' '+x.zeit:''),was='„'+x.titel+'"',so=dt.getTime();
       const nm=kalName(x.kunde)||x.kunde;
       let fund={d:null,aehnlich:[]};
-      try{fund=leadFuerKalender({id:kalEvId(x.e._id,wk,person),summary:x.kunde,location:x.ort,description:''},x.kunde,dt,state.deals,person);}catch(err){}
+      try{fund=leadFuerKalender({id:kalEvId(x.e._id,wk,person),summary:x.kunde,location:x.ort,description:''},x.kunde,dt,kundenBasis(),person);}catch(err){}
       const d=fund.d,dn=d?(d.name||d.org||'Kunde'):'';
       if(x.info){
         if(!d&&(x.art==='AG'||x.art==='BG'))add('H',wann,was,'Das ist eine Notiz, aber im CRM gibt es dazu keinen Kunden.','Wenn es ein Kunde ist: mit „+ Lead" anlegen. Notizen zählen nicht als Termin.',so);
@@ -4519,6 +4536,7 @@ function kalCheck(person,extraStart){
       if(zw){const key=[x.e._id,zw.e._id].sort().join('|');if(!dupDa.has(key)){dupDa.add(key);add('F',wann,was+' und „'+zw.titel+'"','Derselbe Kunde steht an diesem Tag zweimal in deinem Kalender'+(zw.zeit&&zw.zeit!==x.zeit?' ('+x.zeit+' und '+zw.zeit+')':'')+'.','Einen der beiden Einträge im Google-Kalender löschen.',so);}}
       if(!d){
         if(fund.aehnlich.length)add('F',wann,was,'Der Name ist nicht eindeutig. Im CRM gibt es: '+fund.aehnlich.join(', ')+'.','Den Namen so schreiben wie im CRM, z. B. „'+x.art+' '+fund.aehnlich[0]+'". Ist es ein neuer Kunde, im Wochenplan „➕ Lead anlegen" tippen.',so);
+        else if(x.art==='BG')add('F',wann,was,'Zu dieser Beratung gibt es im CRM keinen Kunden. Eine Beratung setzt voraus, dass der Kunde schon angelegt ist.','Den Namen genau wie im CRM schreiben, dann wird der Termin zugeordnet. Fehlt der Kunde wirklich, zuerst im CRM anlegen und die Analyse nachtragen.',so);
         else add('F',wann,was,'Diesen Kunden gibt es im CRM noch nicht.','Im Wochenplan beim Eintrag „➕ Lead anlegen" tippen und Telefon, E-Mail und Adresse ergänzen. Künftig den Termin gleich im CRM eintragen.',so);
         return;
       }
@@ -4583,7 +4601,7 @@ function kalCheckZeigen(person,extraStart){
       <div style="font-size:12.5px;color:var(--ink-3);margin-top:2px">${esc(kalCheckKopf(R))} · ${R.n} Kalender-Einträge geprüft${R.letzter?' · letzter Abgleich '+esc(fmtDM(new Date(R.letzter))):''}</div></div>
     <div style="padding:12px 18px;overflow:auto;flex:1">
       ${R.F.length?R.F.map(zeile).join(''):'<div style="padding:14px;border-radius:10px;background:var(--surface-2);font-weight:700">✅ Alles sauber – Kalender und CRM passen zusammen.</div>'}
-      <details style="margin-top:6px"${R.F.length?'':' open'}><summary style="cursor:pointer;font-weight:800;font-size:13px">📖 So gehören Termine in den Google-Kalender (8 Regeln)</summary>
+      <details style="margin-top:6px"${R.F.length?'':' open'}><summary style="cursor:pointer;font-weight:800;font-size:13px">📖 So gehören Termine in den Google-Kalender (9 Regeln)</summary>
         <ol style="margin:8px 0 0;padding-left:20px;font-size:12.5px;line-height:1.45">${KAL_REGELN.map(r=>`<li style="margin-bottom:5px"><b>${esc(r[0])}</b> ${esc(r[1])}</li>`).join('')}</ol></details>
     </div>
     <div style="padding:10px 18px 14px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap">
@@ -4602,6 +4620,87 @@ function kalCheckZeigen(person,extraStart){
     toast('📨 Kalender-Check an '+person+' geschickt (Chat'+(tg?' + Telegram':'')+')');sb.textContent='Geschickt ✓';
   });
   return R;
+}
+/* ---------- v19.12-B (Melanies Ansage 28.11.): Was aus einem Termin wird ----------
+   AG  → darf einen Lead anlegen (wenn es den Kunden noch nicht gibt)
+   BG  → der Kunde muss schon angelegt sein; es wird NIE automatisch ein Lead daraus
+   EG (Einstellungsgespräch), KG (Kooperation), TG (Tippgeber), SP (Sponsoring) → kein Kunden-Lead, sondern ein Eintrag
+        in der GP-Liste der Führungskraft. Kommt es später zu einem AG, wird derselbe Eintrag zum Kunden. */
+const GP_ART={EG:'Einstellungsgespräch',KG:'Kooperation',TG:'Tippgeber',SP:'Sponsoring'};
+let __kbC={t:0,n:-1,l:[]};
+function kundenBasis(){ // alle Kunden + GP-Einträge aus Terminen; reine Recruiting-Importe zählen nicht als Kunde
+  const now=Date.now();
+  if(now-__kbC.t>4000||__kbC.n!==state.deals.length)__kbC={t:now,n:state.deals.length,l:state.deals.filter(d=>!((d.quelle||'')==='Recruiting'&&d.gp&&!d.gpKal))};
+  return __kbC.l;
+}
+function gpKandidatFinden(name){ // bestehender Eintrag der GP-Liste (oder ein Kunde, der genau so heißt)
+  const T=kdTokens(kalName(name)||name);if(!T.length)return null;
+  let best=null,bs=0;const einzel=[];
+  for(const d of state.deals){
+    const K=kdTokD(d);let sc=0;
+    for(const D of [K.tn,K.to]){const c=kdSub(T,D);if(!c)continue;
+      if(D.length===T.length&&c===T.length)sc=Math.max(sc,100+c);else if(c>=2)sc=Math.max(sc,50+c);else if(d.gpKal)einzel.push(d);}
+    if(sc){sc+=(d.gpKal?20:0)+(d.gp?10:0)+(d.status==='open'?1:0);if(sc>bs){bs=sc;best=d;}}
+  }
+  if(best)return best;
+  const u=[...new Set(einzel)];return u.length===1?u[0]:null;
+}
+function gpAusTermin(person,art,name,dt,evId,ort){ // → {d, neu, gleich} | null – ändert nur im Speicher, gespeichert wird vom Aufrufer
+  name=(kalName(name)||name||'').trim();if(name.length<3||!GP_ART[art]||!dt)return null;
+  const ts=calPad(dt.getDate())+'.'+calPad(dt.getMonth()+1)+'.'+dt.getFullYear()+' '+calPad(dt.getHours())+':'+calPad(dt.getMinutes());
+  let d=gpKandidatFinden(name),neu=false;
+  if(!d){
+    d=blank();d.name=name;d.gp=true;d.quelle='Recruiting';d.kundentyp='Privat';d.branche=GP_ART[art];d.gpKal=true;d.gpArt=art;d.gpVon=person;
+    if(ort){if(ort.length<=60)d.ort=ort;const pm=/\b([1-9]\d{3})\b/.exec(ort);if(pm){d.plz=pm[1];d.bezirk=bezFromPLZ(pm[1]);}}
+    d.notizen=todayStr().split('-').reverse().join('.')+' '+GP_ART[art]+' am '+ts+' – aus dem Wochenplan von '+person;
+    neu=true;
+  }
+  d.gpTermine=d.gpTermine||[];
+  if(d.gpTermine.some(x=>(evId&&x.ev===evId)||(x.art===art&&x.ts===ts)))return {d,neu:false,gleich:true};
+  d.gpTermine.push({art,ts,von:person,ev:evId||''});if(d.gpTermine.length>40)d.gpTermine=d.gpTermine.slice(-40);
+  if(neu)histAdd(d,'👥 In die GP-Liste aufgenommen: '+GP_ART[art]+' am '+ts+' (Termin von '+person+')');
+  else{if(!d.gp)d.gp=true;d.gpKal=true;if(!d.gpArt)d.gpArt=art;if(!d.gpVon)d.gpVon=person;histAdd(d,'👥 '+GP_ART[art]+' am '+ts+' (Termin von '+person+')');}
+  __kbC.t=0;
+  return {d,neu,gleich:false};
+}
+function gpZuKunde(d,art,ts,person){ // aus dem GP-Kontakt wird (auch) ein Kunde, sobald ein AG eingetragen wird
+  if(!d||!d.gpKal||(d.quelle||'')!=='Recruiting')return false;
+  d.quelle=GP_ART[d.gpArt]||'GP-Liste';d.gpKunde=true;
+  histAdd(d,'👥→📋 Aus dem '+(GP_ART[d.gpArt]||'GP-Kontakt')+' wurde ein Kundentermin: '+art+' '+ts+' ('+person+'). Bleibt zusätzlich in der GP-Liste.');
+  __kbC.t=0;return true;
+}
+let __gpEC={t:0,n:-1,m:new Map()};
+function gpEintrag(e,start){ // Wochenplan-Eintrag EG/KG/TG/SP → der zugehörige GP-Listen-Eintrag, wenn dieser Termin dort schon steht
+  const now=Date.now();if(now-__gpEC.t>4000||__gpEC.n!==state.deals.length)__gpEC={t:now,n:state.deals.length,m:new Map()};
+  const key=e._id+'|'+e.kunde+'|'+e.tag+'|'+e.zeit+'|'+e.art;if(__gpEC.m.has(key))return __gpEC.m.get(key);
+  let r=null;const d=gpKandidatFinden(e.kunde);
+  if(d&&d.gp){const hm=(e.zeit||'').split(':').map(Number),dt=new Date(start.getFullYear(),start.getMonth(),start.getDate()+(+e.tag||0),isNaN(hm[0])?9:hm[0],hm[1]||0);
+    const ts=calPad(dt.getDate())+'.'+calPad(dt.getMonth()+1)+'.'+dt.getFullYear()+' '+calPad(dt.getHours())+':'+calPad(dt.getMinutes());
+    if((d.gpTermine||[]).some(x=>x.art===e.art&&x.ts===ts))r=d;}
+  __gpEC.m.set(key,r);return r;
+}
+function wEintragKnopf(e,start){ // was unter einem Wochenplan-Eintrag steht (Lead anlegen / Kunde verknüpft / GP-Liste)
+  if(e.auto||e.dealRef)return '';
+  const st='display:block;width:100%;margin-top:5px';
+  if(e.leadId&&(e.gcal||e.art==='AG'||e.art==='BG'||e.art==='INFO'))return wKalLeadLine(e);
+  if(e.art==='AG')return `<button class="mini-btn" data-wlead="1" title="Dieser Kunde ist noch nicht im CRM – mit einem Klick als Lead anlegen (der Analysetermin wird gleich eingetragen)" style="${st};border-color:var(--brand);color:var(--brand-ink);font-weight:800">➕ Lead anlegen</button>`;
+  if(e.art==='BG')return `<div style="font-size:11.5px;line-height:1.3;margin-top:5px;color:var(--warn);font-weight:700">⚠ Kein Kunde dazu gefunden. Zu einer Beratung muss es den Kunden schon geben – Namen wie im CRM schreiben.</div><button class="mini-btn" data-wlead="1" title="Nur wenn es den Kunden wirklich noch nicht gibt" style="${st};font-size:11px">Trotzdem als neuen Lead anlegen</button>`;
+  if(GP_ART[e.art]){
+    const d=gpEintrag(e,start);
+    if(d)return isAdmin()?`<button class="mini-btn" data-wopen="${esc(d.id)}" title="Steht in der GP-Liste – Klick öffnet den Eintrag" style="${st};text-align:left;white-space:normal;line-height:1.25">👥 ${esc(d.name||'—')} <span style="font-weight:600;color:var(--ink-3)">· in der GP-Liste</span></button>`:`<div style="font-size:11.5px;color:var(--ink-3);margin-top:4px">👥 in der GP-Liste vermerkt</div>`;
+    return `<button class="mini-btn" data-wgp="1" title="${GP_ART[e.art]}: kein Kunden-Lead, sondern ein Eintrag in der GP-Liste" style="${st}">👥 In die GP-Liste</button>`;
+  }
+  return '';
+}
+async function wGpAusEintrag(ent,start){
+  const hm=(ent.zeit||'').split(':').map(Number);
+  const dt=new Date(start.getFullYear(),start.getMonth(),start.getDate()+(+ent.tag||0),isNaN(hm[0])?9:hm[0],hm[1]||0);
+  const r=gpAusTermin(ent.name,ent.art,ent.kunde,dt,ent.gcal?'':ent._id,ent.ort||'');
+  if(!r){toast('Bitte einen Namen eintragen');return;}
+  if(!r.gleich){if(r.neu)state.deals.push(r.d);await dbPersist(r.d);
+    try{chatSys('👥 '+(r.neu?'Neu in der GP-Liste':'GP-Liste ergänzt')+': '+(r.d.name||'—')+' – '+GP_ART[ent.art]+' ('+ent.name+')',null,'__admin__');}catch(e){}}
+  __gpEC.t=0;toast(r.neu?'👥 „'+r.d.name+'" steht jetzt in der GP-Liste':'👥 Bei „'+(r.d.name||'')+'" in der GP-Liste vermerkt');
+  renderWoche();
 }
 /* ========== v19.12-A (Melanies Ansage 28.11.): Wochengespräche – Gesprächsmappe je Geschäftspartner ==========
    A) Kalender: Wochen-/Monatsgespräche sind keine Kundentermine → Art „WG", nie ein Lead
@@ -4783,7 +4882,7 @@ function gpVorb(mm,G){
   if(agOhneBG.length)tipps.push([agOhneBG.length+(agOhneBG.length===1?' Analyse':' Analysen')+' ohne Beratungstermin.','Üben: den BG-Termin noch im Analysegespräch fix machen („Welcher Tag passt Ihnen nächste Woche besser, Dienstag oder Donnerstag?").']);
   if(ohnePot.length)tipps.push(['Bei '+ohnePot.length+(ohnePot.length===1?' Kunden':' Kunden')+' ist kein Potenzial geschätzt – wurde der echte Bedarf gefunden?','Tiefer fragen üben: „Was ist Ihnen dabei am wichtigsten?" · „Was passiert, wenn alles so bleibt?" · „Wer entscheidet mit?" · „Was hat Sie bisher davon abgehalten?"']);
   if(ohneDoku.length)tipps.push(['Bei '+ohneDoku.length+(ohneDoku.length===1?' Analyse fehlt':' Analysen fehlen')+' PDF oder Sprachnachricht.','Regel vereinbaren: Analyse am selben Tag abgeben – direkt nach dem Termin, noch im Auto.']);
-  if(kal.fehler)tipps.push([kal.fehler+(kal.fehler===1?' Fehler':' Fehler')+' im Google-Kalender.','Kalender-Check gemeinsam durchgehen und die 8 Regeln aus dem Onboarding (Abschnitt 9) wiederholen. Kundentermine zuerst im CRM eintragen.']);
+  if(kal.fehler)tipps.push([kal.fehler+(kal.fehler===1?' Fehler':' Fehler')+' im Google-Kalender.','Kalender-Check gemeinsam durchgehen und die 9 Regeln aus dem Onboarding (Abschnitt 9) wiederholen. Kundentermine zuerst im CRM eintragen.']);
   if(ohneStatus.length)tipps.push([ohneStatus.length+(ohneStatus.length===1?' Termin':' Termine')+' der alten Woche ohne Status.','Gleich im Gespräch gemeinsam abhaken: ✔ durchgeführt, ↗ verschoben oder ✖ nicht durchgeführt.']);
   if(liegen.length||tfehlt.length)tipps.push([(liegen.length+tfehlt.length)+' Kunden ohne nächsten Schritt.','Je Kunde einen nächsten Schritt mit Datum festlegen – Termin oder Wiedervorlage. Grundregel: Kein Kunde ohne nächsten Schritt.']);
   if(service.length)tipps.push(['Servicepersonal: '+service.length+(service.length===1?' Kunde':' Kunden')+' ab 40 EH.','Je Kunde klären, wer den Service übernimmt, und im Reiter „Gespräch" abhaken.']);
@@ -5369,13 +5468,13 @@ async function renderWoche(){
       const dd=new Date(start.getTime()+t*86400000);
       const today=new Date();today.setHours(0,0,0,0);
       const ents=wEntriesFor(me,start,wk).filter(e=>e.tag===t);
-      return `<div class="wday${dd.getTime()===today.getTime()?' today':''}"><div class="wdh">${d2} ${fmtDM(dd)}</div>${ents.map((e,i2)=>`<div class="wentry" data-wi="${e.auto?('a:'+e.dealId+':'+e.art):('m:'+e._id)}"${e.mitschau?` style="${e.dabei===0?'opacity:.55;border:1.5px dashed var(--ink-3);background:var(--surface-2)':(e.dabei===1?'border:1.5px solid var(--good)':'border:1.5px solid var(--warn);background:rgba(230,160,30,.07)')}"`:''}><button class="wdel" data-wdel="${e.auto?'':e._id}" title="${e.auto?'Automatisch aus dem CRM-Termin':(e.gcal?'Aus deinem Google Kalender (Sync)':'Eintrag löschen')}">${e.auto?'🔗':(e.gcal?'📅':'×')}</button><span class="wart" style="background:${e.mitschau&&e.dabei===0?'var(--ink-3)':(WARTC[e.art]||'var(--ink-3)')}">${esc(e.art)}</span>${e.mitschau?`<span class="tg" style="background:${e.dabei===1?'var(--good)':(e.dabei===0?'var(--ink-3)':'var(--warn)')};color:#fff;font-weight:800">${e.dabei===1?'👀 dabei':(e.dabei===0?'ohne mich':'Dabei?')}</span>`:''}<b>${esc(e.zeit)}</b> ${esc(e.kunde)}${e.ort?`<div class="wsub">${esc(e.ort)}</div>`:''}${(e.auto&&e.art==='BG')?wPotLine(e,me):''}${e.mitschau?`<div style="display:flex;gap:4px;margin-top:4px"><button class="mini-btn" data-wbg="1" style="${e.dabei===1?'background:var(--good);color:#fff;font-weight:800':''}">👍 dabei</button><button class="mini-btn" data-wbg="0" style="${e.dabei===0?'background:var(--ink-3);color:#fff;font-weight:800':''}">✗ ohne mich</button></div>`:''}${(e.gcal&&e.leadId)?wKalLeadLine(e):(e.gcal&&(e.art==='AG'||e.art==='BG'))?`<button class="mini-btn" data-wlead="1" title="Dieser Kunde ist noch nicht im CRM – mit einem Klick als Lead anlegen (${e.art}-Termin wird gleich eingetragen)" style="display:block;width:100%;margin-top:5px;border-color:var(--brand);color:var(--brand-ink);font-weight:800">➕ Lead anlegen</button>`:''}<div class="wsts">${[['done','✔','durchgeführt'],['moved','↗','verschoben'],['cancelled','✖','abgesagt']].map(([s,ic,tt])=>`<button class="wst${e.status===s?' on '+s:''}" data-ws="${s}" title="${tt}">${ic}</button>`).join('')}</div></div>`).join('')||'<div style="font-size:11px;color:var(--ink-3);text-align:center">—</div>'}</div>`;
+      return `<div class="wday${dd.getTime()===today.getTime()?' today':''}"><div class="wdh">${d2} ${fmtDM(dd)}</div>${ents.map((e,i2)=>`<div class="wentry" data-wi="${e.auto?('a:'+e.dealId+':'+e.art):('m:'+e._id)}"${e.mitschau?` style="${e.dabei===0?'opacity:.55;border:1.5px dashed var(--ink-3);background:var(--surface-2)':(e.dabei===1?'border:1.5px solid var(--good)':'border:1.5px solid var(--warn);background:rgba(230,160,30,.07)')}"`:''}><button class="wdel" data-wdel="${e.auto?'':e._id}" title="${e.auto?'Automatisch aus dem CRM-Termin':(e.gcal?'Aus deinem Google Kalender (Sync)':'Eintrag löschen')}">${e.auto?'🔗':(e.gcal?'📅':'×')}</button><span class="wart" style="background:${e.mitschau&&e.dabei===0?'var(--ink-3)':(WARTC[e.art]||'var(--ink-3)')}">${esc(e.art)}</span>${e.mitschau?`<span class="tg" style="background:${e.dabei===1?'var(--good)':(e.dabei===0?'var(--ink-3)':'var(--warn)')};color:#fff;font-weight:800">${e.dabei===1?'👀 dabei':(e.dabei===0?'ohne mich':'Dabei?')}</span>`:''}<b>${esc(e.zeit)}</b> ${esc(e.kunde)}${e.ort?`<div class="wsub">${esc(e.ort)}</div>`:''}${(e.auto&&e.art==='BG')?wPotLine(e,me):''}${e.mitschau?`<div style="display:flex;gap:4px;margin-top:4px"><button class="mini-btn" data-wbg="1" style="${e.dabei===1?'background:var(--good);color:#fff;font-weight:800':''}">👍 dabei</button><button class="mini-btn" data-wbg="0" style="${e.dabei===0?'background:var(--ink-3);color:#fff;font-weight:800':''}">✗ ohne mich</button></div>`:''}${wEintragKnopf(e,start)}<div class="wsts">${[['done','✔','durchgeführt'],['moved','↗','verschoben'],['cancelled','✖','abgesagt']].map(([s,ic,tt])=>`<button class="wst${e.status===s?' on '+s:''}" data-ws="${s}" title="${tt}">${ic}</button>`).join('')}</div></div>`).join('')||'<div style="font-size:11px;color:var(--ink-3);text-align:center">—</div>'}</div>`;
     }).join('')}</div>
     <div class="ehsec wnew" style="margin-top:14px"><div class="ehhead">＋ Eintrag hinzufügen <span class="ehtag">MGT, EG, KG, TG, Privat – AG/BG kommen automatisch aus den Terminen</span></div>
       <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
         <select id="wn-tag" style="width:auto">${WDAYS.map((d2,t)=>{const dd=new Date(start.getTime()+t*86400000);return `<option value="${t}">${d2} ${fmtDM(dd)}</option>`;}).join('')}</select>
         <select id="wn-zeit" style="width:auto"><option value="">Uhrzeit…</option>${(()=>{let o='';for(let h=7;h<=21;h++)for(let q=0;q<60;q+=15)o+=`<option>${calPad(h)}:${calPad(q)}</option>`;return o;})()}</select>
-        <select id="wn-art" style="width:auto"><option>MGT</option><option>EG</option><option value="KG">KG (Kooperationsgespräch)</option><option value="TG">TG (Tippgeber)</option><option value="WG">WG (Wochengespräch)</option><option>PRIVAT</option><option>AG</option><option>BG</option></select>
+        <select id="wn-art" style="width:auto"><option>MGT</option><option value="EG">EG (Einstellungsgespräch)</option><option value="KG">KG (Kooperationsgespräch)</option><option value="TG">TG (Tippgeber)</option><option value="SP">SP (Sponsoring)</option><option value="WG">WG (Wochengespräch)</option><option>PRIVAT</option><option>AG</option><option>BG</option></select>
         <input id="wn-kunde" placeholder="Name / Betreff" style="width:180px">
         <input id="wn-ort" placeholder="Ort" style="width:120px">
         <button class="btn pri" id="wn-add">Hinzufügen</button>
@@ -5403,7 +5502,9 @@ async function renderWoche(){
     if(zeit){const [h,mi]=zeit.split(':').map(Number);const r=Math.round(mi/15)*15;zeit=calPad(r===60?h+1:h)+':'+calPad(r===60?0:r);}
     const doc={wk,name:me,tag:+host.querySelector('#wn-tag').value,zeit,art:host.querySelector('#wn-art').value,kunde,ort:host.querySelector('#wn-ort').value.trim(),status:'',ts:new Date().toISOString()};
     const id2='w'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-    try{await wocheCol.doc(id2).set(doc);WOCHE.push(Object.assign({_id:id2},doc));renderWoche();toast('Eingetragen');}catch(e){toast('Speichern fehlgeschlagen');}
+    try{await wocheCol.doc(id2).set(doc);WOCHE.push(Object.assign({_id:id2},doc));}catch(e){toast('Speichern fehlgeschlagen');return;}
+    if(GP_ART[doc.art]){await wGpAusEintrag({_id:id2,name:me,art:doc.art,kunde:doc.kunde,tag:doc.tag,zeit:doc.zeit,ort:doc.ort,gcal:false},start);return;}
+    renderWoche();toast(doc.art==='AG'?'Eingetragen – gibt es den Kunden noch nicht, beim Eintrag auf „➕ Lead anlegen" tippen':'Eingetragen');
   });
   host.querySelectorAll('.wentry').forEach(el=>{
     const [typ,ref,art]=el.dataset.wi.split(':');
@@ -5415,6 +5516,7 @@ async function renderWoche(){
       wSetStatus(ent,wk,ent.status===b.dataset.ws?'':b.dataset.ws);
     }));
     el.querySelectorAll('[data-wlead]').forEach(b=>b.addEventListener('click',ev=>{ev.stopPropagation();b.disabled=true;wLeadAusKalender(ent,start,wk);}));
+    el.querySelectorAll('[data-wgp]').forEach(b=>b.addEventListener('click',ev=>{ev.stopPropagation();b.disabled=true;wGpAusEintrag(ent,start);}));
     el.querySelectorAll('[data-wopen]').forEach(b=>b.addEventListener('click',ev=>{ev.stopPropagation();openModal(b.dataset.wopen);}));
     el.querySelectorAll('[data-wbg]').forEach(b=>b.addEventListener('click',ev=>{ // 👀 BG-Mitschau: dabei / nicht dabei
       ev.stopPropagation();
@@ -5511,6 +5613,7 @@ function renderGP(){
   const mitSig=gps.filter(d=>LG[d.id].score>0).length;
   const bez=[...new Set(gps.map(d=>d.bezirk).filter(Boolean))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
   const rows=gps.filter(d=>{
+    if(fl==='termin'&&!d.gpKal)return false;
     if(fl==='sig'&&!(LG[d.id].score>0))return false;
     if(fl==='hart'&&LG[d.id].stufe<2)return false;
     if(fb&&(d.bezirk||'')!==fb)return false;
@@ -5527,6 +5630,7 @@ function renderGP(){
       <div class="mc"><div class="l">GP-Kandidaten</div><div class="v tnum">${gps.length}</div></div>
       <div class="mc"><div class="l">Offen</div><div class="v tnum">${open}</div></div>
       <div class="mc bad" title="Kandidaten mit öffentlich belegtem Belastungssignal (Insolvenz, negatives Eigenkapital, Nachfolge-Thema …)"><div class="l">Mit Belastungssignal</div><div class="v tnum">${mitSig}</div></div>
+      <div class="mc" id="gKalCard" style="cursor:pointer" title="Einstellungsgespräche, Kooperationen, Tippgeber und Sponsoring aus den Wochenplänen – antippen zum Filtern"><div class="l">Aus Terminen</div><div class="v tnum">${gps.filter(d=>d.gpKal).length}</div></div>
       <div class="mc"><div class="l">Bereits kontaktiert</div><div class="v tnum">${kontakt}</div></div>
       <div class="mc good"><div class="l">Gewonnen</div><div class="v tnum">${won}</div></div>
     </div>
@@ -5535,7 +5639,7 @@ function renderGP(){
       <select id="gBez"><option value="">Alle Bezirke</option>${bez.map(x=>`<option${fb===x?' selected':''}>${esc(x)}</option>`).join('')}</select>
       <select id="gSt"><option value="">Alle Status</option><option value="open"${fs==='open'?' selected':''}>Offen</option><option value="won"${fs==='won'?' selected':''}>Gewonnen</option><option value="lost"${fs==='lost'?' selected':''}>Verloren</option></select>
       <select id="gSort" title="Reihenfolge der Liste"><option value="lage"${sortBy==='lage'?' selected':''}>↓ Schlechteste Lage zuerst</option><option value="name"${sortBy==='name'?' selected':''}>Name A–Z</option></select>
-      <select id="gLage"><option value="">Alle Lagen</option><option value="sig"${fl==='sig'?' selected':''}>Nur mit Signal</option><option value="hart"${fl==='hart'?' selected':''}>Nur 🔴 und 🟠</option></select>
+      <select id="gLage"><option value="">Alle Lagen</option><option value="sig"${fl==='sig'?' selected':''}>Nur mit Signal</option><option value="hart"${fl==='hart'?' selected':''}>Nur 🔴 und 🟠</option><option value="termin"${fl==='termin'?' selected':''}>Nur aus Terminen (EG, Kooperation, Tippgeber, Sponsoring)</option></select>
       <span class="kpi" style="margin-left:auto">${rows.length} Kandidaten</span>
       <button class="btn" data-udoc="recruiting" title="Wie du jede der 7 Zielgruppen ansprichst – mit fertigen Telefon-Openern und Einwand-Antworten">📖 Recruiting-Leitfaden</button>
       <button class="btn" id="gDelImp" style="border-color:var(--bad);color:var(--bad)" title="Löscht NUR die importierten Recruiting-Kandidaten – Kunden-Listen und manuell markierte GPs bleiben unberührt">🗑 Recruiting-Import löschen</button>
@@ -5543,7 +5647,8 @@ function renderGP(){
     <div style="font-size:12px;color:var(--ink-3);margin:-4px 2px 8px">Die Lage beruht nur auf öffentlichen Signalen aus der Recruiting-Suche. „Kein Signal" heißt: nichts gefunden – nicht, dass es der Firma gut geht. Das Signal nie gegenüber dem Kandidaten erwähnen.</div>
     <div class="tablewrap"><table><thead><tr><th>#</th><th>Name</th><th>Firma</th><th>Lage</th><th>Telefon</th><th>Bezirk</th><th>Phase</th><th>Anrufe</th><th>Ansprache-Tipp / Info</th></tr></thead><tbody>
       ${rows.map((d,i)=>{const L=LG[d.id],S=GP_STUFE[L.stufe];
-        const lage=L.koop?'<span style="color:var(--ink-3)">🤝 Kooperation</span>':`<span title="${esc(L.sig||'')}" style="font-weight:700;color:${S[2]};white-space:nowrap">${S[0]} ${S[1]}</span>${L.kurz?`<div style="font-size:11.5px;color:var(--ink-2);max-width:230px">${esc(L.kurz)}</div>`:''}`;
+        const gt=(d.gpTermine||[]).slice(-1)[0];
+        const lage=d.gpKal?`<span style="font-weight:700;color:var(--brand-ink);white-space:nowrap">👥 ${esc(GP_ART[d.gpArt]||'Termin')}</span>${gt?`<div style="font-size:11.5px;color:var(--ink-2)">${esc(gt.ts)} · ${esc(gt.von||'')}${(d.gpTermine||[]).length>1?' · '+d.gpTermine.length+' Termine':''}${d.gpKunde?' · ist auch Kunde':''}</div>`:''}`:L.koop?'<span style="color:var(--ink-3)">🤝 Kooperation</span>':`<span title="${esc(L.sig||'')}" style="font-weight:700;color:${S[2]};white-space:nowrap">${S[0]} ${S[1]}</span>${L.kurz?`<div style="font-size:11.5px;color:var(--ink-2);max-width:230px">${esc(L.kurz)}</div>`:''}`;
         return `<tr data-id="${d.id}"><td class="tnum" style="color:var(--ink-3)">${sortBy==='lage'&&L.score>0?(i+1):''}</td><td><b>${esc(d.name||'—')}</b></td><td>${esc(d.org||'')}</td><td>${lage}</td><td class="tnum">${esc(d.telefon||'')}</td><td>${esc(d.bezirk||d.ort||'')}</td><td>${d.status==='won'?'<span style="color:var(--good);font-weight:700">Gewonnen</span>':d.status==='lost'?'<span style="color:var(--bad)">Verloren</span>':esc(d.stage)}</td><td class="tnum">${(d.calls||[]).length}</td><td style="max-width:340px;font-size:12px;color:var(--ink-2)" title="${esc((d.notizen||'').slice(0,600))}">${L.tipp?('💬 '+esc(L.tipp)):esc((d.notizen||'').slice(0,90))}</td></tr>`;}).join('')}
     </tbody></table></div>`;
   host.querySelector('#gSearch').addEventListener('input',e=>{host.__q=e.target.value;const pos=e.target.selectionStart;renderGP();const np=host.querySelector('#gSearch');np.focus();np.setSelectionRange(pos,pos);});
@@ -5551,11 +5656,12 @@ function renderGP(){
   host.querySelector('#gSt').addEventListener('change',e=>{host.__st=e.target.value;renderGP();});
   host.querySelector('#gSort').addEventListener('change',e=>{host.__sort=e.target.value;renderGP();});
   host.querySelector('#gLage').addEventListener('change',e=>{host.__lage=e.target.value;renderGP();});
+  const gkc=host.querySelector('#gKalCard');if(gkc)gkc.addEventListener('click',()=>{host.__lage=host.__lage==='termin'?'':'termin';renderGP();});
   host.querySelectorAll('tbody tr').forEach(tr=>tr.addEventListener('click',()=>openModal(tr.dataset.id)));
   host.querySelectorAll('[data-udoc]').forEach(b=>b.addEventListener('click',()=>udoc(b.dataset.udoc)));
   const gd=host.querySelector('#gDelImp');
   if(gd)gd.addEventListener('click',async()=>{
-    const imp=state.deals.filter(d=>d.gp&&(d.quelle||'')==='Recruiting');
+    const imp=state.deals.filter(d=>d.gp&&(d.quelle||'')==='Recruiting'&&!d.gpKal); // Kontakte aus Terminen bleiben
     if(!imp.length){toast('Kein Recruiting-Import vorhanden – manuell markierte GPs werden hier nicht gelöscht');return;}
     if(MODE!=='db'||!dealsCol){toast('Nur online möglich');return;}
     if(!confirm('Wirklich alle '+imp.length+' importierten Recruiting-Kandidaten löschen?\n\nKunden-Listen, Pipeline und manuell als GP markierte Leads bleiben unberührt.\nDas kann nicht rückgängig gemacht werden.'))return;
@@ -6160,7 +6266,7 @@ function udoc(type){
 
     <div class="sec"><h3>9 · Wochenplan und Google-Kalender</h3><ul>
       <li>AG (Analysegespräch) und BG (Beratungsgespräch) kommen automatisch aus deinen Kunden in den Wochenplan.</li>
-      <li>Eigene Termine wie EG, MGT, KG (Kooperationsgespräch) und TG (Tippgeber) trägst du im Reiter „Woche" selbst ein oder sie kommen aus deinem Google-Kalender.</li>
+      <li>Eigene Termine wie EG (Einstellungsgespräch), MGT, KG (Kooperation), TG (Tippgeber) und SP (Sponsoring) trägst du im Reiter „Woche" selbst ein oder sie kommen aus deinem Google-Kalender.</li>
       <li>Vor deinem Wochengespräch bekommst du per Telegram deine Termine der kommenden Woche.</li></ul>
       <div class="mt" style="margin-top:8px"><b>So gehören Termine in den Google-Kalender</b></div><ul>
       ${KAL_REGELN.map(r=>`<li><b>${esc(r[0])}</b> ${esc(r[1])}</li>`).join('\n      ')}</ul>
