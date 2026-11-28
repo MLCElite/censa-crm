@@ -120,6 +120,10 @@
   .modal.wide{max-width:700px}
   .modal h2{font-size:19px;font-weight:800;margin:0 0 3px;letter-spacing:-.3px}
   .modal .sub{font-size:12.5px;color:var(--ink-3);margin-bottom:16px}
+  .kkopf{display:inline-flex;gap:5px;flex-wrap:wrap;align-items:center;margin-left:8px;vertical-align:middle}
+  .kchip{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:8px;background:var(--surface-2);border:0;font:inherit;font-size:12px;font-weight:600;color:var(--ink);text-decoration:none;cursor:pointer;white-space:nowrap;max-width:340px;overflow:hidden;text-overflow:ellipsis;line-height:1.5}
+  a.kchip{color:var(--brand-ink)}.kchip.bad{background:var(--bad-bg);color:var(--bad)}
+  .nzwei .nit{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;white-space:normal}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:11px}
   .fld{display:flex;flex-direction:column;gap:5px;margin-bottom:11px}
   .fld.full{grid-column:1/-1}
@@ -562,7 +566,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.12-B";
+const APP_VERSION="19.12-C";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2410,7 +2414,7 @@ function tagesTermine(off){
       const ovId='ov'+(d.id+'_'+x[0]+'_'+T.wk).replace(/[^0-9A-Za-z_-]/g,'');
       const st=(ovs[ovId]||{}).status||'',wer=(x[2]||'').trim(),kunde=(d.name||d.org||'—')+((x[0]==='BG'&&(d.bgDone||[]).length)?' · Folge-BG':'');
       out.push({q:'deal',d,art:x[0],role:x[4],zeit:hm(dt),kunde,wer,mgt:(x[3]||'').trim(),status:st,
-        ent:{auto:true,dealId:d.id,art:x[0],tag:T.ti,zeit:hm(dt),kunde,ort:d.bezirk||d.ort||'',status:st,name:wer,_ovId:ovId}});
+        ent:{auto:true,dealId:d.id,art:x[0],tag:T.ti,zeit:hm(dt),kunde,ort:terminOrt(d,x[0]).kurz,status:st,name:wer,_ovId:ovId}});
     });
   });
   WQ.filter(e=>e.type!=='ov'&&(+e.tag||0)===T.ti).forEach(e=>{
@@ -3293,16 +3297,16 @@ function autoEntries(person,start){
   const out=[];
   state.deals.forEach(d=>{
     if(d.status==='lost')return;
-    const push=(art,ds)=>{const dt=parseTermin(ds);if(dt&&dt>=start&&dt<end){out.push({auto:true,dealId:d.id,art,tag:Math.floor((dt-start)/86400000),zeit:calPad(dt.getHours())+':'+calPad(dt.getMinutes()),kunde:(d.name||d.org||'—')+((art==='BG'&&(d.bgDone||[]).length)?' · Folge-BG':''),ort:d.bezirk||d.ort||'',status:'',name:person});}};
+    const push=(art,ds)=>{const dt=parseTermin(ds);if(dt&&dt>=start&&dt<end){out.push({auto:true,dealId:d.id,art,tag:Math.floor((dt-start)/86400000),zeit:calPad(dt.getHours())+':'+calPad(dt.getMinutes()),kunde:(d.name||d.org||'—')+((art==='BG'&&(d.bgDone||[]).length)?' · Folge-BG':''),ort:terminOrt(d,art).kurz,status:'',name:person});}};
     if(hit(d.analyst))push('AG',d.datumAG);
     // 🤝 MGT-Begleitung (Melanies Ansage 10.11.): Führungskraft geht beim Termin ihres GP mit – erscheint im eigenen Wochenplan
     if((d.mgtAG||'').trim()&&hit(d.mgtAG)&&!hit(d.analyst)){
       const dt=parseTermin(d.datumAG);
-      if(dt&&dt>=start&&dt<end)out.push({auto:true,mgt:true,dealId:d.id,art:'AG',tag:Math.floor((dt-start)/86400000),zeit:calPad(dt.getHours())+':'+calPad(dt.getMinutes()),kunde:(d.name||d.org||'—')+' · 🤝 MGT mit '+(d.analyst||'—'),ort:d.bezirk||d.ort||'',status:'',name:person});
+      if(dt&&dt>=start&&dt<end)out.push({auto:true,mgt:true,dealId:d.id,art:'AG',tag:Math.floor((dt-start)/86400000),zeit:calPad(dt.getHours())+':'+calPad(dt.getMinutes()),kunde:(d.name||d.org||'—')+' · 🤝 MGT mit '+(d.analyst||'—'),ort:terminOrt(d,'AG').kurz,status:'',name:person});
     }
     if((d.mgtBG||'').trim()&&hit(d.mgtBG)&&!hit(d.berater)){
       const dt=parseTermin(d.datumBG);
-      if(dt&&dt>=start&&dt<end)out.push({auto:true,mgt:true,dealId:d.id,art:'BG',tag:Math.floor((dt-start)/86400000),zeit:calPad(dt.getHours())+':'+calPad(dt.getMinutes()),kunde:(d.name||d.org||'—')+' · 🤝 MGT mit '+(d.berater||'—'),ort:d.bezirk||d.ort||'',status:'',name:person});
+      if(dt&&dt>=start&&dt<end)out.push({auto:true,mgt:true,dealId:d.id,art:'BG',tag:Math.floor((dt-start)/86400000),zeit:calPad(dt.getHours())+':'+calPad(dt.getMinutes()),kunde:(d.name||d.org||'—')+' · 🤝 MGT mit '+(d.berater||'—'),ort:terminOrt(d,'BG').kurz,status:'',name:person});
     }
     if(hit(d.berater))push('BG',d.datumBG);
     else if(hit(d.analyst)||hit(d.telefonist)){ // 👀 BG-Mitschau (Melanies Ansage 04.11.): eigener Kunde hat Beratung bei jemand anderem
@@ -3311,7 +3315,7 @@ function autoEntries(person,start){
         const v=(d.bgDabei||{})[canonName(person)];
         out.push({auto:true,mitschau:true,dabei:(typeof v==='undefined'?null:(v?1:0)),dealId:d.id,art:'BG',
           tag:Math.floor((dt-start)/86400000),zeit:calPad(dt.getHours())+':'+calPad(dt.getMinutes()),
-          kunde:(d.name||d.org||'—')+' · BG bei '+(d.berater||'Berater offen'),ort:d.bezirk||d.ort||'',status:'',name:person});
+          kunde:(d.name||d.org||'—')+' · BG bei '+(d.berater||'Berater offen'),ort:terminOrt(d,'BG').kurz,status:'',name:person});
       }
     }
   });
@@ -3972,7 +3976,7 @@ function kalDaten(d,role){
   return {an,name,termTxt,dt:parseTermin(termTxt),mgt,nm,
     title:(an?'Analyse: ':'Beratung: ')+nm,
     det:'Tel: '+(d.telefon||'-')+(d.briefing?' | '+d.briefing:'')+' | Zugeteilt an: '+name+(mgt?' | MGT dabei: '+mgt:''),
-    loc:[d.strasse,d.plz,d.ort].filter(Boolean).join(', ')||((d.notizen||'').indexOf('CENSA-Büro')>=0?'CENSA Büro, 1230 Wien':''),
+    loc:terminOrt(d,an?'AG':'BG').txt,
     persMail:teamMail(name),kundeMail:(window.__kalOhneKunde===d.id?'':(d.email||'').trim()),
     att:[(window.__kalOhneKunde===d.id?'':(d.email||'').trim()),teamMail(name),mgt?teamMail(mgt):'',OFFICE_MAIL].filter(Boolean)};
 }
@@ -4100,7 +4104,7 @@ function tgTermin(d,role,name){ // „Neuer Termin für dich"
   name=(name||'').trim();if(!name)return;
   const an=role==='analyst';
   const wann=((an?d.datumAG:d.datumBG)||'').trim();
-  const adr=[d.strasse,[d.plz,d.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ')||((d.notizen||'').indexOf('CENSA-Büro')>=0?'CENSA Büro, 1230 Wien':'');
+  const adr=terminOrt(d,an?'AG':'BG').txt;
   const mgt=((an?d.mgtAG:d.mgtBG)||'').trim();
   const pot=ehPotenzial(d);
   const z=['📅 CENSA – neuer Termin für dich: '+(an?'ANALYSE':'BERATUNG')+((!an&&(d.bgDone||[]).length)?' (Folge-BG)':''),
@@ -4329,6 +4333,7 @@ async function wLeadAusKalender(ent,start,wk){
     if(art==='AG'&&gpZuKunde(m,art,ts,person))dbPersist(m);
     if(m.status==='open'&&!(m[feld]||'').trim()){
       m[feld]=ts;if(!(m[rolle]||'').trim())m[rolle]=person;if(!m.gcalId&&evId)m.gcalId=evId;
+      kalOrtSetzen(m,art,loc);
       terminStage(m);histAdd(m,'Termin aus dem Google-Kalender von '+person+' übernommen: '+art+' '+ts);
       dbPersist(m);
       chatSys('📅 Termin aus dem Google-Kalender von '+person+' beim bestehenden Kunden eingetragen: '+(m.name||m.org||'—')+' – '+art+' '+ts+' (kein neuer Lead angelegt)',m);
@@ -4340,7 +4345,7 @@ async function wLeadAusKalender(ent,start,wk){
   const d=blank();
   d.name=kunde;d.gcalId=ent.gcal?evId:'';d.quelle=ent.gcal?'Google Kalender':'Wochenplan';
   if(/gesmbh|gmbh|ges\.m\.b\.h/i.test(kunde)){d.kundentyp='GmbH';d.org=kunde;}
-  if(loc){if(loc.length<=60)d.ort=loc;const pm=/\b([1-9]\d{3})\b/.exec(loc);if(pm){d.plz=pm[1];d.bezirk=bezFromPLZ(pm[1]);}}
+  kalOrtSetzen(d,art,loc);
   d[feld]=ts;d[rolle]=person;
   terminStage(d);
   d.notizen=todayStr().split('-').reverse().join('.')+' Per Klick im Wochenplan aus dem Google-Kalender von '+person+' angelegt ('+art+' '+ts+(loc?' · '+loc:'')+')';
@@ -4448,10 +4453,11 @@ async function gcalLeadImport(tok,person){
         const feld=art==='BG'?'datumBG':'datumAG',rolle=art==='BG'?'berater':'analyst';
         if(!(m[feld]||'').trim()){
           m[feld]=ts;if(!(m[rolle]||'').trim())m[rolle]=person;
+          kalOrtSetzen(m,art,loc);
           terminStage(m);ch=true;
           histAdd(m,'Termin aus dem Google-Kalender von '+person+' übernommen: '+art+' '+ts);
           verknuepft.push({d:m,txt:art+' '+ts});
-        }
+        }else if((m[feld]||'').trim()===ts&&m.gcalId===ev.id&&loc&&kalOrtSetzen(m,art,loc))ch=true; // Ort im Kalender geändert → mitnehmen
       }
       if(ch&&!upd.includes(m))upd.push(m);
       return;
@@ -4460,7 +4466,7 @@ async function gcalLeadImport(tok,person){
     const d=blank();
     d.name=kunde;d.gcalId=ev.id;d.quelle='Google Kalender';
     if(/gesmbh|gmbh|ges\.m\.b\.h/i.test(kunde)){d.kundentyp='GmbH';d.org=kunde;}
-    if(loc){if(loc.length<=60)d.ort=loc;const pm=/\b([1-9]\d{3})\b/.exec(loc);if(pm){d.plz=pm[1];d.bezirk=bezFromPLZ(pm[1]);}}
+    kalOrtSetzen(d,art,loc);
     if(art==='BG'){d.datumBG=ts;d.berater=person;}else{d.datumAG=ts;d.analyst=person;}
     terminStage(d);
     d.notizen=todayStr().split('-').reverse().join('.')+' Aus dem Google-Kalender von '+person+' übernommen ('+art+' '+ts+(loc?' · '+loc:'')+')'
@@ -4483,7 +4489,7 @@ const KAL_REGELN=[
   ['Kundentermine zuerst im CRM eintragen.','Kunde öffnen und den Termin dort eintragen. Das CRM schickt ihn als Einladung in deinen Google-Kalender und an den Kunden. Nicht zusätzlich von Hand in den Kalender schreiben, sonst steht er doppelt.'],
   ['Direkt im Kalender? Dann mit Kürzel am Anfang.','„AG Vorname Nachname" für eine Analyse: Gibt es den Kunden noch nicht, wird ein Lead angelegt. „BG Vorname Nachname" für eine Beratung: Den Kunden muss es schon geben, also den Namen genau wie im CRM schreiben. Ohne Kürzel zählt der Eintrag nicht als Termin.'],
   ['EG, KG, TG und SP sind keine Kunden.','EG = Einstellungsgespräch, KG = Kooperation, TG = Tippgeber, SP = Sponsoring. Diese Kontakte kommen in die GP-Liste der Führungskraft, nicht in die Kundenliste. Wird später ein AG daraus, wird derselbe Eintrag zum Kunden.'],
-  ['Immer mit Uhrzeit, nie ganztägig.','Die Adresse gehört ins Feld „Ort", Telefonnummer oder E-Mail in die Beschreibung. Daran erkennt das CRM den Kunden sicher.'],
+  ['Immer mit Uhrzeit, nie ganztägig – und mit Ort.','Ins Feld „Ort" kommt, wo der Termin stattfindet: die Adresse des Kunden, „Büro", „Online" oder zum Beispiel das Café. Das CRM übernimmt den Ort zum Termin. Telefonnummer oder E-Mail gehören in die Beschreibung, daran erkennt das CRM den Kunden sicher.'],
   ['Erinnerung statt Termin? „follow up" dazuschreiben.','Zum Beispiel „BG follow up Balint", „Info Huber" oder „Rückruf Maier". Das gilt als Notiz zum Kunden: kein neuer Lead, kein zweiter Termin.'],
   ['Verschoben oder abgesagt? Im CRM ändern.','Im Wochenplan beim Termin ↗ oder ✖ tippen und den neuen Termin eintragen. Nur im Kalender verschieben reicht nicht, dann stimmen Kalender und CRM nicht mehr überein.'],
   ['Einträge „Analyse: …" und „Beratung: …" kommen vom CRM.','Nicht umbenennen und nicht löschen. Das sind die Einladungen zu deinen zugeteilten Terminen.'],
@@ -4621,6 +4627,54 @@ function kalCheckZeigen(person,extraStart){
   });
   return R;
 }
+/* ---------- v19.12-C (Melanies Ansage 28.11.): Ort des Termins + Kundeninfos in jedem Reiter ----------
+   Jeder Termin (AG, BG) hat EINEN Ort: '' = beim Kunden (seine Adresse) · '@buero' · '@online' · sonst freier Text („Café Central").
+   Der Ort kommt auch aus dem Feld „Ort" im Google-Kalender. Die Adresse des Kunden ist Privat- oder Firmenadresse (ein Tipp). */
+const ORT_BUERO='CENSA Büro, 1230 Wien';
+function ortAusText(loc){ // Kalender-„Ort" → gespeicherter Wert
+  const t=String(loc||'').trim();if(!t)return '';
+  if(t.length<=40&&/(^|[^a-zäöüß])(online|zoom|teams|google meet|videocall|video|telefonisch|telefon|telefonat)([^a-zäöüß]|$)/i.test(t))return '@online';
+  if(t.length<=60&&/(^|[^a-zäöüß])(b(ü|ue)ro|office|censa|ivp)([^a-zäöüß]|$)/i.test(t))return '@buero';
+  return t.slice(0,120);
+}
+function kundenAdresse(d){return [d.strasse,[d.plz,d.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');}
+function terminOrt(d,art){ // → {wert, txt (für Einladung/Telegram), kurz (für Listen), beimKunden}
+  const v=String((art==='BG'?d.ortBG:d.ortAG)||'').trim();
+  if(v==='@buero')return {wert:v,txt:ORT_BUERO,kurz:'CENSA Büro',beimKunden:false};
+  if(v==='@online')return {wert:v,txt:'Online',kurz:'Online',beimKunden:false};
+  if(v)return {wert:v,txt:v,kurz:v.length>26?v.slice(0,25)+'…':v,beimKunden:false};
+  return {wert:'',txt:kundenAdresse(d)||((d.notizen||'').indexOf('CENSA-Büro')>=0?ORT_BUERO:''),kurz:d.bezirk||d.ort||'',beimKunden:true};
+}
+function kalOrtSetzen(d,art,loc){ // Ort aus dem Google-Kalender zum Termin übernehmen → true, wenn etwas geändert wurde
+  loc=String(loc||'').trim();if(!loc)return false;
+  const feld=art==='BG'?'ortBG':'ortAG',w=ortAusText(loc),alt=d[feld]||'';
+  if(w==='@buero'||w==='@online'){d[feld]=w;return alt!==w;}
+  const pm=/\b([1-9]\d{3})\b/.exec(loc),hatAdr=!!((d.strasse||'').trim()||(d.plz||'').trim());
+  const lokal=/(caf[eé]|kaffee|restaurant|hotel|bar|lounge|starbucks|mcdonald|b(ä|ae)ckerei|gasthaus|heurige|wirt|konditorei|lokal|bistro|pizzeria)/i.test(loc);
+  const teile=loc.split(',').map(x=>x.trim()).filter(Boolean),str=teile.find(x=>/\d/.test(x)&&!/^\s*[1-9]\d{3}\b/.test(x)&&/[a-zäöüß]{3}/i.test(x))||'';
+  if(!hatAdr&&pm&&str&&!lokal){ // sieht nach der Adresse des Kunden aus und er hat noch keine → als seine Adresse, Termin „beim Kunden"
+    d.strasse=str.slice(0,80);d.plz=pm[1];
+    const o=(loc.slice(pm.index+4).split(',')[0]||'').trim();if(o&&o.length<=40)d.ort=o;else if(!d.ort)d.ort=/^1\d{3}$/.test(pm[1])?'Wien':'';
+    d.bezirk=bezFromPLZ(pm[1]);d[feld]='';
+    histAdd(d,'📍 Adresse aus dem Kalender-Ort übernommen: '+kundenAdresse(d));
+    return true;
+  }
+  if(hatAdr&&pm&&(d.plz||'').trim()===pm[1]&&(!str||!(d.strasse||'').trim()||str.toLowerCase().slice(0,6)===(d.strasse||'').trim().toLowerCase().slice(0,6))){d[feld]='';return alt!=='';} // ist seine Adresse
+  if(!hatAdr&&pm&&!lokal&&!d.plz){d.plz=pm[1];d.bezirk=bezFromPLZ(pm[1]);} // wenigstens der Bezirk (für die Verteilung)
+  d[feld]=w;return alt!==w;
+}
+function ortSelectHtml(id2,d,art){
+  const v=String((art==='BG'?d.ortBG:d.ortAG)||'').trim(),frei=v&&v[0]!=='@';
+  return `<select id="${id2}" data-ortsel="1" title="Wo findet der Termin statt? Dieser Ort steht in der Kalender-Einladung."><option value=""${!v?' selected':''}>📍 beim Kunden</option><option value="@buero"${v==='@buero'?' selected':''}>🏛 CENSA Büro</option><option value="@online"${v==='@online'?' selected':''}>💻 Online</option>${frei?`<option value="${esc(v)}" selected>✎ ${esc(v)}</option>`:''}<option value="@neu">✎ anderer Ort …</option></select>`;
+}
+function kopfInfoHtml(o){ // Telefon, Mail, Adresse – in JEDEM Reiter sichtbar (Kopf des Kunden-Fensters)
+  const adr=[o.strasse,[o.plz,o.ort].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  const firma=(o.adrTyp||(o.kundentyp==='GmbH'?'firma':'privat'))==='firma';
+  const fehlt=(ic,t,k)=>`<button type="button" class="kchip bad" data-lk="${k}" title="Antippen springt zum Feld">${ic} ${t} fehlt</button>`;
+  return (o.tel?`<a class="kchip" href="tel:${esc(String(o.tel).replace(/[^+\d]/g,''))}" title="Anrufen">☎ ${esc(o.tel)}</a>`:fehlt('☎','Telefon','tel'))
+    +(o.email?`<a class="kchip" href="mailto:${esc(o.email)}" title="E-Mail schreiben">✉ ${esc(o.email)}</a>`:fehlt('✉','E-Mail','email'))
+    +(adr?`<button type="button" class="kchip" data-lk="adr" title="${firma?'Firmenadresse':'Privatadresse'} – antippen zum Ändern">${firma?'🏢':'🏠'} ${esc(adr)}</button>`:fehlt('📍','Adresse','adr'));
+}
 /* ---------- v19.12-B (Melanies Ansage 28.11.): Was aus einem Termin wird ----------
    AG  → darf einen Lead anlegen (wenn es den Kunden noch nicht gibt)
    BG  → der Kunde muss schon angelegt sein; es wird NIE automatisch ein Lead daraus
@@ -4651,13 +4705,12 @@ function gpAusTermin(person,art,name,dt,evId,ort){ // → {d, neu, gleich} | nul
   let d=gpKandidatFinden(name),neu=false;
   if(!d){
     d=blank();d.name=name;d.gp=true;d.quelle='Recruiting';d.kundentyp='Privat';d.branche=GP_ART[art];d.gpKal=true;d.gpArt=art;d.gpVon=person;
-    if(ort){if(ort.length<=60)d.ort=ort;const pm=/\b([1-9]\d{3})\b/.exec(ort);if(pm){d.plz=pm[1];d.bezirk=bezFromPLZ(pm[1]);}}
-    d.notizen=todayStr().split('-').reverse().join('.')+' '+GP_ART[art]+' am '+ts+' – aus dem Wochenplan von '+person;
+    d.notizen=todayStr().split('-').reverse().join('.')+' '+GP_ART[art]+' am '+ts+(ort?' ('+ort+')':'')+' – aus dem Wochenplan von '+person;
     neu=true;
   }
   d.gpTermine=d.gpTermine||[];
   if(d.gpTermine.some(x=>(evId&&x.ev===evId)||(x.art===art&&x.ts===ts)))return {d,neu:false,gleich:true};
-  d.gpTermine.push({art,ts,von:person,ev:evId||''});if(d.gpTermine.length>40)d.gpTermine=d.gpTermine.slice(-40);
+  d.gpTermine.push({art,ts,von:person,ev:evId||'',ort:String(ort||'').slice(0,120)});if(d.gpTermine.length>40)d.gpTermine=d.gpTermine.slice(-40);
   if(neu)histAdd(d,'👥 In die GP-Liste aufgenommen: '+GP_ART[art]+' am '+ts+' (Termin von '+person+')');
   else{if(!d.gp)d.gp=true;d.gpKal=true;if(!d.gpArt)d.gpArt=art;if(!d.gpVon)d.gpVon=person;histAdd(d,'👥 '+GP_ART[art]+' am '+ts+' (Termin von '+person+')');}
   __kbC.t=0;
@@ -5648,7 +5701,7 @@ function renderGP(){
     <div class="tablewrap"><table><thead><tr><th>#</th><th>Name</th><th>Firma</th><th>Lage</th><th>Telefon</th><th>Bezirk</th><th>Phase</th><th>Anrufe</th><th>Ansprache-Tipp / Info</th></tr></thead><tbody>
       ${rows.map((d,i)=>{const L=LG[d.id],S=GP_STUFE[L.stufe];
         const gt=(d.gpTermine||[]).slice(-1)[0];
-        const lage=d.gpKal?`<span style="font-weight:700;color:var(--brand-ink);white-space:nowrap">👥 ${esc(GP_ART[d.gpArt]||'Termin')}</span>${gt?`<div style="font-size:11.5px;color:var(--ink-2)">${esc(gt.ts)} · ${esc(gt.von||'')}${(d.gpTermine||[]).length>1?' · '+d.gpTermine.length+' Termine':''}${d.gpKunde?' · ist auch Kunde':''}</div>`:''}`:L.koop?'<span style="color:var(--ink-3)">🤝 Kooperation</span>':`<span title="${esc(L.sig||'')}" style="font-weight:700;color:${S[2]};white-space:nowrap">${S[0]} ${S[1]}</span>${L.kurz?`<div style="font-size:11.5px;color:var(--ink-2);max-width:230px">${esc(L.kurz)}</div>`:''}`;
+        const lage=d.gpKal?`<span style="font-weight:700;color:var(--brand-ink);white-space:nowrap">👥 ${esc(GP_ART[d.gpArt]||'Termin')}</span>${gt?`<div style="font-size:11.5px;color:var(--ink-2)">${esc(gt.ts)}${gt.ort?' · 📍 '+esc(gt.ort):''} · ${esc(gt.von||'')}${(d.gpTermine||[]).length>1?' · '+d.gpTermine.length+' Termine':''}${d.gpKunde?' · ist auch Kunde':''}</div>`:''}`:L.koop?'<span style="color:var(--ink-3)">🤝 Kooperation</span>':`<span title="${esc(L.sig||'')}" style="font-weight:700;color:${S[2]};white-space:nowrap">${S[0]} ${S[1]}</span>${L.kurz?`<div style="font-size:11.5px;color:var(--ink-2);max-width:230px">${esc(L.kurz)}</div>`:''}`;
         return `<tr data-id="${d.id}"><td class="tnum" style="color:var(--ink-3)">${sortBy==='lage'&&L.score>0?(i+1):''}</td><td><b>${esc(d.name||'—')}</b></td><td>${esc(d.org||'')}</td><td>${lage}</td><td class="tnum">${esc(d.telefon||'')}</td><td>${esc(d.bezirk||d.ort||'')}</td><td>${d.status==='won'?'<span style="color:var(--good);font-weight:700">Gewonnen</span>':d.status==='lost'?'<span style="color:var(--bad)">Verloren</span>':esc(d.stage)}</td><td class="tnum">${(d.calls||[]).length}</td><td style="max-width:340px;font-size:12px;color:var(--ink-2)" title="${esc((d.notizen||'').slice(0,600))}">${L.tipp?('💬 '+esc(L.tipp)):esc((d.notizen||'').slice(0,90))}</td></tr>`;}).join('')}
     </tbody></table></div>`;
   host.querySelector('#gSearch').addEventListener('input',e=>{host.__q=e.target.value;const pos=e.target.selectionStart;renderGP();const np=host.querySelector('#gSearch');np.focus();np.setSelectionRange(pos,pos);});
@@ -6568,17 +6621,15 @@ function noteZeile(n,loeschbar){
   const darf=loeschbar&&(isAdmin()||nameEq(n.von,chatName()||''));
   return `<div class="nit"><span class="nm">${esc(noteZeit(n.ts))} · ${esc(n.von||'?')}:</span> ${esc(n.txt)}${darf?` <button type="button" class="nx" data-ndel="${esc(n.id)}" title="Diese Notiz löschen">✕</button>`:''}</div>`;
 }
-function notesBlockHtml(d,r){ // eigener Bereich je Rolle: Verlauf (neueste oben) + Eingabezeile
-  const L=notesVon(d,r),R=NOTE_R[r];
+function notesBlockHtml(d,r){ // v19.12-C: in JEDEM Reiter die neuesten Notizen ALLER Rollen (mit Rolle, Name, Uhrzeit) + Eingabezeile für die eigene Rolle
+  const L=((d&&d.notes)||[]).slice().sort((a,b)=>String(b.ts||'').localeCompare(String(a.ts||''))),R=NOTE_R[r];
   const ph=r==='tel'?'Was wurde am Telefon besprochen?':r==='an'?'Nach der Analyse: Eindruck, Bedarf, nächste Schritte':'Nach der Beratung: Ergebnis, Einwände, nächste Schritte';
-  return `<label>${R[0]} Notizen ${R[1]} <span style="font-weight:500;color:var(--ink-3);text-transform:none">— Name &amp; Uhrzeit automatisch</span></label>
-    <div class="nbox">${L.length?(L.length>1?`<details class="nmore"><summary><div class="nneu">${noteZeile(L[0],true)}</div><span class="nmehr">▸ ${L.length-1} frühere</span></summary><div class="nlist">${L.slice(1).map(n=>noteZeile(n,true)).join('')}</div></details>`:`<div class="nneu">${noteZeile(L[0],true)}</div>`):''}
+  const z=n=>noteZeile(n,true).replace('<div class="nit">','<div class="nit">'+(NOTE_R[n.r]||['📝'])[0]+' ');
+  return `<label>📝 Notizen <span style="font-weight:500;color:var(--ink-3);text-transform:none">— alle Rollen · neue Notiz als ${R[1]}</span></label>
+    <div class="nbox">${L.length?(L.length>2?`<details class="nmore"><summary><div class="nneu nzwei">${z(L[0])}${z(L[1])}</div><span class="nmehr">▸ ${L.length-2} frühere</span></summary><div class="nlist">${L.slice(2).map(z).join('')}</div></details>`:`<div class="nneu nzwei">${L.map(z).join('')}</div>`):''}
       <div class="nadd"><textarea rows="1" data-ntxt="${r}" placeholder="${ph}"></textarea><button type="button" class="mini-btn" data-nadd="${r}" style="white-space:nowrap">＋ Notiz</button></div></div>`;
 }
-function notesAndereHtml(d){ // Notizen der anderen Rollen: lesbar, eingeklappt, EINE Zeile je Reiter
-  return ['tel','an','be'].map(t=>{const rs=['tel','an','be'].filter(r=>r!==t&&notesVon(d,r).length);if(!rs.length)return '';
-    return `<details class="lmore tb tb-${t}" style="margin:0"><summary>Notizen der anderen: ${rs.map(r=>NOTE_R[r][0]+' '+NOTE_R[r][1]+' ('+notesVon(d,r).length+')').join(' · ')}</summary>${rs.map(r=>`<div style="font-size:11px;font-weight:800;color:var(--ink-3);margin-top:6px">${NOTE_R[r][0]} ${NOTE_R[r][1]}</div><div class="nlist" style="margin:3px 0 0">${notesVon(d,r).map(n=>noteZeile(n,false)).join('')}</div>`).join('')}</details>`;}).join('');
-}
+function notesAndereHtml(d){return '';} // die Notizen der anderen Rollen stehen jetzt direkt in der Liste
 function notesKurzHtml(d,max){ // für Listen und den Telefon-Reiter: die neuesten Notizen aller Rollen
   const L=((d&&d.notes)||[]).slice().sort((a,b)=>String(b.ts||'').localeCompare(String(a.ts||''))).slice(0,max||3);
   if(!L.length)return '';
@@ -6970,8 +7021,8 @@ function openModal(id){
   };
   const m=document.getElementById('modal');m.classList.add('wide');
   m.innerHTML=`
-    <h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${isNew?'Neuer Lead':esc(d.name||d.org||'Lead')}<button class="btn pri" id="m-save-top" style="margin-left:auto;padding:8px 18px;font-size:13.5px">💾 Speichern</button></h2>
-    <div class="sub">${isNew?'Datensatz anlegen':'Status: '+(d.status==='won'?'Gewonnen':d.status==='lost'?'Verloren ('+esc(d.lostReason||'')+')':esc(d.stage))}${(!isNew&&d.status==='open')?(()=>{const z=zustaendig(d);return ` · <b style="color:var(--brand-ink)" title="Wer bei diesem Kunden dranbleibt: Telefonist bis zur Analyse, danach der Analyst, nach der ersten Beratung der Berater">Dran: ${ROLLE_IC[z.rolle]} ${esc(z.name||('noch kein '+ROLLE_LBL[z.rolle]))}</b>`;})():''}</div>
+    <h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span id="m-h2name">${isNew?'Neuer Lead':esc(d.name||d.org||'Lead')}</span><span id="m-h2org" style="font-size:14px;font-weight:600;color:var(--ink-3)">${(d.org&&d.name&&d.org!==d.name)?'· '+esc(d.org):''}</span><button class="btn pri" id="m-save-top" style="margin-left:auto;padding:8px 18px;font-size:13.5px">💾 Speichern</button></h2>
+    <div class="sub">${isNew?'Datensatz anlegen':'Status: '+(d.status==='won'?'Gewonnen':d.status==='lost'?'Verloren ('+esc(d.lostReason||'')+')':esc(d.stage))}${(!isNew&&d.status==='open')?(()=>{const z=zustaendig(d);return ` · <b style="color:var(--brand-ink)" title="Wer bei diesem Kunden dranbleibt: Telefonist bis zur Analyse, danach der Analyst, nach der ersten Beratung der Berater">Dran: ${ROLLE_IC[z.rolle]} ${esc(z.name||('noch kein '+ROLLE_LBL[z.rolle]))}</b>`;})():''}<span class="kkopf" id="m-kopf">${isNew?'':kopfInfoHtml({tel:d.telefon,email:d.email,strasse:d.strasse,plz:d.plz,ort:d.ort,adrTyp:d.adrTyp,kundentyp:d.kundentyp})}</span></div>
     ${(!isNew&&isAdmin()&&d.geprueft===false)?`<div style="background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 13px;margin-bottom:13px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b>📥 Posteingang</b> – für das Team noch unsichtbar.<button class="btn" id="m-frei" style="padding:6px 12px;font-size:12.5px">✓ Prüfen &amp; freigeben</button></div>`:''}
     ${(!isNew&&isAdmin()&&(d.mergeUndo||[]).length)?`<div style="background:var(--surface-2);border:1.5px solid var(--line);border-radius:10px;padding:10px 13px;margin-bottom:13px;font-size:12.5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>🔗 Hier wurden Kunden zusammengeführt (${fmtD(d.mergeUndo[d.mergeUndo.length-1].ts)}: ${esc((d.mergeUndo[d.mergeUndo.length-1].rest||[]).map(o=>o.name||o.org||'—').join(', ').slice(0,120))})</span><button class="btn" id="m-undoMerge" style="padding:6px 12px;font-size:12.5px;margin-left:auto">↩ Rückgängig – wieder trennen</button></div>`:''}
     ${(()=>{if(isNew)return '';const L=leadLuecken(d);if(!L.length)return '';
@@ -7018,18 +7069,20 @@ function openModal(id){
           <input id="m-plz" value="${esc(d.plz||'')}" placeholder="PLZ">
           <input id="m-ort" value="${esc(d.ort)}" placeholder="Ort">
         </div>
-        <div style="padding:0 13px 11px;font-size:11.5px;font-weight:700;color:var(--brand-ink)" id="m-bezview">${d.bezirk?'· '+esc(d.bezirk):''}</div>
+        <div style="padding:0 13px 11px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><select id="m-adrtyp" style="width:auto;font-size:12.5px" title="Ist das die Privatadresse oder die Firmenadresse?"><option value="privat"${(d.adrTyp||(d.kundentyp==='GmbH'?'firma':'privat'))==='privat'?' selected':''}>🏠 Privatadresse</option><option value="firma"${(d.adrTyp||(d.kundentyp==='GmbH'?'firma':'privat'))==='firma'?' selected':''}>🏢 Firmenadresse</option></select><span style="font-size:11.5px;font-weight:700;color:var(--brand-ink)" id="m-bezview">${d.bezirk?'· '+esc(d.bezirk):''}</span></div>
       </details>
     </div>
     <div class="grid2">
       ${(()=>{const roleSel=(id2,label,cur,role,cls)=>`<div class="fld tb ${cls}"><label>${label}</label><select id="${id2}">${roleDropdown(role,cur)}</select></div>`;
       const mgtSel=(id2,label,cur,cls)=>{const names=TEAM.map(x=>x.name).sort(COLL.compare);let o=`<option value=""${!cur?' selected':''}>— niemand —</option>`+names.map(n=>`<option${n===cur?' selected':''}>${esc(n)}</option>`).join('');if(cur&&!names.includes(cur))o+=`<option selected>${esc(cur)}</option>`;return `<div class="fld tb ${cls}"><label>${label}</label><select id="${id2}">${o}</select></div>`;};
       return roleSel('m-telf','Telefonist',d.telefonist||'','telefonist','tb-tel')+roleSel('m-an','Analyst',d.analyst||'','analyst','tb-tel tb-an')+roleSel('m-be','Berater',d.berater||'','berater','tb-an tb-be')
-        +mgtSel('m-mgtag','🤝 MGT dabei (Analyse)',d.mgtAG||'','tb-an')+mgtSel('m-mgtbg','🤝 MGT dabei (Beratung)',d.mgtBG||'','tb-be');})()}
+        +mgtSel('m-mgtbg','🤝 MGT dabei (Beratung)',d.mgtBG||'','tb-be');})()}
       ${(d.telHist&&d.telHist.length)?`<div class="fld full tb tb-tel"><div class="histline">Frühere Anrufer: ${esc(d.telHist.join(', '))}</div></div>`:''}
       <div class="fld tb tb-tel"><label>Wiedervorlage</label><input type="date" id="m-wv" value="${esc(d.wiedervorlage)}"></div>
       <div class="fld tb tb-tel tb-an"><label>Analysetermin (AG)</label><input id="m-dag" value="${esc(d.datumAG||'')}" placeholder="z. B. 22.09. 14:00" title="Beliebig tippen (22.9. 14 · morgen 10 Uhr · 22/9/26 14:30) – gespeichert wird einheitlich TT.MM.JJJJ HH:MM"></div>
+         <div class="fld tb tb-tel tb-an"><label>📍 Ort der Analyse</label>${ortSelectHtml('m-oag',d,'AG')}</div>
       <div class="fld tb tb-an tb-be"><label>Beratungstermin (BG)</label><input id="m-dbg" value="${esc(d.datumBG||'')}" placeholder="z. B. 25.09. 10:00" title="Beliebig tippen (25.9. 10 · morgen 10 Uhr) – gespeichert wird einheitlich TT.MM.JJJJ HH:MM"></div>
+         <div class="fld tb tb-an tb-be"><label>📍 Ort der Beratung</label>${ortSelectHtml('m-obg',d,'BG')}</div>
       ${(!isNew&&parseTermin(d.datumAG))?`<div class="fld full tb tb-tel"><label title="Schickt die Kalender-Einladung noch einmal an den Kunden (wenn seine E-Mail eingetragen ist) und an die zugeteilte Person. Ein vorhandener Kalender-Eintrag wird aktualisiert, nicht verdoppelt.">Termin neu verschicken</label>
         <div style="display:flex;gap:7px;flex-wrap:wrap"><button type="button" class="mini-btn" data-kal="senden" data-kalrole="analyst" data-kalid="${esc(d.id)}">📨 AG-Termin neu verschicken</button></div>
       </div>`:''}
@@ -7048,7 +7101,8 @@ function openModal(id){
         </div>
       </div>
       ${isAdmin()?`<div class="fld tb tb-tel"><label>Potenzieller Geschäftspartner? <span style="color:var(--ink-3);font-weight:500;text-transform:none">(nur für Admins sichtbar)</span></label><label class="gptoggle"><input type="checkbox" id="m-gp" ${d.gp?'checked':''}> Ja – fürs Recruiting vormerken</label></div>`:''}
-      <div class="fld tb tb-an"><label>Geburtsdatum <span style="font-weight:500;color:var(--ink-3);text-transform:none">— für Anstalts-Auskünfte</span></label><input id="m-geb" value="${esc(d.geb||'')}" placeholder="TT.MM.JJJJ"></div>
+               ${(()=>{const cur=d.mgtAG||'',names=TEAM.map(x=>x.name).sort(COLL.compare);let o=`<option value=""${!cur?' selected':''}>— niemand —</option>`+names.map(n=>`<option${n===cur?' selected':''}>${esc(n)}</option>`).join('');if(cur&&!names.includes(cur))o+=`<option selected>${esc(cur)}</option>`;return `<div class="fld tb tb-an"><label>🤝 MGT dabei (Analyse)</label><select id="m-mgtag">${o}</select></div>`;})()}
+         <div class="fld tb tb-an"><label>Geburtsdatum <span style="font-weight:500;color:var(--ink-3);text-transform:none">— für Anstalts-Auskünfte</span></label><input id="m-geb" value="${esc(d.geb||'')}" placeholder="TT.MM.JJJJ"></div>
       <details class="sec tb tb-an"${(d.partner&&d.partner.name)?' open':''}><summary>👫 Partner / Familie <span class="sv">${esc((d.partner&&d.partner.name)||'— keiner erfasst —')}${(d.partner&&d.partner.geb)?' · '+esc(d.partner.geb):''}</span></summary>
         <div class="inner2" style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1.2fr;gap:8px">
           <input id="m-pname" placeholder="Name Partner/in" value="${esc((d.partner&&d.partner.name)||'')}">
@@ -7242,7 +7296,8 @@ function openModal(id){
     E.nm.addEventListener('change',()=>{betLesen('p');paintEH(m,d);});
     betLesen();};
   m.__betWire(); // direkt hier verdrahten (gehört zu DIESEM Kunden)
-  const collect=()=>{notesOffene(d,true);notesMischen(d);d.kundentyp=typ.value;d.quelle=m.querySelector('#m-quelle').value;d.name=m.querySelector('#m-name').value;d.org=m.querySelector('#m-org')?m.querySelector('#m-org').value:d.org;
+  const collect=()=>{notesOffene(d,true);notesMischen(d);d.kundentyp=typ.value;
+    {const oa=m.querySelector('#m-oag'),ob=m.querySelector('#m-obg'),at=m.querySelector('#m-adrtyp');if(oa&&oa.value!=='@neu')d.ortAG=oa.value;if(ob&&ob.value!=='@neu')d.ortBG=ob.value;if(at)d.adrTyp=at.value;}d.quelle=m.querySelector('#m-quelle').value;d.name=m.querySelector('#m-name').value;d.org=m.querySelector('#m-org')?m.querySelector('#m-org').value:d.org;
     d.telefon=normTel(m.querySelector('#m-tel').value);
     const emEl=m.querySelector('#m-email');if(emEl)d.email=emEl.value.trim();
     const gbEl=m.querySelector('#m-geb');if(gbEl)d.geb=gbEl.value.trim();
@@ -7292,15 +7347,33 @@ function openModal(id){
     });};
   const persist=()=>{notesMischen(d);histDiff();d.upd=new Date().toISOString();if(isNew&&!state.deals.includes(d))state.deals.unshift(d);dbPersist(d);render();}; // upd = letzte Bearbeitung (Basis für die Liegen-geblieben-Info)
   const callMeta=()=>{const dur=m.querySelector('#m-dur'),no=m.querySelector('#m-cnote');const o={};if(dur&&dur.value)o.dur=parseFloat(dur.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
-  m.querySelectorAll('[data-lk]').forEach(b=>b.addEventListener('click',()=>{
-    const id=({tel:'m-tel',email:'m-email',adr:'m-str',name:'m-name',geb:'m-geb',pdf:'m-analysesec',sprach:'m-analysesec',pot:'q-betrag'})[b.dataset.lk];
+  const lkSprung=lk=>{
+    const id=({tel:'m-tel',email:'m-email',adr:'m-str',name:'m-name',geb:'m-geb',pdf:'m-analysesec',sprach:'m-analysesec',pot:'q-betrag'})[lk];
     const el=id?m.querySelector('#'+id):null;if(!el)return;
     const tb=el.closest('.tb');
     if(tb&&!tb.classList.contains('tb-'+m.dataset.lt)){const t2=['tel','an','be'].find(x=>tb.classList.contains('tb-'+x));if(t2)setLT(t2,true);}
     let p=el.parentElement;while(p&&p!==m){if(p.tagName==='DETAILS')p.open=true;p=p.parentElement;}
     el.scrollIntoView({block:'center',behavior:'smooth'});
     if(el.focus&&/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))setTimeout(()=>el.focus({preventScroll:true}),250);
-  }));
+  };
+  m.querySelectorAll('[data-lk]').forEach(b=>b.addEventListener('click',()=>lkSprung(b.dataset.lk)));
+  { // v19.12-C: Kunden-Kopf folgt den Eingaben; Ort-Auswahl mit freiem Text
+    const gv=q=>{const e=m.querySelector(q);return e?e.value.trim():'';};
+    const kopfNeu=()=>{
+      const kp=m.querySelector('#m-kopf');if(!kp)return;
+      kp.innerHTML=kopfInfoHtml({tel:gv('#m-tel'),email:gv('#m-email'),strasse:gv('#m-str'),plz:gv('#m-plz'),ort:gv('#m-ort'),adrTyp:gv('#m-adrtyp'),kundentyp:typ.value});
+      kp.querySelectorAll('[data-lk]').forEach(b=>b.addEventListener('click',()=>lkSprung(b.dataset.lk)));
+      const hn=m.querySelector('#m-h2name'),ho=m.querySelector('#m-h2org'),nm=gv('#m-name'),og=gv('#m-org');
+      if(hn&&(nm||og))hn.textContent=nm||og;if(ho)ho.textContent=(og&&nm&&og!==nm)?'· '+og:'';
+    };
+    ['#m-name','#m-org','#m-tel','#m-email','#m-str','#m-plz','#m-ort','#m-adrtyp','#m-typ'].forEach(q=>{const e=m.querySelector(q);if(e){e.addEventListener('input',kopfNeu);e.addEventListener('change',kopfNeu);}});
+    m.querySelectorAll('select[data-ortsel]').forEach(sel=>{let vor=sel.value;sel.addEventListener('change',()=>{
+      if(sel.value!=='@neu'){vor=sel.value;return;}
+      const t=(prompt('Wo findet der Termin statt? (z. B. „Café Central, Herrengasse 14" oder „bei ihm zuhause")',vor&&vor[0]!=='@'?vor:'')||'').trim().slice(0,120);
+      if(!t){sel.value=vor;return;}
+      let o=[...sel.options].find(x=>x.value===t);if(!o){o=document.createElement('option');o.value=t;o.textContent='✎ '+t;sel.insertBefore(o,sel.options[sel.options.length-1]);}
+      sel.value=t;vor=t;});});
+  }
   const anSec=m.querySelector('#m-analysesec');
   if(anSec){
     const fIn=anSec.querySelector('#an-file'),scIn=anSec.querySelector('#an-scan'),anSt=anSec.querySelector('#an-state');
