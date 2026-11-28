@@ -562,7 +562,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-Z3";
+const APP_VERSION="19.11-Z4";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -4381,6 +4381,146 @@ async function gcalLeadImport(tok,person){
   neu.forEach(d=>{state.deals.push(d);chatSys('📅 Neuer Lead aus dem Google-Kalender von '+person+': '+(d.name||'')+' – '+(d.datumBG?('Beratung '+d.datumBG):('Analyse '+d.datumAG))+((d.notizen||'').indexOf('Möglicher Doppler')>=0?' · ⚠ ähnlicher Kunde vorhanden – bitte prüfen':''),d);});
   return neu.length;
 }
+/* ---------- v19.11-Z4 (Melanies Ansage 28.11.): Kalender-Check – findet Fehler im Google-Kalender einer Person und erklärt, wie es im CRM richtig geht ---------- */
+const KAL_REGELN=[
+  ['Kundentermine zuerst im CRM eintragen.','Kunde öffnen und den Termin dort eintragen. Das CRM schickt ihn als Einladung in deinen Google-Kalender und an den Kunden. Nicht zusätzlich von Hand in den Kalender schreiben, sonst steht er doppelt.'],
+  ['Direkt im Kalender? Dann mit Kürzel am Anfang.','„AG Vorname Nachname" für eine Analyse, „BG Vorname Nachname" für eine Beratung. Den Namen genau so schreiben wie im CRM. Ohne Kürzel zählt der Eintrag nicht als Termin.'],
+  ['Immer mit Uhrzeit, nie ganztägig.','Die Adresse gehört ins Feld „Ort", Telefonnummer oder E-Mail in die Beschreibung. Daran erkennt das CRM den Kunden sicher.'],
+  ['Erinnerung statt Termin? „follow up" dazuschreiben.','Zum Beispiel „BG follow up Balint", „Info Huber" oder „Rückruf Maier". Das gilt als Notiz zum Kunden: kein neuer Lead, kein zweiter Termin.'],
+  ['Verschoben oder abgesagt? Im CRM ändern.','Im Wochenplan beim Termin ↗ oder ✖ tippen und den neuen Termin eintragen. Nur im Kalender verschieben reicht nicht, dann stimmen Kalender und CRM nicht mehr überein.'],
+  ['Einträge „Analyse: …" und „Beratung: …" kommen vom CRM.','Nicht umbenennen und nicht löschen. Das sind die Einladungen zu deinen zugeteilten Terminen.'],
+  ['Privates klar kennzeichnen.','„Privat" davorschreiben oder keinen Ort eintragen. MGT, EG, KG und TG ebenfalls mit dem Kürzel am Anfang.'],
+  ['Kalender verbunden halten.','Auf jedem Gerät einmal „Google auf diesem Gerät verbinden" tippen. Im Reiter „Woche" holt „📅 Google-Sync" deine Einträge, „🔎 Kalender-Check" zeigt dir, was nicht passt.']
+];
+function kalCheck(person,extraStart){
+  const starts=[wkStart(0),wkStart(1)];
+  if(extraStart&&!starts.some(x=>wkKeyOf(x)===wkKeyOf(extraStart)))starts.push(extraStart);
+  starts.sort((a,b)=>a-b);
+  const privat=/\b(privat|urlaub|frei|arzt|zahnarzt|friseur|geburtstag|feiertag|essen|mittag|training|schule|kinder|team|meeting|büro|buero|jour)\b/i;
+  const F=[],dupDa=new Set(),datenDa=new Set();let n=0,letzter='';
+  const add=(lvl,wann,was,problem,richtig,sort)=>F.push({lvl,wann,was,problem,richtig,sort});
+  const hmOf=p=>calPad(p.getHours())+':'+calPad(p.getMinutes());
+  const fehlt=d=>[(d.telefon||'').trim()?'':'Telefon',(d.email||'').trim()?'':'E-Mail',((d.strasse||'').trim()||(d.plz||'').trim())?'':'Adresse'].filter(Boolean);
+  starts.forEach(start=>{
+    const wk=wkKeyOf(start);
+    const L=wocheDaten(wk).filter(e=>e.type!=='ov'&&e.gcal&&nameEq(e.name,person)).map(e=>{
+      let art=e.art||'PRIVAT',kunde=(e.kunde||'').trim();const titel=(art!=='PRIVAT'?art+' ':'')+kunde;
+      if(art==='PRIVAT'){const pa=gcalArt(kunde);if(pa.suffix){art=pa.art;kunde=pa.rest;}}
+      return {e,art,kunde,titel,tag:+e.tag||0,zeit:e.zeit||'',ort:(e.ort||'').trim(),info:kalInfo(kunde)};
+    });
+    L.forEach(x=>{
+      n++;if((x.e.ts||'')>letzter)letzter=x.e.ts;
+      if(['MGT','EG','KG','TG'].includes(x.art))return;
+      const tagD=new Date(start.getFullYear(),start.getMonth(),start.getDate()+x.tag);
+      const hm=x.zeit.split(':').map(Number);
+      const dt=new Date(tagD.getFullYear(),tagD.getMonth(),tagD.getDate(),isNaN(hm[0])?9:hm[0],hm[1]||0);
+      const wann=WDAYS[x.tag]+' '+fmtDM(tagD)+(x.zeit?' '+x.zeit:''),was='„'+x.titel+'"',so=dt.getTime();
+      const nm=kalName(x.kunde)||x.kunde;
+      let fund={d:null,aehnlich:[]};
+      try{fund=leadFuerKalender({id:kalEvId(x.e._id,wk,person),summary:x.kunde,location:x.ort,description:''},x.kunde,dt,state.deals,person);}catch(err){}
+      const d=fund.d,dn=d?(d.name||d.org||'Kunde'):'';
+      if(x.info){
+        if(!d&&(x.art==='AG'||x.art==='BG'))add('H',wann,was,'Das ist eine Notiz, aber im CRM gibt es dazu keinen Kunden.','Wenn es ein Kunde ist: mit „+ Lead" anlegen. Notizen zählen nicht als Termin.',so);
+        return;
+      }
+      if(x.art==='PRIVAT'){
+        if(privat.test(x.titel))return;
+        if(d)add('F',wann,was,'Das Kürzel fehlt. Der Eintrag sieht nach dem Kunden '+dn+' aus, zählt so aber nicht als Termin.','„AG '+nm+'" (Analyse) oder „BG '+nm+'" (Beratung) schreiben. Ist es nur eine Erinnerung, dann „follow up '+nm+'".',so);
+        else if(x.ort&&x.zeit)add('H',wann,was,'Kein Kürzel, aber ein Ort ist eingetragen. Das CRM wertet das als Analysetermin und legt daraus einen Lead an.','Kundentermin: „AG Name" oder „BG Name" schreiben. Privater Termin: „Privat" davorsetzen.',so);
+        return;
+      }
+      if(x.art!=='AG'&&x.art!=='BG')return;
+      const lang=x.art==='AG'?'Analysetermin':'Beratungstermin';
+      if(!x.zeit)add('F',wann,was,'Der Eintrag ist ganztägig, es fehlt die Uhrzeit.','Im Google-Kalender eine Uhrzeit setzen. Nur dann kann das CRM den Termin beim Kunden eintragen.',so);
+      if(!kdTokens(nm).length){add('F',wann,was,'Der Kundenname fehlt.','„'+x.art+' Vorname Nachname" oder den Firmennamen schreiben, genau wie im CRM.',so);return;}
+      const zw=L.find(y=>y!==x&&y.tag===x.tag&&(y.art==='AG'||y.art==='BG')&&!y.info&&kundeGleich(kalName(y.kunde)||y.kunde,nm));
+      if(zw){const key=[x.e._id,zw.e._id].sort().join('|');if(!dupDa.has(key)){dupDa.add(key);add('F',wann,was+' und „'+zw.titel+'"','Derselbe Kunde steht an diesem Tag zweimal in deinem Kalender'+(zw.zeit&&zw.zeit!==x.zeit?' ('+x.zeit+' und '+zw.zeit+')':'')+'.','Einen der beiden Einträge im Google-Kalender löschen.',so);}}
+      if(!d){
+        if(fund.aehnlich.length)add('F',wann,was,'Der Name ist nicht eindeutig. Im CRM gibt es: '+fund.aehnlich.join(', ')+'.','Den Namen so schreiben wie im CRM, z. B. „'+x.art+' '+fund.aehnlich[0]+'". Ist es ein neuer Kunde, im Wochenplan „➕ Lead anlegen" tippen.',so);
+        else add('F',wann,was,'Diesen Kunden gibt es im CRM noch nicht.','Im Wochenplan beim Eintrag „➕ Lead anlegen" tippen und Telefon, E-Mail und Adresse ergänzen. Künftig den Termin gleich im CRM eintragen.',so);
+        return;
+      }
+      const ds=((x.art==='BG'?d.datumBG:d.datumAG)||'').trim(),p=parseTermin(ds);
+      if(!p){
+        if(d.status==='open')add('H',wann,was,'Der Termin steht nur im Kalender. Beim Kunden '+dn+' ist im CRM noch kein '+lang+' eingetragen.','Im Wochenplan beim Eintrag auf „🔗 '+dn+' – Termin beim Kunden eintragen" tippen.',so);
+      }else if(p.getFullYear()===tagD.getFullYear()&&p.getMonth()===tagD.getMonth()&&p.getDate()===tagD.getDate()){
+        if(x.zeit&&hmOf(p)!==x.zeit)add('F',wann,was,'Die Uhrzeit stimmt nicht überein: im Kalender '+x.zeit+', im CRM bei '+dn+' '+hmOf(p)+'.','Die richtige Uhrzeit beim Kunden im CRM eintragen. Das CRM verschickt den Termin neu. Den eigenen Kalender-Eintrag danach löschen.',so);
+      }else{
+        add('F',wann,was,'Kalender und CRM passen nicht zusammen: Im CRM steht der '+lang+' von '+dn+' am '+ds+'.','Wurde verschoben? Dann im CRM den neuen Termin eintragen (Wochenplan: beim alten Termin ↗ tippen). Ist es nur eine Erinnerung? Dann „'+x.art+' follow up '+nm+'" schreiben.',so);
+      }
+      const fl=fehlt(d);
+      if(fl.length&&d.status==='open'&&!datenDa.has(d.id)){datenDa.add(d.id);add('H',wann,was,'Beim Kunden '+dn+' fehlt im CRM: '+fl.join(', ')+'.','Kunde öffnen und ergänzen.'+(fl.includes('E-Mail')?' Ohne E-Mail bekommt der Kunde keine Termin-Einladung.':''),so);}
+    });
+  });
+  // Termine aus dem CRM (nächste 14 Tage), die nicht sicher im Google-Kalender stehen
+  const pn=personNames(person),hit=v=>pn.includes((v||'').trim().toLowerCase());
+  const h0=new Date();h0.setHours(0,0,0,0);const bis=new Date(h0.getTime()+14*86400000);
+  state.deals.forEach(d=>{
+    if(d.status!=='open'||((d.quelle||'')==='Recruiting'&&d.gp))return;
+    [['AG','analyst','datumAG'],['BG','berater','datumBG']].forEach(([art,role,feld])=>{
+      if(!hit(d[role]))return;
+      const ds=(d[feld]||'').trim(),p=parseTermin(ds);if(!p||p<h0||p>=bis)return;
+      const k=(d.kal||{})[role],akt=k&&k.termin===ds;
+      const P=[],R=[];
+      if(!d.gcalId&&!(akt&&k.ok===true)){
+        P.push(akt&&k.weg==='tab'?'Beim Verschicken war Google nicht verbunden, es wurde nur ein Google-Fenster geöffnet. Ob der Termin im Kalender gespeichert wurde, ist nicht bestätigt.':(akt&&k.ok===false?'Die Buchung im Google-Kalender ist fehlgeschlagen.':'Für diesen Termin ist keine Kalender-Einladung vermerkt.'));
+        R.push('Google verbinden, dann Kunde öffnen und „📨 '+art+' neu verschicken" tippen.');
+      }
+      if(!(d.email||'').trim()){P.push('Beim Kunden fehlt die E-Mail-Adresse, er bekommt keine Einladung.');R.push('E-Mail beim Kunden eintragen und den Termin neu verschicken.');}
+      if(P.length)add('H',WDAYS[(p.getDay()+6)%7]+' '+fmtDM(p)+' '+hmOf(p),art+' '+(d.name||d.org||'Kunde')+' (Termin aus dem CRM)',P.join(' '),R.join(' '),p.getTime());
+    });
+  });
+  if(!n)add('F','','Google-Kalender','In diesen Wochen ist kein einziger Kalender-Eintrag im Wochenplan angekommen. Der Kalender ist vermutlich nicht verbunden oder wurde nie abgeglichen.','Am eigenen Gerät oben „Google auf diesem Gerät verbinden" tippen, dann im Reiter „Woche" auf „📅 Google-Sync".',0);
+  else if(letzter&&Date.now()-new Date(letzter).getTime()>3*86400000)add('H','','Google-Kalender','Der letzte Abgleich war am '+fmtDM(new Date(letzter))+' – neuere Kalender-Einträge fehlen im Wochenplan.','Im Reiter „Woche" auf „📅 Google-Sync" tippen (am eigenen Gerät, mit verbundenem Google).',0);
+  F.sort((a,b)=>(a.lvl===b.lvl?0:(a.lvl==='F'?-1:1))||(a.sort-b.sort));
+  const ende=new Date(starts[starts.length-1].getTime()+6*86400000);
+  return {person,F,n,letzter,von:starts[0],bis:ende,fehler:F.filter(f=>f.lvl==='F').length,hinweise:F.filter(f=>f.lvl==='H').length};
+}
+function kalCheckKopf(R){return (R.fehler===1?'1 Fehler':R.fehler+' Fehler')+' · '+(R.hinweise===1?'1 Hinweis':R.hinweise+' Hinweise')+' · '+fmtDM(R.von)+'–'+fmtDM(R.bis);}
+function kalCheckText(R,kurz){
+  const vor=(R.person||'').split(' ')[0];
+  let t='🔎 Kalender-Check für '+R.person+'\n'+kalCheckKopf(R)+'\n';
+  if(!R.F.length)t+='\nAlles sauber – dein Kalender und das CRM passen zusammen. 👍\n';
+  R.F.forEach(f=>{t+='\n'+(f.lvl==='F'?'❌':'ℹ️')+' '+(f.wann?f.wann+' – ':'')+f.was+'\n'+f.problem+'\nSo ist es richtig: '+f.richtig+'\n';});
+  t+='\nSo trägst du Termine richtig ein'+(vor?', '+vor:'')+':\n'+KAL_REGELN.map((r,i)=>(i+1)+'. '+r[0]+(kurz?'':' '+r[1])).join('\n');
+  return t;
+}
+function kalCheckZeigen(person,extraStart){
+  const R=kalCheck(person,extraStart);
+  const alt=document.getElementById('kchk');if(alt)alt.remove();
+  const w=document.createElement('div');w.id='kchk';
+  w.style.cssText='position:fixed;inset:0;z-index:9998;background:rgba(15,20,30,.55);display:flex;align-items:center;justify-content:center;padding:12px';
+  const fremd=!nameEq(person,chatName());
+  const zeile=f=>`<div style="border:1px solid var(--line);border-left:4px solid ${f.lvl==='F'?'var(--bad)':'var(--warn)'};border-radius:10px;padding:9px 11px;margin-bottom:8px">
+      <div style="font-size:13px;font-weight:800">${f.lvl==='F'?'❌':'ℹ️'} ${f.wann?esc(f.wann)+' · ':''}${esc(f.was)}</div>
+      <div style="font-size:12.5px;color:var(--ink-2);margin-top:3px;line-height:1.4">${esc(f.problem)}</div>
+      <div style="font-size:12.5px;margin-top:4px;line-height:1.4"><b style="color:var(--good)">So ist es richtig:</b> ${esc(f.richtig)}</div></div>`;
+  w.innerHTML=`<div style="background:var(--surface);color:var(--ink);border-radius:16px;max-width:640px;width:100%;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.35)">
+    <div style="padding:16px 18px 10px;border-bottom:1px solid var(--line)">
+      <div style="font-size:17px;font-weight:800">🔎 Kalender-Check · ${esc(person)}</div>
+      <div style="font-size:12.5px;color:var(--ink-3);margin-top:2px">${esc(kalCheckKopf(R))} · ${R.n} Kalender-Einträge geprüft${R.letzter?' · letzter Abgleich '+esc(fmtDM(new Date(R.letzter))):''}</div></div>
+    <div style="padding:12px 18px;overflow:auto;flex:1">
+      ${R.F.length?R.F.map(zeile).join(''):'<div style="padding:14px;border-radius:10px;background:var(--surface-2);font-weight:700">✅ Alles sauber – Kalender und CRM passen zusammen.</div>'}
+      <details style="margin-top:6px"${R.F.length?'':' open'}><summary style="cursor:pointer;font-weight:800;font-size:13px">📖 So gehören Termine in den Google-Kalender (8 Regeln)</summary>
+        <ol style="margin:8px 0 0;padding-left:20px;font-size:12.5px;line-height:1.45">${KAL_REGELN.map(r=>`<li style="margin-bottom:5px"><b>${esc(r[0])}</b> ${esc(r[1])}</li>`).join('')}</ol></details>
+    </div>
+    <div style="padding:10px 18px 14px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap">
+      ${(fremd&&isAdmin())?`<button type="button" class="btn pri" id="kchk-send">📨 An ${esc(person.split(' ')[0])} schicken</button>`:''}
+      <button type="button" class="btn" id="kchk-copy">📋 Text kopieren</button>
+      <button type="button" class="btn" id="kchk-zu" style="margin-left:auto">Schließen</button></div></div>`;
+  document.body.appendChild(w);
+  w.addEventListener('click',e=>{if(e.target===w)w.remove();});
+  w.querySelector('#kchk-zu').addEventListener('click',()=>w.remove());
+  w.querySelector('#kchk-copy').addEventListener('click',e=>copyText(kalCheckText(R),e.currentTarget,'📋 Kalender-Check kopiert'));
+  const sb=w.querySelector('#kchk-send');
+  if(sb)sb.addEventListener('click',async()=>{
+    sb.disabled=true;
+    try{chatSys(kalCheckText(R,true),null,person);}catch(e){}
+    let tg=false;try{tg=await tgInfo(person,'CENSA – '+kalCheckText(R,true).slice(0,3800));}catch(e){}
+    toast('📨 Kalender-Check an '+person+' geschickt (Chat'+(tg?' + Telegram':'')+')');sb.textContent='Geschickt ✓';
+  });
+  return R;
+}
 /* ---------- Wochenplan-Druck im IVP-Formular-Format (eine A4-Seite je Mitarbeiter) ---------- */
 function wpPrintDoc(names,start,wk){
   const end=new Date(start.getTime()+6*86400000);
@@ -4506,6 +4646,7 @@ async function renderWoche(){
       ${admin?`<select id="w-person" style="width:auto"${__wTeam?' disabled':''}>${persons.map(p=>`<option${p===me?' selected':''}>${esc(p)}</option>`).join('')}</select>
       <button class="btn${__wTeam?' pri':''}" id="w-team">👥 Teamwochenplan</button>`:''}
       ${(!__wTeam&&GCAL_CLIENT_ID&&nameEq(me,chatName()))?`<button class="btn" id="w-gcal" title="Holt deine Google-Kalender-Termine dieser Woche in den Wochenplan">📅 Google-Sync</button>`:''}
+      ${!__wTeam?`<button class="btn" id="w-kchk" title="Prüft die Google-Kalender-Einträge von ${esc(me)}: fehlende Kürzel, unbekannte Kunden, abweichende Termine – mit Erklärung, wie es richtig geht">🔎 Kalender-Check</button>`:''}
       <button class="btn" id="w-print" style="margin-left:auto">🖨 Drucken / PDF</button>
     </div>
     ${(__wTeam&&admin)?`<h2 style="font-size:16px;margin:4px 0 10px">Teamwochenplan · KW ${isoWeek(start)}/${String(start.getFullYear()).slice(2)} · ${fmtDM(start)}–${fmtDM(end)} · Team ${esc(chatName())}</h2>`+teamplanHtml(start,wk):
@@ -4533,6 +4674,8 @@ async function renderWoche(){
   host.querySelector('#w-print').addEventListener('click',()=>{const names=(__wTeam&&admin)?TEAM.map(x=>x.name).filter(Boolean).sort():[me];wpPrintDoc(names,start,wk);});
   const wg=host.querySelector('#w-gcal');
   if(wg)wg.addEventListener('click',()=>gcalSync(start,wk,me));
+  const wkc=host.querySelector('#w-kchk');
+  if(wkc)wkc.addEventListener('click',()=>kalCheckZeigen(me,start));
   // Auto-Sync: wenn Google bereits verbunden ist, Woche alle 10 Min still aktualisieren
   if(!__wTeam&&GCAL_CLIENT_ID&&nameEq(me,chatName())&&__gcalTok&&Date.now()<__gcalExp-60000&&(!__gcalLast[wk]||Date.now()-__gcalLast[wk]>600000)){__gcalLast[wk]=Date.now();gcalSync(start,wk,me);}
   const wp=host.querySelector('#w-person');
@@ -5303,11 +5446,15 @@ function udoc(type){
       <li>Die <b>Beteiligung</b> prüfen. Du darfst sie ändern, die Änderung steht dann in der Kundenakte.</li>
       <li>Die <b>Kundenakte</b> am Ende des Reiters zeigt den ganzen Verlauf.</li></ul></div>
 
-    <div class="sec"><h3>9 · Wochenplan und Kalender</h3><ul>
-      <li>AG (Analysegespräch) und BG (Beratungsgespräch) kommen automatisch aus deinen Kunden.</li>
+    <div class="sec"><h3>9 · Wochenplan und Google-Kalender</h3><ul>
+      <li>AG (Analysegespräch) und BG (Beratungsgespräch) kommen automatisch aus deinen Kunden in den Wochenplan.</li>
       <li>Eigene Termine wie EG, MGT, KG (Kooperationsgespräch) und TG (Tippgeber) trägst du im Reiter „Woche" selbst ein oder sie kommen aus deinem Google-Kalender.</li>
-      <li>Steht ein Kunde im Kalender, den es im CRM noch nicht gibt (zum Beispiel „Peschek BG"), legst du ihn im Wochenplan mit einem Tipp als Lead an.</li>
-      <li>Vor deinem Wochengespräch bekommst du per Telegram deine Termine der kommenden Woche.</li></ul></div>
+      <li>Vor deinem Wochengespräch bekommst du per Telegram deine Termine der kommenden Woche.</li></ul>
+      <div class="mt" style="margin-top:8px"><b>So gehören Termine in den Google-Kalender</b></div><ul>
+      ${KAL_REGELN.map(r=>`<li><b>${esc(r[0])}</b> ${esc(r[1])}</li>`).join('\n      ')}</ul>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px"><tr><th style="text-align:left;padding:4px 6px;border-bottom:1.5px solid #999">So nicht</th><th style="text-align:left;padding:4px 6px;border-bottom:1.5px solid #999">So ist es richtig</th><th style="text-align:left;padding:4px 6px;border-bottom:1.5px solid #999">Warum</th></tr>
+      ${[['„Balint"','„BG Balint Peter"','Ohne Kürzel zählt der Eintrag nicht als Termin.'],['„AG Termin"','„AG Huber Thomas"','Ohne Namen findet das CRM den Kunden nicht.'],['„BG Balint" als Erinnerung','„BG follow up Balint"','Sonst steht der Kunde mit zwei Terminen da.'],['Termin im Kalender verschoben','Im Wochenplan ↗ tippen, neuen Termin eintragen','Nur so bekommt der Kunde die neue Einladung.'],['Ganztägiger Eintrag „AG Maier"','Mit Uhrzeit, Adresse im Feld „Ort"','Ohne Uhrzeit wird nichts übernommen.']].map(z=>`<tr>${z.map(c=>`<td style="padding:4px 6px;border-bottom:1px solid #ddd;vertical-align:top">${esc(c)}</td>`).join('')}</tr>`).join('')}</table>
+      <div class="hint">Im Reiter „Woche" zeigt dir „🔎 Kalender-Check" jederzeit, welche deiner Kalender-Einträge nicht passen und wie du sie richtig schreibst.</div></div>
 
     <div class="sec"><h3>10 · Deine erste Woche</h3><ul class="cb">
       <li>Tag 1: Punkt 1 erledigt, einmal durch alle Reiter getippt, ersten Test-Lead mit der Führungskraft angelegt.</li>
@@ -5319,6 +5466,7 @@ function udoc(type){
     <div class="sec"><h3>Wenn etwas nicht geht</h3><ul>
       <li>Seite neu laden. Hilft das nicht: abmelden und neu anmelden (⋯ oben rechts).</li>
       <li>Termine fehlen im Kalender: „Google auf diesem Gerät verbinden" noch einmal tippen.</li>
+      <li>Termin doppelt oder falsch im Wochenplan: Reiter „Woche" → „🔎 Kalender-Check".</li>
       <li>Sonst: Screenshot mit Version an deine Führungskraft.</li></ul></div>
 
     <div class="sec"><h3>Bestätigung</h3>Ich habe das Onboarding durchgearbeitet und die Grundregeln verstanden.<div class="sig"><span>Datum, Unterschrift Geschäftspartner</span><span>Datum, Unterschrift Führungskraft</span></div></div>`;
