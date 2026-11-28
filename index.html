@@ -562,7 +562,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-Z6";
+const APP_VERSION="19.12-A";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -2038,6 +2038,8 @@ function kalDoppelLeads(){
   if(!kals.length)return out;
   kals.forEach(k=>{
     const info=kalInfo(k.name),person=(k.berater||k.analyst||'').trim();
+    const bearb0=!!((k.calls||[]).length||(k.notes||[]).length||(k.telefon||'').trim()||(k.email||'').trim()||(k.analyse||[]).length);
+    if(!k.keinWg&&kalGespraech(k.name,person)){out.push({k,m:null,wg:true,info:false,bearbeitet:bearb0});return;} // v19.12-A: Wochengespräch wurde zu einem Lead
     const dt=parseTermin(k.datumBG)||parseTermin(k.datumAG)||new Date();
     const andere=state.deals.filter(x=>x!==k&&!((x.quelle||'')==='Recruiting'&&x.gp)&&!nichtDup(k,x));
     const t=tel7(k),em=(k.email||'').trim().toLowerCase(),kn=kalName(k.name)||k.name;
@@ -2288,7 +2290,7 @@ async function openDupCheck(){
   const kalT=d=>[d.datumAG?'AG '+d.datumAG:'',d.datumBG?'BG '+d.datumBG:''].filter(Boolean).join(' · ')||'kein Termin';
   const kalHtml=kalP.length?`<div style="background:var(--surface-2);border:1.5px solid var(--brand);border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12.5px">
     <b style="color:var(--brand-ink)">📅 Aus dem Google-Kalender entstandene Doppel-Leads (${kalP.length}):</b> Ein Kalender-Eintrag wurde als eigener Lead angelegt, obwohl es den Kunden schon gibt. Beim Zusammenführen bleibt der bestehende Kunde, nichts geht verloren.
-    ${kalP.map((c,i)=>`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0;border-top:1px solid var(--line-2);padding-top:6px"><span style="flex:1 1 260px;min-width:0">„<b>${esc(c.k.name||'—')}</b>" <span style="color:var(--ink-3)">(${esc(kalT(c.k))}${(c.k.berater||c.k.analyst)?' · '+esc(c.k.berater||c.k.analyst):''}${c.info?' · nur Notiz':''}${c.bearbeitet?' · schon bearbeitet':''})</span> → gehört zu <b>${esc(c.m.name||c.m.org||'—')}</b> <span style="color:var(--ink-3)">(${esc(kalT(c.m))})</span></span><button class="mini-btn" data-kdm="${i}" style="border-color:var(--brand);color:var(--brand-ink);font-weight:800">🔗 Zusammenführen</button><button class="mini-btn" data-kdn="${i}">Kein Doppel</button></div>`).join('')}
+    ${kalP.map((c,i)=>c.wg?`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0;border-top:1px solid var(--line-2);padding-top:6px"><span style="flex:1 1 260px;min-width:0">„<b>${esc(c.k.name||'—')}</b>" <span style="color:var(--ink-3)">(${esc(kalT(c.k))}${(c.k.berater||c.k.analyst)?' · '+esc(c.k.berater||c.k.analyst):''}${c.bearbeitet?' · schon bearbeitet':''})</span> → <b>kein Kunde</b>, das ist ein Wochen-/Monatsgespräch</span><button class="mini-btn" data-kdw="${i}" style="border-color:var(--bad);color:var(--bad);font-weight:800">🗑 Lead entfernen</button><button class="mini-btn" data-kdk="${i}">Ist doch ein Kunde</button></div>`:`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0;border-top:1px solid var(--line-2);padding-top:6px"><span style="flex:1 1 260px;min-width:0">„<b>${esc(c.k.name||'—')}</b>" <span style="color:var(--ink-3)">(${esc(kalT(c.k))}${(c.k.berater||c.k.analyst)?' · '+esc(c.k.berater||c.k.analyst):''}${c.info?' · nur Notiz':''}${c.bearbeitet?' · schon bearbeitet':''})</span> → gehört zu <b>${esc(c.m.name||c.m.org||'—')}</b> <span style="color:var(--ink-3)">(${esc(kalT(c.m))})</span></span><button class="mini-btn" data-kdm="${i}" style="border-color:var(--brand);color:var(--brand-ink);font-weight:800">🔗 Zusammenführen</button><button class="mini-btn" data-kdn="${i}">Kein Doppel</button></div>`).join('')}
   </div>`:'';
   const reps=repListe();
   const repHtml=reps.length?`<div style="background:var(--warn-bg);border:1.5px solid var(--warn);border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12.5px">
@@ -2319,6 +2321,16 @@ async function openDupCheck(){
     const base=await kalLeadZusammen(c);
     toast(base?('🔗 Zusammengeführt: '+(base.name||base.org)):'Zusammenführen fehlgeschlagen');
     render();openDupCheck();
+  }));
+  m.querySelectorAll('[data-kdw]').forEach(b=>b.addEventListener('click',async ev=>{
+    ev.stopPropagation();const c=kalP[+b.dataset.kdw];if(!c)return;
+    if(!confirm('Den Lead „'+(c.k.name||'—')+'" entfernen?\n\nEr ist aus einem Kalender-Eintrag für ein Gespräch entstanden und kein Kunde. Das lässt sich nicht rückgängig machen.'))return;
+    b.disabled=true;state.deals=state.deals.filter(x=>x.id!==c.k.id);await dbRemove(c.k.id);
+    toast('🗑 Entfernt: '+(c.k.name||'—'));render();openDupCheck();
+  }));
+  m.querySelectorAll('[data-kdk]').forEach(b=>b.addEventListener('click',async ev=>{
+    ev.stopPropagation();const c=kalP[+b.dataset.kdk];if(!c)return;
+    c.k.keinWg=true;histAdd(c.k,'👥 Ist ein Kunde, kein Wochengespräch');await dbPersist(c.k);openDupCheck();
   }));
   m.querySelectorAll('[data-kdn]').forEach(b=>b.addEventListener('click',async ev=>{
     ev.stopPropagation();const c=kalP[+b.dataset.kdn];if(!c)return;
@@ -2405,6 +2417,7 @@ function tagesTermine(off){
     let art=e.art||'EG',kunde=e.kunde||'';
     if(e.gcal&&art==='PRIVAT'){const pa=gcalArt(kunde);if(pa.suffix){art=pa.art;kunde=pa.rest;}}
     if(art==='PRIVAT')return;
+    if(e.gcal&&(art==='AG'||art==='BG')&&kalGespraech(kunde,e.name))return; // Wochengespräch – kein Kundentermin
     if(e.gcal&&kalInfo(kunde))return; // reine Notiz im Kalender („BG follow up Balint") – kein Termin, der stattfindet
     if(e.gcal&&(art==='AG'||art==='BG')&&out.some(o=>o.q==='deal'&&o.art===art&&(kundeGleich(o.kunde,kunde)||kundeGleich(o.kunde,kalName(kunde)))))return; // Kalender-Doppel eines Kunden-Termins
     const d=e.dealRef?state.deals.find(x=>x.id===e.dealRef):null;
@@ -2568,6 +2581,7 @@ function renderSteuerung(){
       <button class="btn" id="btnDup">🔍 Duplikat-Check</button>
     </div>
     ${tagesPanel()}
+    ${isAdmin()?wgPanel():''}
     ${buchPanel()}
     ${adrPanel()}
     <div class="panel" style="border-color:var(--brand)"><h3>📋 Tages-Dispo – Termine zuordnen <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— am Tagesende neue Termine dem passenden Mitarbeiter zuweisen; die Person sieht es sofort in ihrer Liste und im Chat</span></h3>
@@ -3184,6 +3198,7 @@ function openTodo(force){
     ${acks.map(a=>{const t=a.ts?new Date(a.ts):null;const zeit=t?(String(t.getDate()).padStart(2,'0')+'.'+String(t.getMonth()+1).padStart(2,'0')+'.'):'';
       const canDec=(a.art==='beratung-zuord'||a.art==='analyse-zuord')&&personNames(me).includes((a.ackWer||'').trim().toLowerCase());
       return `<div class="ehrow" style="flex-wrap:wrap"><span class="nm" style="min-width:220px;white-space:normal">${zeit?zeit+' · ':''}${esc(a.text)}</span>${a.dealId?`<button class="mini-btn" data-tdl="${esc(a.dealId)}">Lead öffnen</button>`:''}<button class="mini-btn" style="border-color:var(--good);color:var(--good);font-weight:700" data-tda="${esc(a._id||'')}">✔ Annehmen</button>${canDec?`<button class="mini-btn" style="border-color:var(--bad);color:var(--bad)" data-tdd="${esc(a._id||'')}">✖ Ablehnen</button>`:''}</div>`;}).join('')}
+    ${isAdmin()?wgTodoHtml():''}
     ${(()=>{const zeile=e=>`<div class="ehrow"><span class="wart" style="background:${WARTC[e.art]||'var(--ink-3)'}">${esc(e.art)}</span><b>${esc(e.zeit||'—')}</b><span class="nm">${esc(e.kunde)}${e.ort?` <span style="color:var(--ink-3);font-weight:500">· ${esc(e.ort)}</span>`:''}</span>${e.dealId?`<button class="mini-btn" data-tdl="${esc(e.dealId)}">Lead</button>`:''}</div>`;
       const morgen=termineAm(1);
       return (heute.length?`<div class="ehgt" style="margin-top:14px">📅 Deine Termine heute</div>${heute.map(zeile).join('')}`:'')
@@ -3223,7 +3238,7 @@ function openTodo(force){
 /* ---------- Wochenplan: persönlich (auto + manuell) und Team (IVP-Format) ---------- */
 let wocheCol=null, WOCHE=[], WOCHE_WK='', __wOff=0, __wPerson='', __wTeam=false;
 const WDAYS=['Mo','Di','Mi','Do','Fr','Sa','So'];
-const WARTC={AG:'var(--firma)',BG:'var(--good)',MGT:'var(--warn)',EG:'#3A3FB0',KG:'#0E7490',TG:'#8E5BC0',PRIVAT:'#6b7280',INFO:'#64748b'};
+const WARTC={AG:'var(--firma)',BG:'var(--good)',MGT:'var(--warn)',EG:'#3A3FB0',KG:'#0E7490',TG:'#8E5BC0',PRIVAT:'#6b7280',INFO:'#64748b',WG:'#7c3aed'};
 function wkStart(off){const t=new Date();t.setHours(0,0,0,0);const day=(t.getDay()+6)%7;t.setDate(t.getDate()-day+off*7);return t;}
 function wkKeyOf(dt){return dt.getFullYear()+'-KW'+String(isoWeek(dt)).padStart(2,'0');}
 function fmtDM(dt){return String(dt.getDate()).padStart(2,'0')+'.'+String(dt.getMonth()+1).padStart(2,'0')+'.';}
@@ -3314,7 +3329,8 @@ function wEntriesFor(person,start,wk,quelle){ // quelle: Wochenplan-Daten einer 
   const man=WQ.filter(e=>e.type!=='ov'&&nameEq(e.name,person)).map(e=>{
     const o={auto:false,gcal:!!e.gcal,_id:e._id,art:e.art||'EG',tag:+e.tag||0,zeit:e.zeit||'',kunde:e.kunde||'',ort:e.ort||'',status:e.status||'',name:person};
     if(o.gcal&&o.art==='PRIVAT'){const pa=gcalArt(o.kunde);if(pa.suffix){o.art=pa.art;o.kunde=pa.rest;}} // früher gespeicherte Einträge („Peschek BG") neu lesen
-    if(o.gcal){ // v19.11-Z3: gehört der Kalender-Eintrag zu einem Kunden, den es schon gibt? Reine Notizen („BG follow up Balint") sind kein eigener Termin
+    if(o.gcal&&(o.art==='AG'||o.art==='BG'||o.art==='PRIVAT')&&kalGespraech(o.kunde,person)){o.art='WG';} // v19.12-A: Wochen-/Monatsgespräch ist kein Kundentermin
+    else if(o.gcal){ // v19.11-Z3: gehört der Kalender-Eintrag zu einem Kunden, den es schon gibt? Reine Notizen („BG follow up Balint") sind kein eigener Termin
       const info=kalInfo(o.kunde);
       if(info&&(o.art==='AG'||o.art==='BG')){o.kArt=o.art;o.art='INFO';}
       if(o.art==='AG'||o.art==='BG'||o.art==='INFO'||(info&&o.art==='PRIVAT')){
@@ -4400,6 +4416,7 @@ async function gcalLeadImport(tok,person){
     if(!ev||ev.status==='cancelled'||!(ev.start&&ev.start.dateTime))return;
     const t=(ev.summary||'').trim();
     if(!t||/^(Analyse|Beratung):/i.test(t))return;
+    if(kalGespraech(t,person))return; // v19.12-A: Wochen-/Monatsgespräche werden nie zu einem Lead
     if(kalInfo(t))return; // v19.11-Z3: „BG follow up Balint", „Info …", „Rückruf …" = Notiz zum Kunden, daraus wird nie ein neuer Lead/Termin
     const pa=gcalArt(t);let art=pa.art,kunde=pa.rest;
     if(art==='PRIVAT'){if(!(ev.location||'').trim()||privat.test(t))return;art='AG';kunde=t;}
@@ -4454,7 +4471,7 @@ const KAL_REGELN=[
   ['Erinnerung statt Termin? „follow up" dazuschreiben.','Zum Beispiel „BG follow up Balint", „Info Huber" oder „Rückruf Maier". Das gilt als Notiz zum Kunden: kein neuer Lead, kein zweiter Termin.'],
   ['Verschoben oder abgesagt? Im CRM ändern.','Im Wochenplan beim Termin ↗ oder ✖ tippen und den neuen Termin eintragen. Nur im Kalender verschieben reicht nicht, dann stimmen Kalender und CRM nicht mehr überein.'],
   ['Einträge „Analyse: …" und „Beratung: …" kommen vom CRM.','Nicht umbenennen und nicht löschen. Das sind die Einladungen zu deinen zugeteilten Terminen.'],
-  ['Privates klar kennzeichnen.','„Privat" davorschreiben oder keinen Ort eintragen. MGT, EG, KG und TG ebenfalls mit dem Kürzel am Anfang.'],
+  ['Privates und Gespräche klar kennzeichnen.','„Privat" davorschreiben oder keinen Ort eintragen. Wochen- und Monatsgespräche als „Wochengespräch Name" eintragen: Sie zählen als Gespräch (WG), nie als Kundentermin. MGT, EG, KG und TG ebenfalls mit dem Kürzel am Anfang.'],
   ['Kalender verbunden halten.','Auf jedem Gerät einmal „Google auf diesem Gerät verbinden" tippen. Im Reiter „Woche" holt „📅 Google-Sync" deine Einträge, „🔎 Kalender-Check" zeigt dir, was nicht passt.']
 ];
 function kalCheck(person,extraStart){
@@ -4475,7 +4492,7 @@ function kalCheck(person,extraStart){
     });
     L.forEach(x=>{
       n++;if((x.e.ts||'')>letzter)letzter=x.e.ts;
-      if(['MGT','EG','KG','TG'].includes(x.art))return;
+      if(['MGT','EG','KG','TG','WG'].includes(x.art)||kalGespraech(x.kunde,person))return;
       const tagD=new Date(start.getFullYear(),start.getMonth(),start.getDate()+x.tag);
       const hm=x.zeit.split(':').map(Number);
       const dt=new Date(tagD.getFullYear(),tagD.getMonth(),tagD.getDate(),isNaN(hm[0])?9:hm[0],hm[1]||0);
@@ -4586,6 +4603,636 @@ function kalCheckZeigen(person,extraStart){
   });
   return R;
 }
+/* ========== v19.12-A (Melanies Ansage 28.11.): Wochengespräche – Gesprächsmappe je Geschäftspartner ==========
+   A) Kalender: Wochen-/Monatsgespräche sind keine Kundentermine → Art „WG", nie ein Lead
+   B) Speicher: eigene Sammlung „gespraeche" (nur Führungskraft). Solange die Firestore-Regel fehlt: sicher auf diesem Gerät (IndexedDB)
+   C) Vorbereitung: wird aus den CRM-Daten errechnet (Lob, Zahlen, Kontrolle, Tipps)
+   D) Mappe: Vorbereitung · Gespräch & To-dos · Monatsplan · Blätter (zeichnen/schreiben) · Verlauf */
+
+/* ---------- A) Kalender ---------- */
+const KAL_WG=new RegExp("(^|[^a-zäöüß0-9])(wochengespr(?:ä|ae)ch[a-zäöüß]*|monatsgespr(?:ä|ae)ch[a-zäöüß]*|zielgespr(?:ä|ae)ch[a-zäöüß]*|zielvereinbarung[a-zäöüß]*|erwartungshaltungsgespr(?:ä|ae)ch[a-zäöüß]*|mitarbeitergespr(?:ä|ae)ch[a-zäöüß]*|gp[\\s-]?gespr(?:ä|ae)ch[a-zäöüß]*|jour\\s?fixe|wg)(?![a-zäöüß0-9])","i");
+let WG_NAMEN=[]; // weitere Gesprächspartner (z. B. eigene Führungskräfte) – aus meta/settings.wgNamen
+function wgNamenSetzen(v){WG_NAMEN=String(v||'').split(/[,;\n]/).map(x=>x.trim()).filter(Boolean);__kalWgC={t:0,m:new Map()};}
+let __kalWgC={t:0,m:new Map()};
+function kalGespraech(titel,person){
+  const t=String(titel||'').trim();if(!t)return false;
+  const now=Date.now();if(now-__kalWgC.t>5000)__kalWgC={t:now,m:new Map()};
+  const key=t+'|'+(person||'');if(__kalWgC.m.has(key))return __kalWgC.m.get(key);
+  const r=(()=>{
+    if(KAL_WG.test(t))return true;
+    const T=kdTokens(kalName(t));if(!T.length)return false;
+    const drin=M=>M.length>0&&M.every(x=>T.includes(x));
+    if(WG_NAMEN.some(n=>drin(kdTokens(n))))return true;
+    const ich=person?teamByAnyName(person):null;if(!ich)return false;
+    const cn=x=>canonName(x||''),chef=/admin/i.test(ich.rolle||'');
+    const nah=TEAM.filter(m=>m!==ich&&(m.name||'').trim()&&(chef||(cn(m.fk)&&cn(m.fk)===cn(ich.name))||(cn(ich.fk)&&cn(ich.fk)===cn(m.name))));
+    if(nah.some(m=>drin(kdTokens(m.name))))return true;
+    if(T.length===1){
+      const tr=nah.filter(m=>kdTokens(m.name).includes(T[0]));
+      if(tr.length===1){ // nur der Vor- ODER Nachname: Gespräch – außer die Person hat einen eigenen Kunden, der so heißt
+        const pn=personNames(person),hit=v=>pn.includes((v||'').trim().toLowerCase());
+        return !state.deals.some(d=>d.status==='open'&&(hit(d.analyst)||hit(d.berater)||hit(d.telefonist))&&(kdTokD(d).tn.includes(T[0])||kdTokD(d).to.includes(T[0])));
+      }
+    }
+    return false;
+  })();
+  __kalWgC.m.set(key,r);return r;
+}
+
+/* ---------- B) Speicher ---------- */
+let gsCol=null,GS_LOKAL=false,GS_CACHE={};
+function gsIdb(){return new Promise((res,rej)=>{try{const r=indexedDB.open('censa_gs',1);r.onupgradeneeded=()=>{r.result.createObjectStore('docs');};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);}catch(e){rej(e);}});}
+async function gsLok(op,id,val){
+  try{const db=await gsIdb();
+    return await new Promise((res,rej)=>{const tx=db.transaction('docs',(op==='get'||op==='all')?'readonly':'readwrite'),st=tx.objectStore('docs');
+      const rq=op==='get'?st.get(id):op==='set'?st.put(val,id):op==='del'?st.delete(id):st.getAll();
+      rq.onsuccess=()=>res(rq.result);rq.onerror=()=>rej(rq.error);});
+  }catch(e){return op==='all'?[]:null;}
+}
+function gsDb(){return MODE==='db'&&!!gsCol&&!GS_LOKAL;}
+function gsVerweigert(e){return !!(e&&(e.code==='permission-denied'||/permission|insufficient/i.test(e.message||'')));}
+async function gsGet(id){
+  const lok=await gsLok('get',id);
+  if(gsDb()){
+    try{
+      const s=await gsCol.doc(id).get();const fern=s.exists?Object.assign({_id:id},s.data()):null;
+      if(lok&&lok._pend&&(!fern||(lok.upd||'')>(fern.upd||''))){gsSet(id,lok,true);return lok;} // lag nur am Gerät → jetzt hochladen
+      if(fern){gsLok('set',id,fern);return fern;}
+    }catch(e){if(gsVerweigert(e))GS_LOKAL=true;}
+  }
+  return lok||null;
+}
+async function gsSet(id,o,ohneZeit){ // → 'db' | 'lokal'
+  o._id=id;if(!ohneZeit)o.upd=new Date().toISOString();
+  const clean=JSON.parse(JSON.stringify(o));
+  if(gsDb()){
+    try{const up=Object.assign({},clean);delete up._pend;delete up._id;await gsCol.doc(id).set(up);delete clean._pend;delete o._pend;await gsLok('set',id,clean);return 'db';}
+    catch(e){if(gsVerweigert(e))GS_LOKAL=true;}
+  }
+  clean._pend=true;o._pend=true;await gsLok('set',id,clean);return 'lokal';
+}
+async function gsDel(id){await gsLok('del',id);if(gsDb()){try{await gsCol.doc(id).delete();}catch(e){}}}
+async function gsBlaetter(gp){
+  const lok=((await gsLok('all'))||[]).filter(x=>x&&x.typ==='blatt'&&x.gp===gp);
+  let out=lok;
+  if(gsDb()){
+    try{
+      const s=await gsCol.where('gp','==',gp).get();
+      const m={};s.docs.forEach(x=>{const o=Object.assign({_id:x.id},x.data());if(o.typ==='blatt')m[o._id]=o;});
+      lok.forEach(x=>{if(x._pend&&(!m[x._id]||(x.upd||'')>(m[x._id].upd||''))){m[x._id]=x;gsSet(x._id,x,true);}});
+      out=Object.values(m);
+    }catch(e){if(gsVerweigert(e))GS_LOKAL=true;}
+  }
+  return out.sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));
+}
+function gpLeer(mm){return {typ:'gp',gp:mm.id,name:mm.name,todos:[],plan:{},log:[],service:{},akt:{items:{}}};}
+async function gpLaden(mm){
+  let G=await gsGet('gp_'+mm.id);
+  if(!G)G=gpLeer(mm);
+  G.todos=G.todos||[];G.plan=G.plan||{};G.log=G.log||[];G.service=G.service||{};G.akt=G.akt||{};G.akt.items=G.akt.items||{};G.name=mm.name;G.gp=mm.id;G.typ='gp';
+  GS_CACHE[mm.id]=G;return G;
+}
+let __gpSaveT=null;
+function gpSpeichern(G,sofort){ // gesammelt speichern (Tippen soll nicht bei jedem Buchstaben schreiben)
+  clearTimeout(__gpSaveT);
+  const tun=async()=>{const wo=await gsSet('gp_'+G.gp,G);gsStatus(wo);};
+  if(sofort)return tun();
+  gsStatus('…');__gpSaveT=setTimeout(tun,700);
+}
+function gsStatus(wo){const el=document.getElementById('gsm-stat');if(!el)return;
+  el.textContent=wo==='db'?'gespeichert ✓':wo==='lokal'?'gespeichert – nur auf diesem Gerät':'speichert …';
+  el.style.color=wo==='lokal'?'var(--warn)':'var(--ink-3)';
+  const b=document.getElementById('gsm-regel');if(b)b.style.display=GS_LOKAL?'':'none';}
+function gsRegelText(){const em=(AUTH_USER&&AUTH_USER.email)||'DEINE-E-MAIL';
+  return "match /gespraeche/{doc} {\n  allow read, write: if request.auth != null && request.auth.token.email == '"+em+"';\n}";}
+
+/* ---------- C) Vorbereitung ---------- */
+async function wocheHolen(wk){ // Wochenplan-Daten einer anderen Woche einmal nachladen (für „alte Woche")
+  if(WCACHE[wk]||WOCHE_WK===wk||MODE!=='db'||!wocheCol)return;
+  try{const s=await wocheCol.where('wk','==',wk).limit(600).get();WCACHE[wk]=s.docs.map(x=>{const o=Object.assign({},x.data());o._id=x.id;return o;});}catch(e){}
+}
+function gpWochen(mm){
+  const h0=new Date();h0.setHours(0,0,0,0);
+  const M=wgNaechstes(mm,h0),ref=M||new Date();
+  const r3=new Date(ref.getFullYear(),ref.getMonth(),ref.getDate()-3);
+  const alt=new Date(r3.getFullYear(),r3.getMonth(),r3.getDate()-((r3.getDay()+6)%7));
+  const neu=new Date(alt.getFullYear(),alt.getMonth(),alt.getDate()+7);
+  return {M,alt,neu,wkAlt:wkKeyOf(alt),wkNeu:wkKeyOf(neu)};
+}
+function gpMonat(dt){const d=new Date(dt.getFullYear(),dt.getMonth(),dt.getDate()+3);return d.getFullYear()+'-'+calPad(d.getMonth()+1);} // Woche zählt zum Monat ihres Donnerstags
+const GS_MON=['Jänner','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+function gpMonatName(k){const p=String(k).split('-');return GS_MON[(+p[1]||1)-1]+' '+p[0];}
+function gpVorb(mm,G){
+  const W=gpWochen(mm),pn=personNames(mm.name),hit=v=>pn.includes((v||'').trim().toLowerCase());
+  const now=new Date(),h0=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const altEnde=new Date(W.alt.getFullYear(),W.alt.getMonth(),W.alt.getDate()+7);
+  const rolle=(mm.rolle||'').toLowerCase();
+  const nm=d=>d?(d.name||d.org||'—'):'—';
+  const ents=(start,wk)=>{const WQ=wocheDaten(wk);
+    return wEntriesFor(mm.name,start,wk,WQ).filter(e=>!e.mitschau&&!e.mgt&&(e.art==='AG'||e.art==='BG')).map(e=>{
+      const tag=new Date(start.getFullYear(),start.getMonth(),start.getDate()+e.tag),hm=(e.zeit||'').split(':').map(Number);
+      const dt=new Date(tag.getFullYear(),tag.getMonth(),tag.getDate(),isNaN(hm[0])?12:hm[0],hm[1]||0);
+      let d=e.dealId?state.deals.find(x=>x.id===e.dealId):null;
+      if(!d&&e.leadId)d=state.deals.find(x=>x.id===e.leadId)||null;
+      if(!d&&e._id){const roh=WQ.find(x=>x._id===e._id);if(roh&&roh.dealRef)d=state.deals.find(x=>x.id===roh.dealRef)||null;}
+      return Object.assign({},e,{dt,d,key:((d&&d.id)||e._id||e.kunde)+'|'+e.art,wann:WG_TAGE[e.tag]+' '+fmtDM(tag)+(e.zeit?' '+e.zeit:'')});
+    }).sort((a,b)=>a.dt-b.dt);};
+  const A=ents(W.alt,W.wkAlt),N=ents(W.neu,W.wkNeu);
+  const zahl=(L,art)=>{const X=L.filter(e=>e.art===art);return {plan:X.length,done:X.filter(e=>e.status==='done').length,moved:X.filter(e=>e.status==='moved').length,cancelled:X.filter(e=>e.status==='cancelled').length,offen:X.filter(e=>!e.status&&e.dt<now).length};};
+  const ag=zahl(A,'AG'),bg=zahl(A,'BG');
+  let anr=0,term=0;
+  state.deals.forEach(d=>(d.calls||[]).forEach(c=>{if(!c||!c.ts||!hit(c.von))return;const t=new Date(c.ts);if(t>=W.alt&&t<altEnde){anr++;if(c.outcome==='termin')term++;}}));
+  const mKey=gpMonat(W.alt),plan=(G.plan||{})[mKey]||{},agZiel=parseFloat(plan.agW)||0,bgZiel=parseFloat(plan.bgW)||0;
+  const ehZahl=d=>parseFloat(String(d.eh||'').replace(',','.'))||0;
+  const won=state.deals.filter(d=>d.status==='won'&&(hit(d.berater)||hit(d.analyst))&&d.upd&&new Date(d.upd)>=W.alt&&new Date(d.upd)<altEnde);
+  const bis14=new Date(h0.getFullYear(),h0.getMonth(),h0.getDate()+14);
+  const bgKommend=state.deals.filter(d=>{if(d.status!=='open'||!(hit(d.berater)||hit(d.analyst)))return false;const p=parseTermin(d.datumBG);return p&&p>=h0&&p<bis14;})
+    .map(d=>{const pot=ehPotenzial(d).eh,B=beteiligung(d),ant=hit(d.berater)?B.be:B.an;return {d,dt:parseTermin(d.datumBG),pot,anteil:pot*ant/100,als:hit(d.berater)?'Berater':'Analyst'};}).sort((a,b)=>a.dt-b.dt);
+  let kal={F:[],fehler:0,hinweise:0,n:0};try{kal=kalCheck(mm.name,W.alt);}catch(e){}
+  const tageSeit=p=>Math.floor((h0-p)/86400000);
+  const eigAn=state.deals.filter(d=>d.status==='open'&&hit(d.analyst)&&!((d.quelle||'')==='Recruiting'&&d.gp));
+  const agVorbei=eigAn.map(d=>({d,p:parseTermin(d.datumAG)})).filter(x=>x.p&&x.p<h0&&tageSeit(x.p)<=60);
+  const ohneDoku=eigAn.filter(d=>{try{return leadLuecken(d).doc;}catch(e){return false;}});
+  const agOhneBG=agVorbei.filter(x=>!(x.d.datumBG||'').trim()&&tageSeit(x.p)>=2).map(x=>({d:x.d,tage:tageSeit(x.p)}));
+  const ohnePot=agVorbei.filter(x=>ehPotenzial(x.d).eh<=0).map(x=>x.d);
+  let liegen=[],tfehlt=[];try{liegen=liegenAlle().filter(x=>hit(x.z.name));}catch(e){}try{tfehlt=terminAufgabenVon(mm.name);}catch(e){}
+  const ohneStatus=A.filter(e=>!e.status&&e.dt<now);
+  const service=/berat/.test(rolle)?state.deals.filter(d=>hit(d.berater)&&((d.status==='won'&&ehZahl(d)>=40)||(d.status==='open'&&(d.datumBG||'').trim()&&ehPotenzial(d).eh>=40)))
+    .map(d=>({d,eh:d.status==='won'?ehZahl(d):ehPotenzial(d).eh,won:d.status==='won'})).sort((a,b)=>b.eh-a.eh):[];
+  // 👍 Immer etwas Positives finden
+  const gut=[];
+  if(won.length)gut.push('🏆 '+(won.length===1?'Abschluss':won.length+' Abschlüsse')+': '+won.map(d=>nm(d)+(ehZahl(d)?' ('+fmtEH(ehZahl(d))+' EH)':'')).join(', '));
+  if(agZiel&&ag.done>=agZiel)gut.push('🎯 AG-Ziel erreicht: '+ag.done+' von '+agZiel+' Analysen durchgeführt');
+  else if(ag.done)gut.push('✔ '+ag.done+(ag.done===1?' Analyse':' Analysen')+' durchgeführt');
+  if(bg.done)gut.push('✔ '+bg.done+(bg.done===1?' Beratung':' Beratungen')+' durchgeführt');
+  if(term)gut.push('📞 '+term+(term===1?' Termin':' Termine')+' am Telefon vereinbart'+(anr?' ('+anr+' Anrufe)':''));
+  else if(anr>=20)gut.push('📞 '+anr+' Anrufe gemacht – dran geblieben');
+  if(bgKommend.length){const s=bgKommend.reduce((x,b)=>x+b.pot,0);gut.push('🚀 '+bgKommend.length+(bgKommend.length===1?' Beratung steht':' Beratungen stehen')+' an'+(s>0?' – Potenzial ≈ '+fmtEH(s)+' EH':''));}
+  if(kal.n&&!kal.fehler)gut.push('📅 Kalender sauber geführt – kein einziger Fehler');
+  if(A.length&&!ohneStatus.length)gut.push('✅ Alle Termine der Woche abgehakt');
+  if(agVorbei.length&&!ohneDoku.length)gut.push('📎 Alle Analysen vollständig abgegeben');
+  if(!liegen.length&&eigAn.length)gut.push('🧹 Kein Kunde liegen geblieben');
+  if(N.length>=3)gut.push('🗓 Neue Woche ist schon gut gefüllt: '+N.length+' Termine');
+  if(!gut.length)gut.push('💬 Noch nichts Messbares – mit der Frage starten: „Was lief diese Woche gut?" und das Beste davon ausdrücklich loben.');
+  // 💡 So wird der GP besser
+  const tipps=[];
+  const aus=ag.moved+ag.cancelled+bg.moved+bg.cancelled,ges=ag.plan+bg.plan;
+  if(ges>=2&&aus/ges>=0.3)tipps.push(['Viele Termine verschoben oder abgesagt ('+aus+' von '+ges+').','Üben: Termin am Vortag kurz bestätigen (Anruf oder Nachricht) und schon beim Vereinbaren den Nutzen für den Kunden klar aussprechen.']);
+  if(agZiel&&ag.done<agZiel)tipps.push(['AG-Ziel nicht erreicht ('+ag.done+' von '+agZiel+').','Fragen: „Wann terminierst du diese Woche?" Feste Terminier-Blöcke mit Tag und Uhrzeit vereinbaren, in den Kalender eintragen und nächste Woche kontrollieren.']);
+  if(!agZiel)tipps.push(['Für '+gpMonatName(mKey)+' ist kein AG-Ziel hinterlegt.','Im Reiter „Monatsplan" eintragen – das Ziel wird im Monatsgespräch festgelegt.']);
+  if(agOhneBG.length)tipps.push([agOhneBG.length+(agOhneBG.length===1?' Analyse':' Analysen')+' ohne Beratungstermin.','Üben: den BG-Termin noch im Analysegespräch fix machen („Welcher Tag passt Ihnen nächste Woche besser, Dienstag oder Donnerstag?").']);
+  if(ohnePot.length)tipps.push(['Bei '+ohnePot.length+(ohnePot.length===1?' Kunden':' Kunden')+' ist kein Potenzial geschätzt – wurde der echte Bedarf gefunden?','Tiefer fragen üben: „Was ist Ihnen dabei am wichtigsten?" · „Was passiert, wenn alles so bleibt?" · „Wer entscheidet mit?" · „Was hat Sie bisher davon abgehalten?"']);
+  if(ohneDoku.length)tipps.push(['Bei '+ohneDoku.length+(ohneDoku.length===1?' Analyse fehlt':' Analysen fehlen')+' PDF oder Sprachnachricht.','Regel vereinbaren: Analyse am selben Tag abgeben – direkt nach dem Termin, noch im Auto.']);
+  if(kal.fehler)tipps.push([kal.fehler+(kal.fehler===1?' Fehler':' Fehler')+' im Google-Kalender.','Kalender-Check gemeinsam durchgehen und die 8 Regeln aus dem Onboarding (Abschnitt 9) wiederholen. Kundentermine zuerst im CRM eintragen.']);
+  if(ohneStatus.length)tipps.push([ohneStatus.length+(ohneStatus.length===1?' Termin':' Termine')+' der alten Woche ohne Status.','Gleich im Gespräch gemeinsam abhaken: ✔ durchgeführt, ↗ verschoben oder ✖ nicht durchgeführt.']);
+  if(liegen.length||tfehlt.length)tipps.push([(liegen.length+tfehlt.length)+' Kunden ohne nächsten Schritt.','Je Kunde einen nächsten Schritt mit Datum festlegen – Termin oder Wiedervorlage. Grundregel: Kein Kunde ohne nächsten Schritt.']);
+  if(service.length)tipps.push(['Servicepersonal: '+service.length+(service.length===1?' Kunde':' Kunden')+' ab 40 EH.','Je Kunde klären, wer den Service übernimmt, und im Reiter „Gespräch" abhaken.']);
+  tipps.push(['Reihenfolge im Gespräch.','Erst loben, dann fragen, dann kontrollieren. Je Analyse und Beratung: „Wie hast du dich gefühlt?" · „Was war der echte Bedarf?" · „Woran hast du das gemerkt?"']);
+  return {W,A,N,ag,bg,anr,term,agZiel,bgZiel,plan,mKey,won,bgKommend,kal,ohneDoku,agOhneBG,ohnePot,liegen,tfehlt,ohneStatus,service,gut,tipps,rolle};
+}
+function gpKurz(mm,V){ // eine Zeile für Meldung / Liste
+  const p=[];
+  if(V.kal.fehler)p.push(V.kal.fehler+' Kalender-Fehler');
+  if(V.ohneStatus.length)p.push(V.ohneStatus.length+' Termine ohne Status');
+  const off=V.liegen.length+V.tfehlt.length+V.agOhneBG.length;if(off)p.push(off+' offene Kunden');
+  p.push('AG '+V.ag.done+(V.agZiel?'/'+V.agZiel:''));
+  if(V.bgKommend.length)p.push(V.bgKommend.length+' BG stehen an');
+  return p.join(' · ');
+}
+function wgBald(stunden){ // Gespräche, die in den nächsten X Stunden anstehen (für die Führungskraft)
+  const h0=new Date();h0.setHours(0,0,0,0);const now=Date.now(),out=[];
+  TEAM.forEach(mm=>{if(nameEq(mm.name,chatName()))return;const M=wgNaechstes(mm,h0);if(M&&M.getTime()-now<=stunden*3600000&&M.getTime()>=h0.getTime())out.push({mm,M});});
+  return out.sort((a,b)=>a.M-b.M);
+}
+function wgWann(M){const h0=new Date();h0.setHours(0,0,0,0);const d=Math.round((new Date(M.getFullYear(),M.getMonth(),M.getDate())-h0)/86400000);
+  return (d===0?'heute':d===1?'morgen':WG_TAGE[(M.getDay()+6)%7]+' '+fmtDM(M))+' '+calPad(M.getHours())+':'+calPad(M.getMinutes());}
+let __wgPrepBusy=false;
+async function wgPrepCheck(){ // einen Tag vor dem Wochengespräch: Vorbereitung als Aufgabe für die Führungskraft (läuft am Admin-Gerät)
+  if(__wgPrepBusy||MODE!=='db'||!isAdmin()||!teamCol)return;
+  __wgPrepBusy=true;
+  try{
+    for(const x of wgBald(30)){
+      const mm=x.mm,M=x.M,key=M.getFullYear()+'-'+calPad(M.getMonth()+1)+'-'+calPad(M.getDate());
+      if(mm.wgPrep===key)continue;
+      const W=gpWochen(mm);await wocheHolen(W.wkAlt);await wocheHolen(W.wkNeu);
+      const G=await gpLaden(mm),V=gpVorb(mm,G);
+      const offen=(G.todos||[]).filter(t=>!t.done).length;
+      const txt='🗣 Wochengespräch mit '+mm.name+' – '+wgWann(M)+'. Die Vorbereitung ist fertig: '+gpKurz(mm,V)+(offen?' · '+offen+' offene To-dos':'')+'. Öffnen: CEO → Wochengespräche → 📂 Mappe.';
+      mm.wgPrep=key;try{await teamCol.doc(mm.id).update({wgPrep:key});}catch(e){}
+      try{chatSys(txt,null,'__admin__');}catch(e){}
+      try{tgInfo(chatName(),'CENSA – '+txt);}catch(e){}
+    }
+  }catch(e){}
+  __wgPrepBusy=false;
+}
+function wgTodoHtml(){ // Aufgaben-Fenster der Führungskraft
+  const L=wgBald(36);if(!L.length)return '';
+  return `<div class="ehgt" style="margin-top:14px">🗣 Wochengespräche</div>${L.map(x=>`<div class="ehrow"><b>${esc(wgWann(x.M))}</b><span class="nm">${esc(x.mm.name)}</span><button class="mini-btn" data-gsm="${esc(x.mm.id)}" style="border-color:var(--brand);color:var(--brand-ink);font-weight:800">📂 Vorbereitung öffnen</button></div>`).join('')}`;
+}
+function wgPanel(){ // CEO-Seite
+  if(!window.__gsVor)setTimeout(gsVorladen,60);
+  const ich=chatName(),cn=x=>canonName(x||''),h0=new Date();h0.setHours(0,0,0,0);
+  const L=TEAM.filter(m=>(m.name||'').trim()&&!nameEq(m.name,ich)).map(m=>({mm:m,M:wgNaechstes(m,h0),direkt:cn(m.fk)===cn(ich)||!cn(m.fk)}))
+    .sort((a,b)=>((a.M?a.M.getTime():9e15)-(b.M?b.M.getTime():9e15))||a.mm.name.localeCompare(b.mm.name,'de'));
+  const zeile=x=>{const G=GS_CACHE[x.mm.id],off=G?(G.todos||[]).filter(t=>!t.done).length:null,lz=G&&(G.log||[]).length?G.log[G.log.length-1]:null;
+    const bald=x.M&&(x.M.getTime()-Date.now()<=36*3600000);
+    return `<div class="gl" style="cursor:default;flex-wrap:wrap;gap:6px 10px${bald?';border-color:var(--brand)':''}"><span class="gn" style="flex:1 1 150px">${esc(x.mm.name)}${x.direkt?'':' <span style="color:var(--ink-3);font-weight:500">· indirekt</span>'}</span>
+      <span style="font-size:12.5px;${bald?'font-weight:800;color:var(--brand-ink)':'color:var(--ink-2)'}">${x.M?'🗓 '+esc(wgWann(x.M)):'<span style="color:var(--ink-3)">kein Gesprächstermin hinterlegt</span>'}</span>
+      ${off?`<span class="kpi">${off} To-do${off===1?'':'s'} offen</span>`:''}${lz?`<span style="font-size:11.5px;color:var(--ink-3)">letztes Gespräch ${esc(fmtDM(new Date(lz.ts)))}</span>`:''}
+      <button class="mini-btn" data-gsm="${esc(x.mm.id)}" style="margin-left:auto;border-color:var(--brand);color:var(--brand-ink);font-weight:800">📂 Mappe</button></div>`;};
+  return `<div class="panel" id="wgPanel"><h3>🗣 Wochengespräche <span style="color:var(--ink-3);font-weight:600;text-transform:none;letter-spacing:0">— je Geschäftspartner: Vorbereitung, To-dos, Monatsplan und Blätter zum Zeichnen</span></h3>
+    <div class="st-list">${L.length?L.map(zeile).join(''):'<div class="empty-col">Noch keine Geschäftspartner im Team angelegt.</div>'}</div>
+    <div style="font-size:11.5px;color:var(--ink-3);margin-top:8px;line-height:1.5">Tag und Uhrzeit des Wochengesprächs stellst du im Team-Bereich bei der Person ein. Einen Tag vorher bekommst du die Vorbereitung als Aufgabe. Kalender-Einträge wie „Wochengespräch Amir" zählen als Gespräch (WG) und werden nie zu einem Lead.</div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:8px"><span style="font-size:12px;color:var(--ink-2)">Weitere Gesprächspartner, die keine Kunden sind (z. B. deine eigenen Führungskräfte):</span>
+      <input id="wgNamenIn" value="${esc(WG_NAMEN.join(', '))}" placeholder="Namen mit Komma trennen" style="flex:1 1 220px;min-width:160px"><button class="mini-btn" id="wgNamenSave">Speichern</button></div>
+  </div>`;
+}
+async function gsVorladen(){ // To-do-Zähler für die Liste (einmal je Sitzung)
+  if(window.__gsVor||!isAdmin())return;window.__gsVor=1;
+  for(const mm of TEAM){if(!GS_CACHE[mm.id]){try{await gpLaden(mm);}catch(e){}}}
+  const p=document.getElementById('wgPanel');if(p&&document.getElementById('view-steuerung'))try{renderSteuerung();}catch(e){}
+}
+
+/* ---------- D) Mappe ---------- */
+let GSM=null; // {mm,G,V,tab,monat}
+async function gsOeffnen(mmId,tab){
+  const mm=TEAM.find(x=>x.id===mmId);if(!mm){toast('Person nicht gefunden');return;}
+  if(!isAdmin()){toast('Nur für die Führungskraft');return;}
+  const W=gpWochen(mm);
+  try{await wocheHolen(W.wkAlt);await wocheHolen(W.wkNeu);}catch(e){}
+  const G=await gpLaden(mm);
+  const jetzt=new Date();
+  GSM={mm,G,V:gpVorb(mm,G),tab:tab||'vorb',monat:jetzt.getFullYear()+'-'+calPad(jetzt.getMonth()+1)};
+  let w=document.getElementById('gsm');if(!w){w=document.createElement('div');w.id='gsm';document.body.appendChild(w);}
+  w.style.cssText='position:fixed;inset:0;z-index:48;background:var(--bg,#f4f6f5);display:flex;flex-direction:column;overflow:hidden';
+  gsZeichnen();
+}
+function gsZu(){const w=document.getElementById('gsm');if(w)w.remove();if(GSM)gpSpeichern(GSM.G,true);GSM=null;try{if(document.getElementById('wgPanel'))renderSteuerung();}catch(e){}}
+function gsZeichnen(){
+  const w=document.getElementById('gsm');if(!w||!GSM)return;
+  const bAlt=document.getElementById('gsm-body'),scAlt=(bAlt&&w.dataset.tab===GSM.tab)?bAlt.scrollTop:0;w.dataset.tab=GSM.tab;
+  const mm=GSM.mm,V=GSM.V,G=GSM.G,off=(G.todos||[]).filter(t=>!t.done).length;
+  const tabs=[['vorb','📋 Vorbereitung'],['gespr','🗣 Gespräch & To-dos'+(off?' ('+off+')':'')],['plan','🎯 Monatsplan'],['blatt','🖊 Blätter'],['verl','🕘 Verlauf'+((G.log||[]).length?' ('+G.log.length+')':'')]];
+  w.innerHTML=`<div style="background:var(--surface);border-bottom:1px solid var(--line);padding:10px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn" data-gsx="zu">‹ Zurück</button>
+      <div style="flex:1 1 200px;min-width:0"><div style="font-size:17px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">🗣 ${esc(mm.name)}</div>
+        <div style="font-size:12px;color:var(--ink-3)">${V.W.M?'Wochengespräch '+esc(wgWann(V.W.M)):'kein Gesprächstermin hinterlegt'} · alte Woche ${esc(fmtDM(V.W.alt))}–${esc(fmtDM(new Date(V.W.alt.getTime()+6*86400000)))} · <span id="gsm-stat"></span></div></div>
+      <button class="btn" data-gsx="druck" title="Vorbereitung und offene To-dos drucken">🖨 Drucken</button>
+    </div>
+    <div id="gsm-regel" style="display:${GS_LOKAL?'':'none'};background:var(--warn-bg,#fff7e6);border-bottom:1px solid var(--warn);padding:8px 14px;font-size:12.5px;line-height:1.45">
+      <b>⚠ Im Moment wird nur auf diesem Gerät gespeichert.</b> Damit die Mappe auf allen deinen Geräten liegt, einmalig in der Firebase-Konsole → Firestore → Regeln diesen Block einfügen und veröffentlichen. Danach lädt das CRM alles von selbst hoch.
+      <button class="mini-btn" data-gsx="regel" style="margin-left:6px">📋 Regel kopieren</button><button class="mini-btn" data-gsx="retry" style="margin-left:6px">↻ Regel ist drin – jetzt hochladen</button></div>
+    <div style="background:var(--surface);border-bottom:1px solid var(--line);padding:8px 14px;display:flex;gap:6px;overflow-x:auto">${tabs.map(t=>`<button class="btn${GSM.tab===t[0]?' pri':''}" data-gst="${t[0]}" style="padding:7px 12px;font-size:12.5px;white-space:nowrap">${esc(t[1])}</button>`).join('')}</div>
+    <div id="gsm-body" style="flex:1;overflow:auto;padding:14px;-webkit-overflow-scrolling:touch"><div style="max-width:980px;margin:0 auto">${GSM.tab==='vorb'?gsVorbHtml():GSM.tab==='gespr'?gsGesprHtml():GSM.tab==='plan'?gsPlanHtml():GSM.tab==='blatt'?'<div id="gsm-blaetter">Blätter werden geladen …</div>':gsVerlHtml()}</div></div>`;
+  gsStatus(G._pend?'lokal':'db');
+  if(scAlt){const bn=document.getElementById('gsm-body');if(bn)bn.scrollTop=scAlt;}
+  if(GSM.tab==='blatt')gsBlattListe();
+  if(GSM.tab==='plan')gsPlanBlatt();
+}
+const GS_BOX='background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:12px';
+const GS_H='font-size:13px;font-weight:800;margin:0 0 8px;letter-spacing:.01em';
+function gsLeadBtn(d){return d?`<button class="mini-btn" data-gsl="${esc(d.id)}" style="padding:2px 8px">öffnen</button>`:'';}
+function gsVorbHtml(){
+  const V=GSM.V,mm=GSM.mm,G=GSM.G;
+  const kpi=(t,z,ziel)=>`<div style="flex:1 1 120px;background:var(--surface-2);border-radius:10px;padding:8px 10px"><div style="font-size:11px;color:var(--ink-3);font-weight:700;text-transform:uppercase;letter-spacing:.05em">${t}</div><div style="font-size:19px;font-weight:800">${z}${ziel?` <span style="font-size:12px;color:var(--ink-3);font-weight:600">${ziel}</span>`:''}</div></div>`;
+  const st=e=>e.status==='done'?'<span style="color:var(--good);font-weight:800">✔</span>':e.status==='moved'?'<span style="color:#B7791F;font-weight:800">↗</span>':e.status==='cancelled'?'<span style="color:var(--bad);font-weight:800">✖</span>':'<span style="color:var(--ink-3)">○</span>';
+  const zl=(L,f,max)=>L.slice(0,max||12).map(f).join('')+(L.length>(max||12)?`<div style="font-size:11.5px;color:var(--ink-3)">… und ${L.length-(max||12)} weitere</div>`:'');
+  const row=(links,rechts)=>`<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--line-2,var(--line));font-size:12.5px"><span style="flex:1;min-width:0">${links}</span>${rechts||''}</div>`;
+  const kontr=[];
+  if(V.kal.F.length)kontr.push(`<div style="font-weight:800;font-size:12.5px;margin-top:8px">📅 Google-Kalender: ${V.kal.fehler} Fehler · ${V.kal.hinweise} Hinweise <button class="mini-btn" data-gsx="kal" style="margin-left:6px">🔎 Kalender-Check öffnen</button></div>`+zl(V.kal.F,f=>row((f.lvl==='F'?'❌ ':'ℹ️ ')+(f.wann?esc(f.wann)+' · ':'')+esc(f.was)+' <span style="color:var(--ink-3)">– '+esc(f.problem)+'</span>'),8));
+  if(V.ohneStatus.length)kontr.push(`<div style="font-weight:800;font-size:12.5px;margin-top:10px">○ Termine der alten Woche ohne Status (${V.ohneStatus.length})</div>`+zl(V.ohneStatus,e=>row(esc(e.wann)+' · <b>'+esc(e.art)+'</b> '+esc(e.kunde),gsLeadBtn(e.d))));
+  if(V.ohneDoku.length)kontr.push(`<div style="font-weight:800;font-size:12.5px;margin-top:10px">📎 Analyse-PDF oder Sprachnachricht fehlt (${V.ohneDoku.length})</div>`+zl(V.ohneDoku,d=>row(esc(d.name||d.org||'—')+(d.datumAG?' <span style="color:var(--ink-3)">· AG '+esc(d.datumAG)+'</span>':''),gsLeadBtn(d))));
+  if(V.agOhneBG.length)kontr.push(`<div style="font-weight:800;font-size:12.5px;margin-top:10px">⏭ Analyse war, Beratungstermin fehlt (${V.agOhneBG.length})</div>`+zl(V.agOhneBG,x=>row(esc(x.d.name||x.d.org||'—')+' <span style="color:var(--ink-3)">· AG vor '+x.tage+' Tagen</span>',gsLeadBtn(x.d))));
+  if(V.tfehlt.length)kontr.push(`<div style="font-weight:800;font-size:12.5px;margin-top:10px">📅 Termin fehlt (${V.tfehlt.length})</div>`+zl(V.tfehlt,x=>row(esc(x.d.name||x.d.org||'—')+' <span style="color:var(--ink-3)">· '+esc(x.kurz||'')+'</span>',gsLeadBtn(x.d))));
+  if(V.liegen.length)kontr.push(`<div style="font-weight:800;font-size:12.5px;margin-top:10px">🕰 Seit über 2 Wochen nichts passiert (${V.liegen.length})</div>`+zl(V.liegen,x=>row(esc(x.d.name||x.d.org||'—')+' <span style="color:var(--ink-3)">· '+esc(x.d.stage||'')+(x.tage>=0?' · seit '+x.tage+' Tagen':'')+'</span>',gsLeadBtn(x.d))));
+  if(V.ohnePot.length)kontr.push(`<div style="font-weight:800;font-size:12.5px;margin-top:10px">🎯 Kein Potenzial geschätzt – echter Bedarf gefunden? (${V.ohnePot.length})</div>`+zl(V.ohnePot,d=>row(esc(d.name||d.org||'—'),gsLeadBtn(d))));
+  const todosOff=(G.todos||[]).filter(t=>!t.done);
+  return `
+    <div style="${GS_BOX};border-color:var(--good)"><div style="${GS_H};color:var(--good)">👍 Damit starten – das lief gut</div>${V.gut.map(g=>`<div style="font-size:13px;line-height:1.5">${esc(g)}</div>`).join('')}</div>
+    ${V.bgKommend.length?`<div style="${GS_BOX}"><div style="${GS_H}">🚀 Motivation – diese Beratungen stehen an</div>${V.bgKommend.map(b=>row(esc(WG_TAGE[(b.dt.getDay()+6)%7]+' '+fmtDM(b.dt)+' '+calPad(b.dt.getHours())+':'+calPad(b.dt.getMinutes()))+' · <b>'+esc(b.d.name||b.d.org||'—')+'</b> <span style="color:var(--ink-3)">· als '+b.als+'</span>'+(b.pot>0?' · 🎯 ≈ '+fmtEH(b.pot)+' EH'+(b.anteil>0?' <span style="color:var(--good);font-weight:700">(sein Anteil ≈ '+fmtEH(b.anteil)+')</span>':''):' <span style="color:var(--warn)">· Potenzial noch nicht geschätzt</span>'),gsLeadBtn(b.d))).join('')}
+      ${(()=>{const s=V.bgKommend.reduce((x,b)=>x+b.anteil,0);return s>0?`<div style="font-size:13px;font-weight:800;margin-top:8px;color:var(--good)">Zusammen ≈ ${fmtEH(s)} EH für ${esc(mm.name.split(' ')[0])}</div>`:'';})()}</div>`:''}
+    <div style="${GS_BOX}"><div style="${GS_H}">📊 Alte Woche in Zahlen</div><div style="display:flex;gap:8px;flex-wrap:wrap">
+      ${kpi('Analysen',V.ag.done+' ✔',V.agZiel?'Ziel '+V.agZiel:'von '+V.ag.plan+' geplant')}${kpi('Beratungen',V.bg.done+' ✔',V.bgZiel?'Ziel '+V.bgZiel:'von '+V.bg.plan+' geplant')}${kpi('Verschoben / abgesagt',(V.ag.moved+V.bg.moved)+' / '+(V.ag.cancelled+V.bg.cancelled))}${kpi('Anrufe',V.anr,V.term?V.term+' Termine':'')}${kpi('Neue Woche',V.N.length,'Termine')}</div>
+      ${V.A.length?`<div style="margin-top:8px">${V.A.map(e=>row(st(e)+' '+esc(e.wann)+' · <b>'+esc(e.art)+'</b> '+esc(e.kunde),gsLeadBtn(e.d))).join('')}</div>`:'<div style="font-size:12.5px;color:var(--ink-3);margin-top:8px">In der alten Woche waren keine Analysen oder Beratungen eingetragen.</div>'}</div>
+    <div style="${GS_BOX}${kontr.length?';border-color:var(--warn)':''}"><div style="${GS_H}">🔍 Kontrolle – das gehen wir gemeinsam durch</div>${kontr.length?kontr.join(''):'<div style="font-size:13px">✅ Nichts offen – Kalender, Termine und Kunden sind sauber.</div>'}</div>
+    ${V.service.length?`<div style="${GS_BOX}"><div style="${GS_H}">🤝 Servicepersonal – Kunden ab 40 EH</div>${V.service.map(x=>{const s=(G.service||{})[x.d.id]||{};return row(`<label style="display:flex;gap:8px;align-items:center;cursor:pointer"><input type="checkbox" data-gssv="${esc(x.d.id)}"${s.ok?' checked':''} style="width:17px;height:17px;accent-color:var(--brand)"> <span><b>${esc(x.d.name||x.d.org||'—')}</b> · ${fmtEH(x.eh)} EH ${x.won?'(Kunde)':'(Potenzial, BG '+esc(x.d.datumBG||'')+')'}${s.ok&&s.ts?' <span style="color:var(--ink-3)">· geklärt am '+esc(fmtDM(new Date(s.ts)))+'</span>':''}</span></label>`,gsLeadBtn(x.d));}).join('')}</div>`:''}
+    <div style="${GS_BOX};border-color:var(--brand)"><div style="${GS_H};color:var(--brand-ink)">💡 So wird ${esc(mm.name.split(' ')[0])} besser – Tipps für dieses Gespräch</div>${V.tipps.map(t=>`<div style="font-size:13px;line-height:1.5;margin-bottom:7px"><b>${esc(t[0])}</b> ${esc(t[1])}</div>`).join('')}</div>
+    ${todosOff.length?`<div style="${GS_BOX}"><div style="${GS_H}">☑ Offene To-dos aus den letzten Gesprächen (${todosOff.length})</div>${todosOff.map(t=>row('☐ '+esc(t.txt)+' <span style="color:var(--ink-3)">· '+esc(t.wer==='ich'?'ich':mm.name.split(' ')[0])+(t.faellig?' · bis '+esc(t.faellig.split('-').reverse().join('.')):'')+'</span>')).join('')}</div>`:''}
+    <div style="text-align:center;margin:6px 0 20px"><button class="btn pri" data-gst="gespr">Weiter zum Gespräch →</button></div>`;
+}
+function gsGesprHtml(){
+  const V=GSM.V,mm=GSM.mm,G=GSM.G,a=G.akt||{},vor=mm.name.split(' ')[0];
+  const ta=(k,ph,rows)=>`<textarea data-gsa="${k}" rows="${rows||3}" placeholder="${esc(ph)}" style="width:100%;font-size:14px;line-height:1.45">${esc(a[k]||'')}</textarea>`;
+  const SM=['😞','😐','🙂','😀','🤩'];
+  const todos=(G.todos||[]).slice().sort((x,y)=>(x.done?1:0)-(y.done?1:0)||String(x.ts).localeCompare(String(y.ts)));
+  const vorTerm=a.termZeit!=null?a.termZeit:((V.plan&&V.plan.termZeit)||'');
+  return `
+    <div style="${GS_BOX}"><div style="${GS_H}">1 · Einstieg – wie geht es ${esc(vor)}?</div>
+      <div style="display:flex;gap:6px;margin-bottom:8px">${SM.map((s,i)=>`<button type="button" data-gsstim="${i+1}" style="font-size:24px;line-height:1;padding:6px 10px;border-radius:10px;border:2px solid ${a.stimmung===i+1?'var(--brand)':'var(--line)'};background:${a.stimmung===i+1?'var(--brand-bg,var(--surface-2))':'var(--surface)'};cursor:pointer">${s}</button>`).join('')}</div>
+      ${ta('gut','Was lief gut? Wofür habe ich gelobt?',2)}</div>
+    <div style="${GS_BOX}"><div style="${GS_H}">2 · Rückblick alte Woche – Analysen und Beratungen durchgehen</div>
+      <div style="font-size:12px;color:var(--ink-3);margin-bottom:6px">Je Termin fragen: Wie hast du dich gefühlt? Was war der echte Bedarf? Woran hast du das gemerkt?</div>
+      ${V.A.length?V.A.map(e=>{const it=(a.items||{})[e.key]||{};return `<div style="border-top:1px solid var(--line-2,var(--line));padding:7px 0">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px"><span style="flex:1 1 200px"><b>${esc(e.art)}</b> ${esc(e.kunde)} <span style="color:var(--ink-3)">· ${esc(e.wann)}${e.status==='done'?' · ✔':e.status==='moved'?' · ↗ verschoben':e.status==='cancelled'?' · ✖':' · ○ ohne Status'}</span></span>
+          <label style="display:flex;gap:5px;align-items:center;font-size:12px;cursor:pointer"><input type="checkbox" data-gsib="${esc(e.key)}"${it.b?' checked':''} style="width:16px;height:16px;accent-color:var(--good)"> echter Bedarf gefunden</label>${gsLeadBtn(e.d)}</div>
+        <input data-gsin="${esc(e.key)}" value="${esc(it.n||'')}" placeholder="Gefühl, Bedarf, was wir daraus lernen" style="width:100%;margin-top:5px;font-size:13.5px"></div>`;}).join(''):'<div style="font-size:12.5px;color:var(--ink-3)">Keine Analysen oder Beratungen in der alten Woche.</div>'}
+      <div style="margin-top:8px">${ta('bedarf','Echter Bedarf – was üben wir? (z. B. tiefer fragen, Einwand „keine Zeit")',2)}</div></div>
+    <div style="${GS_BOX}"><div style="${GS_H}">3 · Neue Woche</div>
+      <div style="font-size:12.5px;margin-bottom:6px">Geplant: <b>${V.N.filter(e=>e.art==='AG').length}</b> Analysen · <b>${V.N.filter(e=>e.art==='BG').length}</b> Beratungen${V.agZiel?' · AG-Ziel pro Woche: <b>'+V.agZiel+'</b>':' · <span style="color:var(--warn)">kein AG-Ziel im Monatsplan</span>'}</div>
+      <label style="font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)">Wann wird terminiert?</label>
+      <input data-gsa="termZeit" value="${esc(vorTerm)}" placeholder="z. B. Mo + Mi 9–11 Uhr, Do 17–19 Uhr" style="width:100%;margin:3px 0 8px;font-size:14px">
+      ${ta('tipps','Tipps und Vereinbarungen für die neue Woche',3)}</div>
+    <div style="${GS_BOX};border-color:var(--brand)"><div style="${GS_H}">☑ To-dos – gemeinsam vereinbart</div>
+      ${todos.length?todos.map(t=>`<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line-2,var(--line))"><input type="checkbox" data-gstd="${esc(t.id)}"${t.done?' checked':''} style="width:19px;height:19px;accent-color:var(--brand);flex:0 0 auto">
+        <span style="flex:1;min-width:0;font-size:13.5px;${t.done?'text-decoration:line-through;color:var(--ink-3)':''}">${esc(t.txt)} <span style="color:var(--ink-3);font-size:12px">· ${esc(t.wer==='ich'?'ich':vor)}${t.faellig?' · bis '+esc(t.faellig.split('-').reverse().join('.')):''}${t.done&&t.doneTs?' · erledigt '+esc(fmtDM(new Date(t.doneTs))):''}</span></span>
+        <button type="button" class="mini-btn" data-gstx="${esc(t.id)}" title="To-do löschen" style="padding:2px 8px">✕</button></div>`).join(''):'<div style="font-size:12.5px;color:var(--ink-3)">Noch keine To-dos. Offene To-dos bleiben stehen, bis sie abgehakt sind – auch über mehrere Wochen.</div>'}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><input id="gstd-txt" placeholder="Neues To-do" style="flex:1 1 220px;font-size:14px"><select id="gstd-wer" style="width:auto"><option value="gp">${esc(vor)}</option><option value="ich">ich</option></select><input id="gstd-bis" type="date" style="width:auto"><button type="button" class="btn pri" data-gsx="todo">＋</button></div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 24px"><button class="btn pri" data-gsx="fertig">✅ Gespräch abschließen</button><button class="btn" data-gsx="senden">📨 Vereinbarungen an ${esc(vor)} schicken</button><button class="btn" data-gsx="neublatt">🖊 Leeres Blatt</button></div>`;
+}
+function gsPlanHtml(){
+  const G=GSM.G,k=GSM.monat,P=(G.plan||{})[k]||{};
+  const f=(key,lab,ph,typ)=>`<div style="flex:1 1 150px"><label style="font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)">${lab}</label><input data-gsp="${key}" ${typ?'type="'+typ+'" inputmode="decimal"':''} value="${esc(P[key]!=null?P[key]:'')}" placeholder="${esc(ph||'')}" style="width:100%;font-size:15px;margin-top:3px"></div>`;
+  const ist=(G.log||[]).filter(l=>l.monat===k);
+  return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px"><button class="btn" data-gsmon="-1">‹</button><div style="font-size:16px;font-weight:800;flex:1;text-align:center">🎯 Monatsplan ${esc(gpMonatName(k))}</div><button class="btn" data-gsmon="1">›</button></div>
+    <div style="${GS_BOX}"><div style="${GS_H}">Ziele – im Monatsgespräch festgelegt</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">${f('agW','AG-Ziel pro Woche','z. B. 5','number')}${f('bgW','BG-Ziel pro Woche','z. B. 3','number')}${f('eh','EH-Ziel im Monat','z. B. 120','number')}</div>
+      <div style="margin-top:10px">${f('termZeit','Wann wird terminiert?','z. B. Mo + Mi 9–11 Uhr')}</div>
+      <div style="margin-top:10px"><label style="font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)">Schwerpunkt und Notizen</label><textarea data-gsp="notiz" rows="4" placeholder="Woran arbeiten wir diesen Monat? Was wurde vereinbart?" style="width:100%;font-size:14px;line-height:1.45;margin-top:3px">${esc(P.notiz||'')}</textarea></div></div>
+    <div style="${GS_BOX}"><div style="${GS_H}">🖊 Monatsplan-Blatt – zeichnen und schreiben</div><div id="gsm-planblatt" style="font-size:12.5px;color:var(--ink-3)">wird geladen …</div></div>
+    ${ist.length?`<div style="${GS_BOX}"><div style="${GS_H}">Bisher in diesem Monat</div>${ist.map(l=>`<div style="font-size:12.5px;padding:4px 0;border-top:1px solid var(--line-2,var(--line))">${esc(l.wk||'')} · AG ${l.zahlen?l.zahlen.agDone:'–'}${l.zahlen&&l.zahlen.agZiel?' / '+l.zahlen.agZiel:''} · BG ${l.zahlen?l.zahlen.bgDone:'–'}</div>`).join('')}</div>`:''}`;
+}
+async function gsPlanBlatt(){
+  const el=document.getElementById('gsm-planblatt');if(!el||!GSM)return;
+  const k=GSM.monat,L=(await gsBlaetter(GSM.mm.id)).filter(b=>b.monat===k);
+  if(!document.getElementById('gsm-planblatt')||!GSM||GSM.monat!==k)return;
+  el.innerHTML=(L.length?`<div style="display:flex;gap:10px;flex-wrap:wrap">${L.map(gsThumbHtml).join('')}</div>`:'<div style="margin-bottom:8px">Noch kein Blatt für diesen Monat.</div>')+`<div style="margin-top:8px"><button class="btn${L.length?'':' pri'}" data-gsx="planblatt">＋ ${L.length?'Weiteres Blatt':'Monatsplan-Blatt anlegen'}</button></div>`;
+  window.__gsBl=Object.assign(window.__gsBl||{},Object.fromEntries(L.map(b=>[b._id,b])));
+  L.forEach(gsThumbMalen);
+}
+function gsThumbHtml(b){return `<div data-gsbl="${esc(b._id)}" style="width:150px;cursor:pointer"><canvas data-gsth="${esc(b._id)}" width="300" height="424" style="width:150px;height:212px;border:1px solid var(--line);border-radius:8px;background:#fff;display:block"></canvas>
+  <div style="font-size:12px;font-weight:700;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink)">${esc(b.titel||'Blatt')}</div><div style="font-size:11px;color:var(--ink-3)">${esc(fmtDM(new Date(b.ts||Date.now())))}${b.monat?' · '+esc(gpMonatName(b.monat)):''}${b._pend?' · nur am Gerät':''}</div></div>`;}
+function gsThumbMalen(b){const c=document.querySelector('canvas[data-gsth="'+b._id+'"]');if(!c)return;let it=[];try{it=JSON.parse(b.daten||'[]');}catch(e){}blattMalen(c.getContext('2d'),it,b.bg||'leer',c.width/BL_W);}
+async function gsBlattListe(){
+  const el=document.getElementById('gsm-blaetter');if(!el||!GSM)return;
+  const L=await gsBlaetter(GSM.mm.id);
+  if(!document.getElementById('gsm-blaetter'))return;
+  window.__gsBl=Object.fromEntries(L.map(b=>[b._id,b]));
+  el.innerHTML=`<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn pri" data-gsx="neublatt">＋ Leeres Blatt</button><span style="font-size:12.5px;color:var(--ink-3)">Zum Zeichnen und Schreiben – mit Stift oder Finger. Jedes Blatt bleibt bei ${esc(GSM.mm.name.split(' ')[0])} gespeichert.</span></div>
+    ${L.length?`<div style="display:flex;gap:14px;flex-wrap:wrap">${L.map(gsThumbHtml).join('')}</div>`:'<div style="font-size:13px;color:var(--ink-3)">Noch keine Blätter.</div>'}`;
+  L.forEach(gsThumbMalen);
+}
+function gsVerlHtml(){
+  const G=GSM.G,L=(G.log||[]).slice().reverse(),SM=['','😞','😐','🙂','😀','🤩'];
+  if(!L.length)return '<div style="font-size:13px;color:var(--ink-3)">Noch kein abgeschlossenes Gespräch. Im Reiter „Gespräch & To-dos" unten auf „✅ Gespräch abschließen" tippen – dann steht es hier.</div>';
+  return L.map(l=>`<div style="${GS_BOX}"><div style="${GS_H}">${esc(fmtDM(new Date(l.ts)))}${new Date(l.ts).getFullYear()} · ${esc(l.wk||'')} ${l.stimmung?SM[l.stimmung]:''} <span style="font-weight:600;color:var(--ink-3)">· AG ${l.zahlen?l.zahlen.agDone:'–'}${l.zahlen&&l.zahlen.agZiel?'/'+l.zahlen.agZiel:''} · BG ${l.zahlen?l.zahlen.bgDone:'–'}${l.zahlen&&l.zahlen.anr?' · '+l.zahlen.anr+' Anrufe':''}</span></div>
+    ${[['👍 Gut',l.gut],['🔎 Bedarf',l.bedarf],['📞 Terminiert wird',l.termZeit],['🚀 Vereinbart',l.tipps]].filter(x=>(x[1]||'').trim()).map(x=>`<div style="font-size:13px;line-height:1.45;margin-bottom:4px;white-space:pre-wrap"><b>${x[0]}:</b> ${esc(x[1])}</div>`).join('')}
+    ${Object.keys(l.items||{}).filter(k=>(l.items[k].n||'').trim()||l.items[k].b).map(k=>`<div style="font-size:12.5px;color:var(--ink-2)">• ${esc(l.items[k].t||'')}${l.items[k].b?' · Bedarf ✔':''}${l.items[k].n?' – '+esc(l.items[k].n):''}</div>`).join('')}
+    ${(l.todosNeu||[]).length?`<div style="font-size:12.5px;margin-top:4px"><b>To-dos:</b> ${l.todosNeu.map(esc).join(' · ')}</div>`:''}</div>`).join('');
+}
+function gsText(){ // Vereinbarungen als Nachricht an den GP
+  const G=GSM.G,a=G.akt||{},mm=GSM.mm,vor=mm.name.split(' ')[0];
+  const off=(G.todos||[]).filter(t=>!t.done);
+  let t='🗣 Wochengespräch – das haben wir vereinbart, '+vor+':\n';
+  if((a.gut||'').trim())t+='\n👍 '+a.gut.trim()+'\n';
+  if((a.termZeit||'').trim())t+='\n📞 Terminiert wird: '+a.termZeit.trim()+'\n';
+  if((a.tipps||'').trim())t+='\n🚀 '+a.tipps.trim()+'\n';
+  if(off.length)t+='\n☑ To-dos:\n'+off.map(x=>'• '+x.txt+' ('+(x.wer==='ich'?'Führungskraft':vor)+(x.faellig?', bis '+x.faellig.split('-').reverse().join('.'):'')+')').join('\n')+'\n';
+  if(GSM.V.agZiel)t+='\n🎯 AG-Ziel pro Woche: '+GSM.V.agZiel;
+  return t.trim();
+}
+function gsDruck(){
+  const V=GSM.V,mm=GSM.mm,G=GSM.G,off=(G.todos||[]).filter(t=>!t.done);
+  const w=window.open('','_blank');if(!w){toast('Bitte Popups erlauben');return;}
+  const li=a=>a.map(x=>'<li>'+x+'</li>').join('');
+  w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Wochengespräch '+esc(mm.name)+'</title><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12.5px;line-height:1.5;color:#1a2233;margin:14mm}h1{font-size:18px;margin:0 0 2px}h2{font-size:13.5px;margin:14px 0 4px;border-bottom:1.5px solid #14213d;padding-bottom:2px}ul{margin:4px 0;padding-left:18px}.s{color:#667}.l{border-bottom:1px solid #bbb;height:22px}@media print{button{display:none}}</style></head><body><button onclick="window.print()">🖨 Drucken</button>'
+    +'<h1>Wochengespräch · '+esc(mm.name)+'</h1><div class="s">'+(V.W.M?esc(wgWann(V.W.M))+' · ':'')+'alte Woche '+esc(fmtDM(V.W.alt))+'–'+esc(fmtDM(new Date(V.W.alt.getTime()+6*86400000)))+'</div>'
+    +'<h2>👍 Das lief gut</h2><ul>'+li(V.gut.map(esc))+'</ul>'
+    +(V.bgKommend.length?'<h2>🚀 Beratungen, die anstehen</h2><ul>'+li(V.bgKommend.map(b=>esc(fmtDM(b.dt)+' '+(b.d.name||b.d.org||'—'))+(b.pot>0?' · ≈ '+fmtEH(b.pot)+' EH':'')))+'</ul>':'')
+    +'<h2>📊 Alte Woche</h2><div>Analysen: '+V.ag.done+' durchgeführt'+(V.agZiel?' (Ziel '+V.agZiel+')':'')+' · Beratungen: '+V.bg.done+' · verschoben '+(V.ag.moved+V.bg.moved)+' · abgesagt '+(V.ag.cancelled+V.bg.cancelled)+' · Anrufe '+V.anr+'</div><ul>'+li(V.A.map(e=>esc(e.wann+' · '+e.art+' '+e.kunde+' · '+(e.status==='done'?'durchgeführt':e.status==='moved'?'verschoben':e.status==='cancelled'?'nicht durchgeführt':'ohne Status'))+' &nbsp; Gefühl / Bedarf: ______________________'))+'</ul>'
+    +'<h2>🔍 Kontrolle</h2><ul>'+li([].concat(V.kal.F.map(f=>(f.lvl==='F'?'Kalender-Fehler: ':'Kalender-Hinweis: ')+esc((f.wann?f.wann+' ':'')+f.was+' – '+f.problem)),V.ohneStatus.map(e=>'Ohne Status: '+esc(e.wann+' '+e.art+' '+e.kunde)),V.ohneDoku.map(d=>'Analyse-Unterlagen fehlen: '+esc(d.name||d.org||'—')),V.agOhneBG.map(x=>'BG-Termin fehlt: '+esc(x.d.name||x.d.org||'—')),V.tfehlt.map(x=>'Termin fehlt: '+esc(x.d.name||x.d.org||'—')),V.liegen.map(x=>'Liegt seit '+x.tage+' Tagen: '+esc(x.d.name||x.d.org||'—')),V.service.map(x=>'Servicepersonal klären ('+fmtEH(x.eh)+' EH): '+esc(x.d.name||x.d.org||'—'))))+'</ul>'
+    +'<h2>💡 Tipps</h2><ul>'+li(V.tipps.map(t=>'<b>'+esc(t[0])+'</b> '+esc(t[1])))+'</ul>'
+    +'<h2>☑ To-dos</h2><ul>'+li(off.map(t=>'☐ '+esc(t.txt)+' ('+esc(t.wer==='ich'?'ich':mm.name.split(' ')[0])+')'))+'</ul><div class="l"></div><div class="l"></div><div class="l"></div>'
+    +'<h2>Wann wird terminiert?</h2><div class="l"></div><div class="l"></div></body></html>');
+  w.document.close();
+}
+async function gsBlattNeu(monat){
+  const mm=GSM.mm,id='bl_'+mm.id+'_'+Date.now().toString(36);
+  const b={typ:'blatt',gp:mm.id,titel:monat?('Monatsplan '+gpMonatName(monat)):('Blatt '+fmtDM(new Date())),monat:monat||'',ts:new Date().toISOString(),bg:'leer',daten:'[]'};
+  await gsSet(id,b);b._id=id;
+  blattEdit(b);
+}
+document.addEventListener('click',async e=>{
+  const t=e.target;if(!t||!t.closest)return;
+  const op=t.closest('[data-gsm]');if(op){e.preventDefault();try{closeModal();}catch(x){}gsOeffnen(op.dataset.gsm);return;}
+  if(t.id==='wgNamenSave'){const v=(document.getElementById('wgNamenIn')||{}).value||'';wgNamenSetzen(v);
+    try{await firebase.firestore().collection('meta').doc('settings').set({wgNamen:v},{merge:true});toast('Gespeichert ✓');}catch(x){toast('Speichern fehlgeschlagen – gilt vorerst nur auf diesem Gerät');}
+    try{localStorage.setItem('censa_wg_namen',v);}catch(x){}return;}
+  if(!GSM||!t.closest('#gsm'))return;
+  const tab=t.closest('[data-gst]');if(tab){GSM.tab=tab.dataset.gst;gsZeichnen();return;}
+  const ld=t.closest('[data-gsl]');if(ld){openModal(ld.dataset.gsl);return;}
+  const G=GSM.G;
+  const stim=t.closest('[data-gsstim]');if(stim){G.akt.stimmung=+stim.dataset.gsstim;gpSpeichern(G);gsZeichnen();return;}
+  const tx=t.closest('[data-gstx]');if(tx){if(!confirm('Dieses To-do löschen?'))return;G.todos=G.todos.filter(x=>x.id!==tx.dataset.gstx);gpSpeichern(G,true);gsZeichnen();return;}
+  const mon=t.closest('[data-gsmon]');if(mon){const p=GSM.monat.split('-').map(Number),d=new Date(p[0],p[1]-1+(+mon.dataset.gsmon),1);GSM.monat=d.getFullYear()+'-'+calPad(d.getMonth()+1);gsZeichnen();return;}
+  const bl=t.closest('[data-gsbl]');if(bl){const b=(window.__gsBl||{})[bl.dataset.gsbl];if(b)blattEdit(b);return;}
+  const x=t.closest('[data-gsx]');if(!x)return;
+  const was=x.dataset.gsx;
+  if(was==='zu')gsZu();
+  else if(was==='druck')gsDruck();
+  else if(was==='regel')copyText(gsRegelText(),x,'📋 Regel kopiert – in der Firebase-Konsole bei den Firestore-Regeln einfügen');
+  else if(was==='retry'){GS_LOKAL=false;const wo=await gsSet('gp_'+G.gp,G);if(wo==='db'){try{await gsBlaetter(GSM.mm.id);}catch(err){}toast('✅ Liegt jetzt in der Datenbank – auf allen deinen Geräten');}else toast('Noch gesperrt – bitte die Regel in der Firebase-Konsole einfügen und veröffentlichen');gsZeichnen();}
+  else if(was==='kal')kalCheckZeigen(GSM.mm.name,GSM.V.W.alt);
+  else if(was==='neublatt')gsBlattNeu('');
+  else if(was==='planblatt')gsBlattNeu(GSM.monat);
+  else if(was==='todo'){
+    const inp=document.getElementById('gstd-txt'),v=((inp||{}).value||'').trim();if(!v){toast('Bitte das To-do eintippen');if(inp)inp.focus();return;}
+    G.todos.push({id:'t'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),txt:v.slice(0,300),wer:(document.getElementById('gstd-wer')||{}).value||'gp',faellig:(document.getElementById('gstd-bis')||{}).value||'',done:false,ts:new Date().toISOString()});
+    G.akt.todosNeu=(G.akt.todosNeu||[]).concat([v.slice(0,300)]);
+    gpSpeichern(G,true);gsZeichnen();const n=document.getElementById('gstd-txt');if(n)n.focus();
+  }
+  else if(was==='senden'){
+    const txt=gsText();x.disabled=true;
+    try{chatSys(txt,null,GSM.mm.name);}catch(err){}
+    let tg=false;try{tg=await tgInfo(GSM.mm.name,'CENSA – '+txt.slice(0,3800));}catch(err){}
+    toast('📨 An '+GSM.mm.name+' geschickt (Chat'+(tg?' + Telegram':'')+')');x.textContent='Geschickt ✓';
+  }
+  else if(was==='fertig'){
+    const a=G.akt||{},V=GSM.V;
+    const items={};Object.keys(a.items||{}).forEach(k=>{const e=V.A.find(z=>z.key===k);const it=a.items[k];if((it.n||'').trim()||it.b)items[k]={n:it.n||'',b:!!it.b,t:e?(e.art+' '+e.kunde):''};});
+    if(!a.stimmung&&!(a.gut||'').trim()&&!(a.tipps||'').trim()&&!(a.bedarf||'').trim()&&!Object.keys(items).length&&!(a.todosNeu||[]).length){if(!confirm('Es ist noch nichts eingetragen. Gespräch trotzdem als geführt abschließen?'))return;}
+    G.log.push({id:'g'+Date.now().toString(36),ts:new Date().toISOString(),wk:V.W.wkAlt,monat:V.mKey,stimmung:a.stimmung||0,gut:a.gut||'',bedarf:a.bedarf||'',tipps:a.tipps||'',termZeit:a.termZeit||'',items,todosNeu:a.todosNeu||[],
+      zahlen:{agPlan:V.ag.plan,agDone:V.ag.done,agZiel:V.agZiel,bgPlan:V.bg.plan,bgDone:V.bg.done,moved:V.ag.moved+V.bg.moved,cancelled:V.ag.cancelled+V.bg.cancelled,anr:V.anr,term:V.term,kalFehler:V.kal.fehler}});
+    if(G.log.length>80)G.log=G.log.slice(-80);
+    if((a.termZeit||'').trim()){G.plan[V.mKey]=G.plan[V.mKey]||{};if(!G.plan[V.mKey].termZeit)G.plan[V.mKey].termZeit=a.termZeit.trim();}
+    G.akt={items:{}};
+    await gpSpeichern(G,true);GSM.tab='verl';gsZeichnen();toast('✅ Gespräch abgeschlossen – steht jetzt im Verlauf');
+  }
+});
+document.addEventListener('input',e=>{
+  const t=e.target;if(!GSM||!t||!t.dataset||!t.closest||!t.closest('#gsm'))return;
+  const G=GSM.G;
+  if(t.dataset.gsa){G.akt[t.dataset.gsa]=t.value;gpSpeichern(G);}
+  else if(t.dataset.gsin){(G.akt.items[t.dataset.gsin]=G.akt.items[t.dataset.gsin]||{}).n=t.value;gpSpeichern(G);}
+  else if(t.dataset.gsp){const P=(G.plan[GSM.monat]=G.plan[GSM.monat]||{});P[t.dataset.gsp]=t.value;P.upd=new Date().toISOString();gpSpeichern(G);}
+});
+document.addEventListener('change',e=>{
+  const t=e.target;if(!GSM||!t||!t.dataset||!t.closest||!t.closest('#gsm'))return;
+  const G=GSM.G;
+  if(t.dataset.gsib){(G.akt.items[t.dataset.gsib]=G.akt.items[t.dataset.gsib]||{}).b=t.checked;gpSpeichern(G);}
+  else if(t.dataset.gstd){const td=G.todos.find(x=>x.id===t.dataset.gstd);if(td){td.done=t.checked;td.doneTs=t.checked?new Date().toISOString():'';gpSpeichern(G,true);gsZeichnen();}}
+  else if(t.dataset.gssv){G.service[t.dataset.gssv]={ok:t.checked,ts:new Date().toISOString()};gpSpeichern(G,true);}
+  else if(t.dataset.gsp&&GSM.tab==='plan'){GSM.V=gpVorb(GSM.mm,G);}
+});
+
+/* ---------- E) Blatt: zeichnen und schreiben ---------- */
+const BL_W=1500,BL_H=2121; // A4-Verhältnis
+const BL_FARBEN=['#14213d','#d62828','#2a9d8f','#f77f00','#6a4c93'];
+function blattMalen(ctx,items,bg,sc){
+  const W=BL_W*sc,H=BL_H*sc;
+  ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);
+  if(bg==='lin'||bg==='kar'){ctx.strokeStyle='#d5dbe3';ctx.lineWidth=Math.max(1,1.2*sc);ctx.beginPath();
+    for(let y=120;y<BL_H;y+=60){ctx.moveTo(0,y*sc);ctx.lineTo(W,y*sc);}
+    if(bg==='kar')for(let x=60;x<BL_W;x+=60){ctx.moveTo(x*sc,0);ctx.lineTo(x*sc,H);}
+    ctx.stroke();}
+  items.forEach(it=>blattItem(ctx,it,sc));
+  ctx.restore();
+}
+function blattItem(ctx,it,sc,ab){
+  if(it.t==='x'){ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';ctx.fillStyle=it.c||'#14213d';ctx.font='600 '+((it.z||44)*sc)+'px Segoe UI,Arial,sans-serif';ctx.textBaseline='top';
+    String(it.s||'').split('\n').forEach((z,i)=>ctx.fillText(z,it.x*sc,(it.y+i*(it.z||44)*1.25)*sc));return;}
+  const p=it.p||[];if(p.length<3)return;
+  ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle=it.c||'#14213d';
+  if(it.m){ // Marker: ein Zug, halb durchsichtig
+    ctx.globalAlpha=.32;ctx.globalCompositeOperation='multiply';ctx.lineWidth=(it.w||4)*5*sc;ctx.beginPath();ctx.moveTo(p[0]*sc,p[1]*sc);
+    for(let i=3;i<p.length;i+=3)ctx.lineTo(p[i]*sc,p[i+1]*sc);
+    if(p.length===3)ctx.lineTo(p[0]*sc+.1,p[1]*sc+.1);
+    ctx.stroke();ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';return;}
+  ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+  const br=pr=>Math.max(.6,(it.w||4)*(0.45+(pr/100)*1.1)*sc);
+  if(p.length===3){ctx.fillStyle=it.c||'#14213d';ctx.beginPath();ctx.arc(p[0]*sc,p[1]*sc,br(p[2])/2,0,6.3);ctx.fill();return;}
+  for(let i=Math.max(3,(ab||0));i<p.length;i+=3){ // Segmente einzeln (Strichstärke folgt dem Druck), über Mittelpunkte geglättet
+    const x0=p[i-3],y0=p[i-2],x1=p[i],y1=p[i+1];
+    const ax=i>=6?(p[i-6]+x0)/2:x0,ay=i>=6?(p[i-5]+y0)/2:y0,bx=(x0+x1)/2,by=(y0+y1)/2;
+    ctx.lineWidth=br((p[i-1]+p[i+2])/2);ctx.beginPath();ctx.moveTo(ax*sc,ay*sc);ctx.quadraticCurveTo(x0*sc,y0*sc,bx*sc,by*sc);
+    if(i+3>=p.length)ctx.lineTo(x1*sc,y1*sc);
+    ctx.stroke();
+  }
+}
+function blattEdit(b){
+  let items=[];try{items=JSON.parse(b.daten||'[]');}catch(e){}
+  const S={tool:'stift',farbe:BL_FARBEN[0],staerke:4,undo:[],redo:[],cur:null,stiftGesehen:false,dirty:false,timer:null,zu:false};
+  const alt=document.getElementById('blatt');if(alt)alt.remove();
+  const w=document.createElement('div');w.id='blatt';
+  w.style.cssText='position:fixed;inset:0;z-index:49;background:#e9edf0;display:flex;flex-direction:column;overflow:hidden;user-select:none;-webkit-user-select:none';
+  const tb=(k,ic,ti)=>`<button type="button" data-blt="${k}" title="${ti}" style="font-size:18px;line-height:1;padding:7px 10px;border-radius:9px;border:2px solid transparent;background:#fff;cursor:pointer">${ic}</button>`;
+  w.innerHTML=`<div style="background:#fff;border-bottom:1px solid #cfd6dd;padding:7px 10px;display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+      <button type="button" class="btn" id="bl-zu">‹ Fertig</button>
+      <input id="bl-titel" value="${esc(b.titel||'')}" placeholder="Titel" style="flex:1 1 130px;min-width:90px;font-weight:700;font-size:14px">
+      <span id="bl-stat" style="font-size:11.5px;color:#667;white-space:nowrap"></span>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;flex-basis:100%">
+        ${tb('stift','✏️','Stift')}${tb('marker','🖍','Marker')}${tb('radierer','🧽','Radierer – tippt man einen Strich an, verschwindet er')}${tb('text','🔤','Text tippen')}${tb('hand','✋','Blatt verschieben')}
+        <span style="width:1px;height:26px;background:#cfd6dd;margin:0 3px"></span>
+        ${BL_FARBEN.map(c=>`<button type="button" data-blf="${c}" title="Farbe" style="width:28px;height:28px;border-radius:50%;border:3px solid #fff;outline:2px solid transparent;background:${c};cursor:pointer;padding:0"></button>`).join('')}
+        <span style="width:1px;height:26px;background:#cfd6dd;margin:0 3px"></span>
+        ${[2,4,8].map(s=>`<button type="button" data-bls="${s}" title="Strichstärke" style="width:32px;height:32px;border-radius:9px;border:2px solid transparent;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0"><span style="display:block;width:${s*2+2}px;height:${s*2+2}px;border-radius:50%;background:#14213d"></span></button>`).join('')}
+        <span style="width:1px;height:26px;background:#cfd6dd;margin:0 3px"></span>
+        <button type="button" class="mini-btn" id="bl-undo" title="Rückgängig">↶</button><button type="button" class="mini-btn" id="bl-redo" title="Wiederholen">↷</button>
+        <select id="bl-bg" title="Hintergrund" style="width:auto;font-size:12.5px"><option value="leer">leer</option><option value="lin">liniert</option><option value="kar">kariert</option></select>
+        <button type="button" class="mini-btn" id="bl-druck" title="Drucken oder als PDF sichern">🖨</button>
+        <button type="button" class="mini-btn" id="bl-del" title="Dieses Blatt löschen" style="margin-left:auto;color:var(--bad)">🗑</button>
+      </div></div>
+    <div id="bl-wrap" style="flex:1;overflow:auto;-webkit-overflow-scrolling:touch;padding:10px"><canvas id="bl-cv" width="${BL_W}" height="${BL_H}" style="display:block;margin:0 auto;width:100%;max-width:1000px;height:auto;background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.18);border-radius:4px;touch-action:none"></canvas></div>`;
+  document.body.appendChild(w);
+  const cv=w.querySelector('#bl-cv'),ctx=cv.getContext('2d'),stat=w.querySelector('#bl-stat');
+  w.querySelector('#bl-bg').value=b.bg||'leer';
+  const neu=()=>blattMalen(ctx,items,b.bg||'leer',1);
+  const anzeige=()=>{
+    w.querySelectorAll('[data-blt]').forEach(x=>x.style.borderColor=x.dataset.blt===S.tool?'#14213d':'transparent');
+    w.querySelectorAll('[data-blf]').forEach(x=>x.style.outlineColor=x.dataset.blf===S.farbe?'#14213d':'transparent');
+    w.querySelectorAll('[data-bls]').forEach(x=>x.style.borderColor=+x.dataset.bls===S.staerke?'#14213d':'transparent');
+    cv.style.touchAction=(S.tool==='hand'||S.stiftGesehen)?'pan-x pan-y pinch-zoom':'none';
+    cv.style.cursor=S.tool==='hand'?'grab':S.tool==='text'?'text':'crosshair';
+  };
+  const speichern=async()=>{
+    clearTimeout(S.timer);if(!S.dirty)return;S.dirty=false;
+    const daten=JSON.stringify(items);
+    if(daten.length>900000){stat.textContent='⚠ Blatt ist voll – bitte ein neues Blatt anlegen';stat.style.color='#d62828';}
+    b.daten=daten;b.titel=(w.querySelector('#bl-titel').value||'').trim()||'Blatt';
+    const wo=await gsSet(b._id,b);
+    if(daten.length<=900000){stat.textContent=wo==='db'?'gespeichert ✓':'gespeichert – nur auf diesem Gerät';stat.style.color=wo==='db'?'#667':'#b45309';}
+  };
+  const geaendert=()=>{S.dirty=true;stat.textContent='speichert …';clearTimeout(S.timer);S.timer=setTimeout(speichern,1200);};
+  const pos=e=>{const r=cv.getBoundingClientRect();return [Math.round((e.clientX-r.left)*BL_W/r.width),Math.round((e.clientY-r.top)*BL_H/r.height)];};
+  const druck=e=>e.pointerType==='pen'?Math.round(Math.max(.05,Math.min(1,e.pressure||.5))*100):50;
+  const radieren=(x,y)=>{
+    const R=28,weg=[];
+    for(let i=items.length-1;i>=0;i--){const it=items[i];let tr=false;
+      if(it.t==='x'){const br=String(it.s||'').split('\n').reduce((m,z)=>Math.max(m,z.length),1)*(it.z||44)*.55,ho=String(it.s||'').split('\n').length*(it.z||44)*1.25;tr=x>=it.x-R&&x<=it.x+br+R&&y>=it.y-R&&y<=it.y+ho+R;}
+      else{const p=it.p||[],rr=R+(it.m?(it.w||4)*2.5:0);for(let k=0;k<p.length;k+=3){if(Math.abs(p[k]-x)<=rr&&Math.abs(p[k+1]-y)<=rr){tr=true;break;}}}
+      if(tr){weg.push({i,it});items.splice(i,1);}
+    }
+    if(weg.length){if(S.cur&&S.cur.k==='del')S.cur.items.push(...weg);else{S.cur={k:'del',items:weg};}neu();}
+  };
+  cv.addEventListener('pointerdown',e=>{
+    if(e.pointerType==='pen'&&!S.stiftGesehen){S.stiftGesehen=true;anzeige();}
+    if(S.tool==='hand'||(S.stiftGesehen&&e.pointerType==='touch'))return; // Handballen/Finger zeichnen nicht, sobald ein Stift benutzt wird
+    e.preventDefault();
+    const [x,y]=pos(e);
+    if(S.tool==='text'){
+      const s=prompt('Text für das Blatt:');if(!s||!s.trim())return;
+      const it={t:'x',x,y,s:s.trim().slice(0,400),c:S.farbe,z:S.staerke<=2?34:S.staerke<=4?46:64};
+      items.push(it);S.undo.push({k:'add',it});S.redo=[];neu();geaendert();return;}
+    try{cv.setPointerCapture(e.pointerId);}catch(err){}
+    S.pid=e.pointerId;
+    if(S.tool==='radierer'){S.cur=null;S.rad=true;radieren(x,y);return;}
+    const it={t:'s',c:S.farbe,w:S.staerke,p:[x,y,druck(e)]};if(S.tool==='marker')it.m=1;
+    items.push(it);S.cur={k:'add',it};
+    blattItem(ctx,it,1);
+  });
+  cv.addEventListener('pointermove',e=>{
+    if(S.pid!==e.pointerId)return;
+    e.preventDefault();
+    const evs=(e.getCoalescedEvents&&e.getCoalescedEvents().length)?e.getCoalescedEvents():[e];
+    if(S.rad){evs.forEach(ev=>{const q=pos(ev);radieren(q[0],q[1]);});return;}
+    if(!S.cur||S.cur.k!=='add')return;
+    const it=S.cur.it,p=it.p,vor=p.length;
+    evs.forEach(ev=>{const q=pos(ev),lx=p[p.length-3],ly=p[p.length-2];if(Math.abs(q[0]-lx)+Math.abs(q[1]-ly)<3)return;p.push(q[0],q[1],druck(ev));});
+    if(p.length===vor)return;
+    if(it.m){neu();}else blattItem(ctx,it,1,vor);
+  });
+  const ende=e=>{
+    if(S.pid!==e.pointerId)return;S.pid=null;
+    if(S.rad){S.rad=false;if(S.cur&&S.cur.k==='del'){S.undo.push(S.cur);S.redo=[];geaendert();}S.cur=null;return;}
+    if(S.cur&&S.cur.k==='add'){S.undo.push(S.cur);S.redo=[];if(S.cur.it.m)neu();geaendert();}
+    S.cur=null;
+  };
+  cv.addEventListener('pointerup',ende);cv.addEventListener('pointercancel',ende);
+  // Safari: Stift soll zeichnen (nicht scrollen), Finger dürfen scrollen, sobald ein Stift da ist
+  const tStop=e=>{const stylus=[...e.touches].some(t2=>t2.touchType==='stylus');if(stylus&&!S.stiftGesehen){S.stiftGesehen=true;anzeige();}if(S.tool!=='hand'&&(stylus||!S.stiftGesehen))e.preventDefault();};
+  cv.addEventListener('touchstart',tStop,{passive:false});cv.addEventListener('touchmove',tStop,{passive:false});
+  w.addEventListener('click',async e=>{
+    const t=e.target.closest('[data-blt],[data-blf],[data-bls],#bl-undo,#bl-redo,#bl-zu,#bl-druck,#bl-del');if(!t)return;
+    if(t.dataset.blt){S.tool=t.dataset.blt;anzeige();}
+    else if(t.dataset.blf){S.farbe=t.dataset.blf;if(S.tool==='radierer'||S.tool==='hand')S.tool='stift';anzeige();}
+    else if(t.dataset.bls){S.staerke=+t.dataset.bls;anzeige();}
+    else if(t.id==='bl-undo'){const o=S.undo.pop();if(!o)return;
+      if(o.k==='add'){const i=items.indexOf(o.it);if(i>=0)items.splice(i,1);}else o.items.slice().sort((a,c)=>a.i-c.i).forEach(x=>items.splice(Math.min(x.i,items.length),0,x.it));
+      S.redo.push(o);neu();geaendert();}
+    else if(t.id==='bl-redo'){const o=S.redo.pop();if(!o)return;
+      if(o.k==='add')items.push(o.it);else o.items.forEach(x=>{const i=items.indexOf(x.it);if(i>=0)items.splice(i,1);});
+      S.undo.push(o);neu();geaendert();}
+    else if(t.id==='bl-druck'){const u=cv.toDataURL('image/png'),pw=window.open('','_blank');if(!pw){toast('Bitte Popups erlauben');return;}
+      pw.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+esc(b.titel||'Blatt')+'</title><style>@page{size:A4;margin:0}body{margin:0}img{width:100%;display:block}</style></head><body><img src="'+u+'" onload="setTimeout(function(){window.print()},300)"></body></html>');pw.document.close();}
+    else if(t.id==='bl-del'){if(!confirm('Dieses Blatt wirklich löschen? Das lässt sich nicht rückgängig machen.'))return;S.dirty=false;clearTimeout(S.timer);await gsDel(b._id);w.remove();if(GSM)gsZeichnen();}
+    else if(t.id==='bl-zu'){S.dirty=S.dirty||(w.querySelector('#bl-titel').value||'')!==(b.titel||'');await speichern();w.remove();if(GSM)gsZeichnen();}
+  });
+  w.querySelector('#bl-bg').addEventListener('change',e=>{b.bg=e.target.value;neu();geaendert();});
+  w.querySelector('#bl-titel').addEventListener('input',()=>geaendert());
+  neu();anzeige();stat.textContent=b._pend?'nur auf diesem Gerät':'';
+  window.__blatt={S,items,b,speichern}; // für Tests
+}
+
 /* ---------- Wochenplan-Druck im IVP-Formular-Format (eine A4-Seite je Mitarbeiter) ---------- */
 function wpPrintDoc(names,start,wk){
   const end=new Date(start.getTime()+6*86400000);
@@ -4593,7 +5240,7 @@ function wpPrintDoc(names,start,wk){
   const pages=names.map(p=>{
     const ents=wEntriesFor(p,start,wk);
     const grid=ents.filter(e=>e.zeit);
-    const tbl=ents.filter(e=>e.art!=='PRIVAT'&&e.art!=='INFO').sort((a,b)=>(a.tag-b.tag)||((a.zeit||'').localeCompare(b.zeit||'')));
+    const tbl=ents.filter(e=>e.art!=='PRIVAT'&&e.art!=='INFO'&&e.art!=='WG').sort((a,b)=>(a.tag-b.tag)||((a.zeit||'').localeCompare(b.zeit||'')));
     let minH=9;grid.forEach(e=>{const h=parseInt(e.zeit,10);if(h>=0&&h<minH)minH=h;});
     const hrs=[];for(let h=minH;h<=21;h++)hrs.push(h);
     const cell=(t,h)=>grid.filter(e=>e.tag===t&&parseInt(e.zeit,10)===h).map(e=>`<div class="ge"><b>${esc(e.art)}</b> ${esc(e.zeit)} ${esc(e.kunde)}</div>`).join('');
@@ -4728,7 +5375,7 @@ async function renderWoche(){
       <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
         <select id="wn-tag" style="width:auto">${WDAYS.map((d2,t)=>{const dd=new Date(start.getTime()+t*86400000);return `<option value="${t}">${d2} ${fmtDM(dd)}</option>`;}).join('')}</select>
         <select id="wn-zeit" style="width:auto"><option value="">Uhrzeit…</option>${(()=>{let o='';for(let h=7;h<=21;h++)for(let q=0;q<60;q+=15)o+=`<option>${calPad(h)}:${calPad(q)}</option>`;return o;})()}</select>
-        <select id="wn-art" style="width:auto"><option>MGT</option><option>EG</option><option value="KG">KG (Kooperationsgespräch)</option><option value="TG">TG (Tippgeber)</option><option>PRIVAT</option><option>AG</option><option>BG</option></select>
+        <select id="wn-art" style="width:auto"><option>MGT</option><option>EG</option><option value="KG">KG (Kooperationsgespräch)</option><option value="TG">TG (Tippgeber)</option><option value="WG">WG (Wochengespräch)</option><option>PRIVAT</option><option>AG</option><option>BG</option></select>
         <input id="wn-kunde" placeholder="Name / Betreff" style="width:180px">
         <input id="wn-ort" placeholder="Ort" style="width:120px">
         <button class="btn pri" id="wn-add">Hinzufügen</button>
@@ -7398,6 +8045,7 @@ lsLoad();render();
   const fs=firebase.firestore();
   dealsCol=fs.collection('deals');
   teamCol=fs.collection('team');
+  gsCol=fs.collection('gespraeche');try{wgNamenSetzen(localStorage.getItem('censa_wg_namen')||'');}catch(e){}
   const errDe=e=>{const c=(e&&e.code)||'';
     if(c.indexOf('invalid-credential')>=0||c.indexOf('wrong-password')>=0||c.indexOf('user-not-found')>=0)return 'E-Mail oder Passwort falsch';
     if(c.indexOf('too-many-requests')>=0)return 'Zu viele Versuche – bitte kurz warten';
@@ -7506,6 +8154,7 @@ lsLoad();render();
       },err=>{});
       if(window.__setUnsub){try{window.__setUnsub();}catch(e){}}
       window.__setUnsub=fs.collection('meta').doc('settings').onSnapshot(s=>{
+        try{const wn=s.exists?(s.data()||{}).wgNamen:undefined;if(wn!==undefined){wgNamenSetzen(wn);try{localStorage.setItem('censa_wg_namen',wn||'');}catch(e){}}}catch(e){}
         const v=(s.exists&&(s.data()||{}).vmMail)||'';
         if(v){VM_MAIL=v;try{localStorage.setItem('censa_vm_mail',v);}catch(e){}}
       },err=>{});
@@ -7516,6 +8165,7 @@ lsLoad();render();
       todoAutoStart(); // Aufgaben-Fenster beim Anmelden
       setTimeout(ehgAutoRemind,5000);
       setTimeout(wgCheck,9000);if(!window.__wgTimer)window.__wgTimer=setInterval(wgCheck,300000);
+      setTimeout(wgPrepCheck,14000);if(!window.__wgPrepTimer)window.__wgPrepTimer=setInterval(wgPrepCheck,600000);
       setTimeout(inboxImport,4000);
   setTimeout(slotsCleanup,7000); // Lead-Briefkasten (Routinen/Zahlen-Läufe) automatisch übernehmen
   setTimeout(gebietFill,15000); // Gebiete (Bundesland/Wien-Bezirk) für Bestandskunden ohne Bezirk nachtragen
