@@ -562,7 +562,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-Z4";
+const APP_VERSION="19.11-Z5";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -580,6 +580,7 @@ function lsLoad(){try{const r=localStorage.getItem(KEY);if(r)state=JSON.parse(r)
 function lsSave(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
 function save(){if(MODE!=='db')lsSave();}
 async function dbPersist(d){
+  try{notesMischen(d);}catch(e){} // Notizen von anderen Geräten nie überschreiben
   if(MODE==='db'&&dealsCol){try{await dealsCol.doc(d.id).set(JSON.parse(JSON.stringify(d)));}catch(e){toast('Speichern fehlgeschlagen'+(e&&e.code?' ('+e.code+')':''));}}
   else lsSave();
 }
@@ -5770,7 +5771,50 @@ function notesNeuZeichnen(d){
   ['tel','an','be'].forEach(r=>{const el=document.getElementById('nb-'+r);if(el)el.innerHTML=notesBlockHtml(d,r);});
   const a=document.getElementById('nb-andere');if(a)a.innerHTML=notesAndereHtml(d);
 }
-function notesSpeichern(d){if(state.deals.indexOf(d)>=0){try{dbPersist(d);}catch(e){}return true;}return false;} // neuer Kunde: wird beim Speichern des Kunden mitgesichert
+/* v19.11-Z5 (Fehler 28.11.: Notizen vom Handy waren weg): Der Live-Abgleich ersetzt das Kunden-Objekt nach JEDEM Speichern durch ein neues.
+   Das offene Fenster arbeitete danach auf dem alten Objekt – die zweite Notiz wurde nur „vermerkt" und nie gespeichert.
+   Jetzt: jede Notiz wird sofort einzeln in die Datenbank geschrieben (arrayUnion → überschreibt nichts von anderen Geräten). */
+window.__noteWeg=window.__noteWeg||{};
+function notesLive(d){return (d&&d.id)?state.deals.find(x=>x.id===d.id):null;}
+function notesMischen(d){ // Notizen aus dem aktuellen Stand (andere Geräte) + die eigenen aus dem Fenster, ohne die hier gelöschten
+  const live=notesLive(d);if(!live||live===d)return;
+  const weg=window.__noteWeg[d.id]||{},ids=new Set((d.notes||[]).map(n=>n.id));
+  (live.notes||[]).forEach(n=>{if(n&&n.id&&!ids.has(n.id)&&!weg[n.id]){d.notes=d.notes||[];d.notes.push(n);}});
+}
+async function notePersist(d,n){ // → true = in der Datenbank · false = neuer Kunde, wird mit dem Kunden gespeichert
+  const live=notesLive(d);if(!live)return false;
+  if(live!==d){live.notes=live.notes||[];if(!live.notes.some(x=>x.id===n.id))live.notes.push(n);}
+  const jetzt=new Date().toISOString();d.upd=jetzt;live.upd=jetzt;
+  if(MODE==='db'&&dealsCol){
+    const nn=JSON.parse(JSON.stringify(n));
+    try{await dealsCol.doc(d.id).update({notes:firebase.firestore.FieldValue.arrayUnion(nn),upd:jetzt});}
+    catch(e){
+      try{await dealsCol.doc(d.id).set(JSON.parse(JSON.stringify(live)));}
+      catch(e2){toast('⚠ Notiz konnte NICHT gespeichert werden'+(e2&&e2.code?' ('+e2.code+')':'')+' – bitte Internet prüfen und noch einmal „＋ Notiz" tippen');return null;}
+    }
+  }else lsSave();
+  return true;
+}
+async function noteLoeschen(d,id){
+  (window.__noteWeg[d.id]=window.__noteWeg[d.id]||{})[id]=1;
+  d.notes=(d.notes||[]).filter(n=>n.id!==id);
+  const live=notesLive(d);if(!live)return;
+  if(live!==d)live.notes=(live.notes||[]).filter(n=>n.id!==id);
+  if(MODE==='db'&&dealsCol){
+    try{await dealsCol.doc(d.id).update({notes:JSON.parse(JSON.stringify(live.notes||[]))});}
+    catch(e){try{await dealsCol.doc(d.id).set(JSON.parse(JSON.stringify(live)));}catch(e2){toast('Löschen fehlgeschlagen');}}
+  }else lsSave();
+}
+function notesOffene(d,sichern){ // eingetippt, aber nicht auf „＋ Notiz" getippt → trotzdem als Notiz übernehmen
+  if(!d)return 0;let k=0;
+  document.querySelectorAll('#modal textarea[data-ntxt]').forEach(ta=>{
+    const v=(ta.value||'').trim();if(!v)return;
+    const n=noteAdd(d,ta.dataset.ntxt,v);ta.value='';
+    if(n){k++;if(sichern)notePersist(d,n);}
+  });
+  if(k)try{notesNeuZeichnen(d);}catch(e){}
+  return k;
+}
 document.addEventListener('click',e=>{
   const t=e.target;if(!t||!t.closest)return;
   const add=t.closest('[data-nadd]'),del=t.closest('[data-ndel]');
@@ -5780,11 +5824,11 @@ document.addEventListener('click',e=>{
   if(add){
     const r=add.dataset.nadd,ta=document.querySelector('#modal textarea[data-ntxt="'+r+'"]');
     const v=((ta&&ta.value)||'').trim();if(!v){toast('Bitte zuerst die Notiz eintippen');if(ta)ta.focus();return;}
-    noteAdd(d,r,v);notesNeuZeichnen(d);
-    toast(notesSpeichern(d)?'Notiz gespeichert ✓':'Notiz vermerkt – wird mit dem Kunden gespeichert');
+    const n=noteAdd(d,r,v);notesMischen(d);notesNeuZeichnen(d);
+    notePersist(d,n).then(ok=>{if(ok===true)toast('Notiz gespeichert ✓');else if(ok===false)toast('Notiz vermerkt – wird mit dem Kunden gespeichert');});
   }else{
     if(!confirm('Diese Notiz wirklich löschen?'))return;
-    d.notes=(d.notes||[]).filter(n=>n.id!==del.dataset.ndel);notesNeuZeichnen(d);notesSpeichern(d);
+    noteLoeschen(d,del.dataset.ndel);notesNeuZeichnen(d);
   }
 });
 document.addEventListener('keydown',e=>{ // Enter speichert, Umschalt+Enter macht eine neue Zeile
@@ -6093,7 +6137,7 @@ function openModal(id){
   if(id&&!d){toast('Lead nicht gefunden oder für dich nicht sichtbar');return;}
   editId=id;
   const isNew=!id;
-  setTimeout(()=>{window.__modalDeal=d;},0);
+  window.__modalDeal=d;window.__noteWeg={};
   if(!isNew&&leadNeu(d))['datumAG','datumBG'].forEach(k=>{const n=terminNorm(d[k]);if(n)d[k]=n.txt;}); // einheitliches Format (Altbestand: erst beim Bearbeiten, damit kein Jahr falsch geraten wird)
   const rohAG=d.datumAG||'',rohBG=d.datumBG||'';
   const before={wv:d.wiedervorlage||'',ag:d.datumAG||'',bg:d.datumBG||'',an:(d.analyst||'').trim(),be:(d.berater||'').trim(),mga:(d.mgtAG||'').trim(),mgb:(d.mgtBG||'').trim()};
@@ -6381,7 +6425,7 @@ function openModal(id){
     E.nm.addEventListener('change',()=>{betLesen('p');paintEH(m,d);});
     betLesen();};
   m.__betWire(); // direkt hier verdrahten (gehört zu DIESEM Kunden)
-  const collect=()=>{d.kundentyp=typ.value;d.quelle=m.querySelector('#m-quelle').value;d.name=m.querySelector('#m-name').value;d.org=m.querySelector('#m-org')?m.querySelector('#m-org').value:d.org;
+  const collect=()=>{notesOffene(d,true);notesMischen(d);d.kundentyp=typ.value;d.quelle=m.querySelector('#m-quelle').value;d.name=m.querySelector('#m-name').value;d.org=m.querySelector('#m-org')?m.querySelector('#m-org').value:d.org;
     d.telefon=normTel(m.querySelector('#m-tel').value);
     const emEl=m.querySelector('#m-email');if(emEl)d.email=emEl.value.trim();
     const gbEl=m.querySelector('#m-geb');if(gbEl)d.geb=gbEl.value.trim();
@@ -6429,7 +6473,7 @@ function openModal(id){
       }else histAdd(d,'MGT ('+p[2]+'): '+before[p[1]]+' entfernt');
       before[p[1]]=neu;
     });};
-  const persist=()=>{histDiff();d.upd=new Date().toISOString();if(isNew&&!state.deals.includes(d))state.deals.unshift(d);dbPersist(d);render();}; // upd = letzte Bearbeitung (Basis für die Liegen-geblieben-Info)
+  const persist=()=>{notesMischen(d);histDiff();d.upd=new Date().toISOString();if(isNew&&!state.deals.includes(d))state.deals.unshift(d);dbPersist(d);render();}; // upd = letzte Bearbeitung (Basis für die Liegen-geblieben-Info)
   const callMeta=()=>{const dur=m.querySelector('#m-dur'),no=m.querySelector('#m-cnote');const o={};if(dur&&dur.value)o.dur=parseFloat(dur.value);if(no&&no.value.trim())o.note=no.value.trim();if(ME)o.von=ME.name;return o;};
   m.querySelectorAll('[data-lk]').forEach(b=>b.addEventListener('click',()=>{
     const id=({tel:'m-tel',email:'m-email',adr:'m-str',name:'m-name',geb:'m-geb',pdf:'m-analysesec',sprach:'m-analysesec',pot:'q-betrag'})[b.dataset.lk];
@@ -7062,7 +7106,7 @@ function openUebergabe(id){
     render();openModal(d.id);toast('Übergabe gespeichert');
   });
 }
-function closeModal(){document.getElementById('ov').classList.remove('show');document.getElementById('modal').classList.remove('wide');editId=null;}
+function closeModal(){try{const dd=window.__modalDeal;if(dd&&editId&&dd.id===editId&&notesOffene(dd,true))toast('Notiz gespeichert ✓');}catch(e){}document.getElementById('ov').classList.remove('show');document.getElementById('modal').classList.remove('wide');editId=null;}
 document.getElementById('ov').addEventListener('click',e=>{if(e.target.id==='ov')closeModal();});
 
 /* ---------- EH UI ---------- */
