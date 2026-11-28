@@ -120,11 +120,18 @@
   .modal.wide{max-width:700px}
   .modal h2{font-size:19px;font-weight:800;margin:0 0 3px;letter-spacing:-.3px}
   .modal .sub{font-size:12.5px;color:var(--ink-3);margin-bottom:16px}
-  .kkopf{display:inline-flex;gap:5px;flex-wrap:wrap;align-items:center;margin-left:8px;vertical-align:middle}
-  .ortseg{display:flex;gap:4px}.ortseg button{flex:1 1 0;min-width:0;padding:6px 0;font-size:15px;line-height:1.2;border:1.5px solid var(--line);border-radius:9px;background:var(--surface);cursor:pointer}.ortseg button.on{border-color:var(--brand);background:var(--brand);box-shadow:0 1px 4px rgba(0,0,0,.15)}
-  .kchip.adr{max-width:240px}
-  .kchip{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:8px;background:var(--surface-2);border:0;font:inherit;font-size:12px;font-weight:600;color:var(--ink);text-decoration:none;cursor:pointer;white-space:nowrap;max-width:340px;overflow:hidden;text-overflow:ellipsis;line-height:1.5}
-  a.kchip{color:var(--brand-ink)}.kchip.bad{background:var(--bad-bg);color:var(--bad)}
+  .modal .sub.kkarte{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin:0 0 9px;color:var(--ink)}
+  .modal .sub.kkarte:empty{display:none}
+  .kstat{font-size:12.5px;font-weight:600;color:var(--ink-2);background:var(--surface-3);border-radius:999px;padding:3px 11px;line-height:1.4}
+  .kstat b{color:var(--ink)!important}
+  .kstat{box-sizing:border-box;min-width:0;max-width:100%;white-space:normal}.kstat b{white-space:normal}
+  .kstatm{display:none}
+  @media (max-width:760px){.modal h2 .kstat,.modal h2 #m-h2org{display:none}.kstatm{display:block;font-size:12.5px;line-height:1.45;color:var(--ink-2);margin:0 0 8px}.kstatm b{color:var(--ink)!important}}
+  .ortseg{display:flex;gap:4px;min-width:0}.ortseg button{flex:1 1 0;min-width:0;padding:6px 0;font-size:15px;line-height:1.2;border:1.5px solid var(--ink-3);border-radius:9px;background:var(--surface);cursor:pointer}.ortseg button.on{border-color:var(--brand);background:var(--brand);box-shadow:0 1px 4px rgba(0,0,0,.15)}
+  .kchip{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:9px;background:var(--surface);border:1.5px solid var(--ink-3);font:inherit;font-size:13.5px;font-weight:700;color:var(--ink);text-decoration:none;cursor:pointer;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;line-height:1.35}
+  .kchip i{font-style:normal;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-2);margin-right:2px}
+  a.kchip{color:var(--ink)}.kchip.adr{max-width:min(330px,100%)}
+  .kchip.bad{background:var(--bad-bg);border-color:var(--bad);color:var(--bad)}
   .nzwei .nit{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;white-space:normal}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:11px}
   .fld{display:flex;flex-direction:column;gap:5px;margin-bottom:11px}
@@ -216,7 +223,8 @@
   .nbox .nmore{margin:0 0 5px}.nbox .nmore>summary{list-style:none;cursor:pointer;display:flex;gap:8px;align-items:flex-start}.nbox .nmore>summary::-webkit-details-marker{display:none}
   .nbox .nmore .nneu{margin:0;flex:1;min-width:0}.nmehr{font-size:11px;font-weight:700;color:var(--brand-ink);white-space:nowrap;padding-top:1px}.nbox .nmore[open] .nmehr{opacity:.5}
   .nit{font-size:12.5px;line-height:1.4;overflow-wrap:anywhere;white-space:pre-wrap}
-  .nit .nm{font-size:11px;color:var(--ink-3);font-weight:700;white-space:nowrap}
+  .nit{color:var(--ink)}
+  .nit .nm{font-size:11px;color:var(--ink-2);font-weight:800;white-space:nowrap}
   .nit .nx{border:0;background:none;color:var(--ink-3);cursor:pointer;font-size:12px;padding:0 3px}
   .nadd{display:flex;gap:6px;align-items:flex-end}
   .lnotes .nadd textarea{flex:1;min-height:30px;height:30px;resize:none;padding-top:5px;padding-bottom:5px}
@@ -238,6 +246,10 @@
     #modal:has(#m-ltabs) .lbody .grid2{gap:7px 9px}
     #modal:has(#m-ltabs) .fld{margin-bottom:0;gap:3px}
     #modal:has(#m-ltabs) .fld label{font-size:10.5px}
+  }
+  #modal:has(#m-ltabs) .fld label{color:var(--ink-2)}
+  #modal:has(#m-ltabs) input,#modal:has(#m-ltabs) select,#modal:has(#m-ltabs) textarea{color:var(--ink)}
+  @media (min-width:761px){
     #modal:has(#m-ltabs) .lbody input,#modal:has(#m-ltabs) .lbody select,#modal:has(#m-ltabs) .lbody textarea{padding:6px 9px;font-size:13px;border-radius:8px}
     #modal:has(#m-ltabs) details.sec>summary{padding:7px 11px}
     #modal:has(#m-ltabs) .callbar{padding:9px 11px;margin:0 0 10px}
@@ -568,7 +580,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.12-D";
+const APP_VERSION="19.12-E";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -4683,16 +4695,17 @@ function ortSegHtml(id2,d,art,label){ // Ort wird angetippt: Firma · Privat · 
   return `<label>📍 ${label} <b data-ortwort="${id2}" style="color:var(--brand-ink);text-transform:none;letter-spacing:0;font-weight:800;font-size:11.5px"></b></label>
     <div class="ortseg" data-ortseg="${id2}">${ORT_WAHL.map(o=>`<button type="button" data-o="${o[0]}" title="${o[2]}">${o[1]}</button>`).join('')}</div><input type="hidden" id="${id2}" value="${esc(v)}">`;
 }
-function kopfInfoHtml(o){ // Telefon, Mail, Adressen – in JEDEM Reiter sichtbar (Kopf des Kunden-Fensters)
+function kopfInfoHtml(o){ // Kunden-Karte: Telefon, Mail, Adressen – in JEDEM Reiter, gut lesbar (v19.12-E: schwarz und kräftig)
   const txt=a=>a?[a.strasse,[a.plz,a.ort].filter(Boolean).join(' ')].filter(Boolean).join(', '):'';
   const typ=o.adrTyp||(o.kundentyp==='GmbH'?'firma':'privat'),and=typ==='firma'?'privat':'firma';
-  const adr=txt(o),adr2=txt(o.adr2),IC={firma:'🏢',privat:'🏠'},WT={firma:'Firmenadresse',privat:'Privatadresse'};
+  const adr=txt(o),adr2=txt(o.adr2),IC={firma:'🏢',privat:'🏠'},WT={firma:'Firma',privat:'Privat'};
+  if(o.leerOk&&!o.tel&&!o.email&&!adr&&!adr2)return '';
   const fehlt=(ic,t,k)=>`<button type="button" class="kchip bad" data-lk="${k}" title="Antippen springt zum Feld">${ic} ${t} fehlt</button>`;
   const braucht=t=>(o.orte||[]).includes('@'+t);
-  return (o.tel?`<a class="kchip" href="tel:${esc(String(o.tel).replace(/[^+\d]/g,''))}" title="Anrufen">☎ ${esc(o.tel)}</a>`:fehlt('☎','Telefon','tel'))
-    +(o.email?`<a class="kchip" href="mailto:${esc(o.email)}" title="E-Mail schreiben">✉ ${esc(o.email)}</a>`:fehlt('✉','E-Mail','email'))
-    +(adr?`<button type="button" class="kchip adr" data-lk="adr" title="${WT[typ]} – antippen zum Ändern">${IC[typ]} ${esc(adr)}</button>`:fehlt('📍','Adresse','adr'))
-    +(adr2?`<button type="button" class="kchip adr" data-lk="adr2" title="${WT[and]} – antippen zum Ändern">${IC[and]} ${esc(adr2)}</button>`:(braucht(and)?fehlt(IC[and],WT[and],'adr2'):''));
+  return (o.tel?`<a class="kchip" href="tel:${esc(String(o.tel).replace(/[^+\d]/g,''))}" title="Antippen ruft an">☎ <i>Tel</i>${esc(o.tel)}</a>`:fehlt('☎','Telefon','tel'))
+    +(o.email?`<a class="kchip" href="mailto:${esc(o.email)}" title="Antippen öffnet eine E-Mail">✉ <i>Mail</i>${esc(o.email)}</a>`:fehlt('✉','E-Mail','email'))
+    +(adr?`<button type="button" class="kchip adr" data-lk="adr" title="${WT[typ]}-Adresse – antippen zum Ändern">${IC[typ]} <i>${WT[typ]}</i>${esc(adr)}</button>`:fehlt('📍','Adresse','adr'))
+    +(adr2?`<button type="button" class="kchip adr" data-lk="adr2" title="${WT[and]}-Adresse – antippen zum Ändern">${IC[and]} <i>${WT[and]}</i>${esc(adr2)}</button>`:(braucht(and)?fehlt(IC[and],WT[and]+'-Adresse','adr2'):''));
 }
 /* ---------- v19.12-B (Melanies Ansage 28.11.): Was aus einem Termin wird ----------
    AG  → darf einen Lead anlegen (wenn es den Kunden noch nicht gibt)
@@ -7040,8 +7053,9 @@ function openModal(id){
   };
   const m=document.getElementById('modal');m.classList.add('wide');
   m.innerHTML=`
-    <h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span id="m-h2name">${isNew?'Neuer Lead':esc(d.name||d.org||'Lead')}</span><span id="m-h2org" style="font-size:14px;font-weight:600;color:var(--ink-3)">${(d.org&&d.name&&d.org!==d.name)?'· '+esc(d.org):''}</span><button class="btn pri" id="m-save-top" style="margin-left:auto;padding:8px 18px;font-size:13.5px">💾 Speichern</button></h2>
-    <div class="sub">${isNew?'Datensatz anlegen':'Status: '+(d.status==='won'?'Gewonnen':d.status==='lost'?'Verloren ('+esc(d.lostReason||'')+')':esc(d.stage))}${(!isNew&&d.status==='open')?(()=>{const z=zustaendig(d);return ` · <b style="color:var(--brand-ink)" title="Wer bei diesem Kunden dranbleibt: Telefonist bis zur Analyse, danach der Analyst, nach der ersten Beratung der Berater">Dran: ${ROLLE_IC[z.rolle]} ${esc(z.name||('noch kein '+ROLLE_LBL[z.rolle]))}</b>`;})():''}<span class="kkopf" id="m-kopf">${isNew?'':kopfInfoHtml({tel:d.telefon,email:d.email,strasse:d.strasse,plz:d.plz,ort:d.ort,adrTyp:d.adrTyp,kundentyp:d.kundentyp,adr2:d.adr2,orte:[d.ortAG,d.ortBG]})}</span></div>
+    <h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span id="m-h2name">${isNew?'Neuer Lead':esc(d.name||d.org||'Lead')}</span><span id="m-h2org" style="font-size:16px;font-weight:700;color:var(--ink)">${(d.org&&d.name&&d.org!==d.name)?'· '+esc(d.org):''}</span><span class="kstat">${isNew?'Datensatz anlegen':'Status: '+(d.status==='won'?'Gewonnen':d.status==='lost'?'Verloren ('+esc(d.lostReason||'')+')':esc(d.stage))}${(!isNew&&d.status==='open')?(()=>{const z=zustaendig(d);return ` · <b style="color:var(--brand-ink)" title="Wer bei diesem Kunden dranbleibt: Telefonist bis zur Analyse, danach der Analyst, nach der ersten Beratung der Berater">Dran: ${ROLLE_IC[z.rolle]} ${esc(z.name||('noch kein '+ROLLE_LBL[z.rolle]))}</b>`;})():''}</span><button class="btn pri" id="m-save-top" style="margin-left:auto;padding:8px 18px;font-size:13.5px">💾 Speichern</button></h2>
+    <div class="kstatm">${(d.org&&d.name&&d.org!==d.name)?'<b style="color:var(--ink)">'+esc(d.org)+'</b> · ':''}${isNew?'Datensatz anlegen':'Status: '+(d.status==='won'?'Gewonnen':d.status==='lost'?'Verloren ('+esc(d.lostReason||'')+')':esc(d.stage))}${(!isNew&&d.status==='open')?(()=>{const z=zustaendig(d);return ` · <b style="color:var(--brand-ink)" title="Wer bei diesem Kunden dranbleibt: Telefonist bis zur Analyse, danach der Analyst, nach der ersten Beratung der Berater">Dran: ${ROLLE_IC[z.rolle]} ${esc(z.name||('noch kein '+ROLLE_LBL[z.rolle]))}</b>`;})():''}</div>
+    <div class="sub kkarte" id="m-kopf">${isNew?'':kopfInfoHtml({tel:d.telefon,email:d.email,strasse:d.strasse,plz:d.plz,ort:d.ort,adrTyp:d.adrTyp,kundentyp:d.kundentyp,adr2:d.adr2,orte:[d.ortAG,d.ortBG],leerOk:isNew})}</div>
     ${(!isNew&&isAdmin()&&d.geprueft===false)?`<div style="background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 13px;margin-bottom:13px;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b>📥 Posteingang</b> – für das Team noch unsichtbar.<button class="btn" id="m-frei" style="padding:6px 12px;font-size:12.5px">✓ Prüfen &amp; freigeben</button></div>`:''}
     ${(!isNew&&isAdmin()&&(d.mergeUndo||[]).length)?`<div style="background:var(--surface-2);border:1.5px solid var(--line);border-radius:10px;padding:10px 13px;margin-bottom:13px;font-size:12.5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span>🔗 Hier wurden Kunden zusammengeführt (${fmtD(d.mergeUndo[d.mergeUndo.length-1].ts)}: ${esc((d.mergeUndo[d.mergeUndo.length-1].rest||[]).map(o=>o.name||o.org||'—').join(', ').slice(0,120))})</span><button class="btn" id="m-undoMerge" style="padding:6px 12px;font-size:12.5px;margin-left:auto">↩ Rückgängig – wieder trennen</button></div>`:''}
     ${(()=>{if(isNew)return '';const L=leadLuecken(d);if(!L.length)return '';
@@ -7388,7 +7402,7 @@ function openModal(id){
     const kopfNeu=()=>{
       const kp=m.querySelector('#m-kopf');if(!kp)return;
       kp.innerHTML=kopfInfoHtml({tel:gv('#m-tel'),email:gv('#m-email'),strasse:gv('#m-str'),plz:gv('#m-plz'),ort:gv('#m-ort'),adrTyp:gv('#m-adrtyp'),kundentyp:typ.value,
-        adr2:{strasse:gv('#m-str2'),plz:gv('#m-plz2'),ort:gv('#m-ort2')},orte:[gv('#m-oag'),gv('#m-obg')]});
+        adr2:{strasse:gv('#m-str2'),plz:gv('#m-plz2'),ort:gv('#m-ort2')},orte:[gv('#m-oag'),gv('#m-obg')],leerOk:isNew});
       kp.querySelectorAll('[data-lk]').forEach(b=>b.addEventListener('click',()=>lkSprung(b.dataset.lk)));
       const hn=m.querySelector('#m-h2name'),ho=m.querySelector('#m-h2org'),nm=gv('#m-name'),og=gv('#m-org');
       if(hn&&(nm||og))hn.textContent=nm||og;if(ho)ho.textContent=(og&&nm&&og!==nm)?'· '+og:'';
@@ -7400,7 +7414,7 @@ function openModal(id){
       const v=inp.value||('@'+haupt()),frei=v[0]!=='@';
       seg.querySelectorAll('button').forEach(b=>b.classList.toggle('on',frei?b.dataset.o==='@neu':b.dataset.o===v));
       const w=m.querySelector('[data-ortwort="'+seg.dataset.ortseg+'"]');
-      if(w){const t=v==='@firma'?'Firma':v==='@privat'?'Privat':v==='@buero'?'CENSA Büro':v==='@online'?'Online':v;w.textContent='· '+(t.length>22?t.slice(0,21)+'…':t);w.title=t;}
+      if(w){const t=v==='@firma'?'Firma':v==='@privat'?'Privat':v==='@buero'?'CENSA Büro':v==='@online'?'Online':v;w.textContent='· '+(t.length>15?t.slice(0,14)+'…':t);w.title=t;}
     });
     const allesNeu=()=>{kopfNeu();ortSegNeu();};
     ['#m-name','#m-org','#m-tel','#m-email','#m-str','#m-plz','#m-ort','#m-str2','#m-plz2','#m-ort2','#m-adrtyp','#m-typ'].forEach(q=>{const e=m.querySelector(q);if(e){e.addEventListener('input',allesNeu);e.addEventListener('change',allesNeu);}});
