@@ -562,7 +562,7 @@ const FIREBASE_CONFIG={
 };
 /* Office-Postfach: wird bei jeder Kalender-Einladung automatisch als Gast eingeladen.
    Sobald die Adresse existiert, hier eintragen (z. B. "office.censa@gmail.com"). */
-const APP_VERSION="19.11-Z5";
+const APP_VERSION="19.11-Z6";
 // Jeder unbehandelte Fehler wird SICHTBAR gemeldet statt still zu scheitern
 window.addEventListener('error',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+(e.message||e.type)+(e.lineno?(' · Zeile '+e.lineno):'')+' – bitte Screenshot an Claude';}catch(_){}});
 window.addEventListener('unhandledrejection',e=>{try{let b=document.getElementById('errBanner');if(!b){b=document.createElement('div');b.id='errBanner';b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#C13B54;color:#fff;font:12.5px/1.5 Segoe UI,Arial;padding:8px 14px;z-index:9999;white-space:pre-wrap';document.body.appendChild(b);}b.textContent='⚠ Fehler ('+APP_VERSION+'): '+((e.reason&&e.reason.message)||e.reason||'unbekannt')+' – bitte Screenshot an Claude';}catch(_){}});
@@ -1987,11 +1987,12 @@ function dupGroups(){
   state.deals.forEach(d=>{const r=find(d.id);(groups[r]=groups[r]||[]).push(d);});
   return Object.values(groups).filter(g=>g.length>1).sort((a,b)=>b.length-a.length);
 }
-async function mergeDeals(ids){
+async function mergeDeals(ids,baseId){
   const ds=ids.map(id=>state.deals.find(x=>x.id===id)).filter(Boolean);
   if(ds.length<2)return;
   const score=d=>(d.calls||[]).length*3+(d.hist||[]).length*2+(d.uebergabe?20:0)+(d.status==='won'?100:d.status==='open'?50:0)+Object.values(d).filter(v=>v&&typeof v==='string').length;
   ds.sort((a,b)=>score(b)-score(a));
+  if(baseId){const bi=ds.findIndex(x=>x.id===baseId);if(bi>0)ds.unshift(ds.splice(bi,1)[0]);} // v19.11-Z6: Basis fest vorgeben (Kalender-Lead → bestehender Kunde)
   const base=ds[0],rest=ds.slice(1);
   // ↩ Sicherung VOR jeder Änderung (13.11.): Originalzustände aufheben, damit eine Zusammenführung rückgängig gemacht werden kann
   const sich=o=>{const c=JSON.parse(JSON.stringify(o));delete c.mergeUndo;return c;};
@@ -2024,6 +2025,43 @@ async function mergeDeals(ids){
   await dbPersist(base);
   for(const o of rest){state.deals=state.deals.filter(x=>x.id!==o.id);await dbRemove(o.id);}
   return base;
+}
+/* ---------- v19.11-Z6 (Melanies Meldung 28.11.): Ein Kalender-Termin wurde zu einem eigenen Lead, obwohl es den Kunden schon gab ----------
+   kalDoppelLeads() findet solche Leads (Quelle „Google Kalender") samt dem Kunden, zu dem sie gehören.
+   Reine Notizen („BG follow up Balint"), an denen noch nichts gearbeitet wurde, führt das Admin-Gerät von selbst zusammen;
+   alles andere steht im Duplikat-Check zum Antippen. Der bestehende Kunde bleibt immer die Basis. */
+function kalDoppelLeads(){
+  const out=[];
+  const tel7=d=>{const t=(d.telefon||'').replace(/\D/g,'');return t.length>=7?t.slice(-7):'';};
+  const nichtDup=(a,b)=>(a.keinDup||[]).includes(b.id)||(b.keinDup||[]).includes(a.id);
+  const kals=state.deals.filter(k=>(k.quelle||'')==='Google Kalender'&&k.status==='open');
+  if(!kals.length)return out;
+  kals.forEach(k=>{
+    const info=kalInfo(k.name),person=(k.berater||k.analyst||'').trim();
+    const dt=parseTermin(k.datumBG)||parseTermin(k.datumAG)||new Date();
+    const andere=state.deals.filter(x=>x!==k&&!((x.quelle||'')==='Recruiting'&&x.gp)&&!nichtDup(k,x));
+    const t=tel7(k),em=(k.email||'').trim().toLowerCase(),kn=kalName(k.name)||k.name;
+    let m=null;
+    if(t)m=andere.find(x=>tel7(x)===t&&[x.name,x.org].some(n=>(n||'').trim()&&kundeGleich(kn,n)))||null;
+    if(!m&&em)m=andere.find(x=>(x.email||'').trim().toLowerCase()===em)||null;
+    if(!m){try{m=leadFuerKalender({id:'',summary:k.name,location:[k.strasse,k.plz,k.ort].filter(Boolean).join(' '),description:''},k.name,dt,andere,person).d;}catch(e){}}
+    if(!m)return;
+    if((m.quelle||'')==='Google Kalender'&&m.status==='open'){const mi=kalInfo(m.name);if(mi&&!info)return;if(mi===info&&String(m.id)>String(k.id))return;} // zwei Kalender-Leads: nur eine Richtung
+    const bearbeitet=!!((k.calls||[]).length||(k.notes||[]).length||(k.telefon||'').trim()||(k.email||'').trim()||(k.analyse||[]).length);
+    out.push({k,m,info,bearbeitet});
+  });
+  return out;
+}
+async function kalLeadZusammen(c){
+  const k=c.k,m=c.m;
+  const vor={datumAG:m.datumAG,datumBG:m.datumBG,stage:m.stage,status:m.status,lostReason:m.lostReason,analyst:m.analyst,berater:m.berater};
+  const kn=k.name||k.org||'',kt=[k.datumAG?'AG '+k.datumAG:'',k.datumBG?'BG '+k.datumBG:''].filter(Boolean).join(', ');
+  const b=await mergeDeals([m.id,k.id],m.id);
+  if(!b)return null;
+  if(c.info)Object.assign(b,vor); // Notiz: Termin, Phase und Zuständige des Kunden bleiben, wie sie waren
+  histAdd(b,'📅 Kalender-'+(c.info?'Notiz':'Eintrag')+' „'+kn+'"'+(kt?' ('+kt+')':'')+' war als eigener Lead angelegt – hier zusammengeführt');
+  await dbPersist(b);
+  return b;
 }
 async function undoMerge(id){ // ↩ letzte Zusammenführung rückgängig: Basis auf Vorher-Zustand, gelöschte Kunden neu anlegen (gleiche IDs)
   const d=state.deals.find(x=>x.id===id);
@@ -2180,6 +2218,12 @@ async function doppelCheck(force){ // Automatik – läuft nur am Admin-Gerät (
         await dbPersistMany(c.deals);
       }
     }
+    for(const c of kalDoppelLeads()){ // v19.11-Z6: Kalender-Notiz wurde zu einem eigenen Lead → zurück zum Kunden
+      if(!c.info||c.bearbeitet)continue;
+      const kn=c.k.name||'',wer=(c.k.berater||c.k.analyst||'').trim();
+      const b=await kalLeadZusammen(c);
+      if(b){geaendert=true;chatSys('🔗 Kalender-Notiz „'+kn+'"'+(wer?' von '+wer:'')+' war als eigener Lead angelegt – gehört zu '+(b.name||b.org||'—')+' und wurde dort zusammengeführt. Der Termin des Kunden bleibt unverändert. Rückgängig: Kunde öffnen → ↩.',b);}
+    }
     if(geaendert){render();try{updateTodoBadge();}catch(e){}}
   }catch(e){}
   __dopBusy=false;
@@ -2240,6 +2284,12 @@ async function openDupCheck(){
   const m=document.getElementById('modal');m.classList.add('wide');
   const anz=groups.reduce((s,g)=>s+g.length,0);
   const autoHtml=auto.length?`<div style="background:var(--good-bg);border:1.5px solid var(--good);border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12.5px"><b style="color:var(--good)">🔗 Automatisch zusammengeführt (${auto.length}):</b>${auto.join('')}</div>`:`<div style="background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12.5px">Keine eindeutigen Duplikate (mehr) – alles, was sicher zusammengehört, ist bereits vereint ✔</div>`;
+  const kalP=kalDoppelLeads();
+  const kalT=d=>[d.datumAG?'AG '+d.datumAG:'',d.datumBG?'BG '+d.datumBG:''].filter(Boolean).join(' · ')||'kein Termin';
+  const kalHtml=kalP.length?`<div style="background:var(--surface-2);border:1.5px solid var(--brand);border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12.5px">
+    <b style="color:var(--brand-ink)">📅 Aus dem Google-Kalender entstandene Doppel-Leads (${kalP.length}):</b> Ein Kalender-Eintrag wurde als eigener Lead angelegt, obwohl es den Kunden schon gibt. Beim Zusammenführen bleibt der bestehende Kunde, nichts geht verloren.
+    ${kalP.map((c,i)=>`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0;border-top:1px solid var(--line-2);padding-top:6px"><span style="flex:1 1 260px;min-width:0">„<b>${esc(c.k.name||'—')}</b>" <span style="color:var(--ink-3)">(${esc(kalT(c.k))}${(c.k.berater||c.k.analyst)?' · '+esc(c.k.berater||c.k.analyst):''}${c.info?' · nur Notiz':''}${c.bearbeitet?' · schon bearbeitet':''})</span> → gehört zu <b>${esc(c.m.name||c.m.org||'—')}</b> <span style="color:var(--ink-3)">(${esc(kalT(c.m))})</span></span><button class="mini-btn" data-kdm="${i}" style="border-color:var(--brand);color:var(--brand-ink);font-weight:800">🔗 Zusammenführen</button><button class="mini-btn" data-kdn="${i}">Kein Doppel</button></div>`).join('')}
+  </div>`:'';
   const reps=repListe();
   const repHtml=reps.length?`<div style="background:var(--warn-bg);border:1.5px solid var(--warn);border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12.5px">
     <b style="color:var(--warn)">🔙 Frühere Zusammenführungen (letzte 30 Tage, ohne Sicherung):</b> Wurden hier fälschlich VERSCHIEDENE Kunden vereint, legt „↩ Wieder anlegen" sie als eigene Kunden neu an (Firma/Adresse/Telefon werden vom verbliebenen Kunden übernommen; frühere Anrufe/Notizen bleiben gesammelt bei ihm).
@@ -2247,6 +2297,7 @@ async function openDupCheck(){
   </div>`:'';
   m.innerHTML=`<h2>🔍 Duplikat-Check</h2>
     ${repHtml}
+    ${kalHtml}
     ${autoHtml}
     <div class="sub">${groups.length?groups.length+' Zweifelsfall-Gruppe'+(groups.length>1?'n':'')+' ('+anz+' Datensätze) übrig – hier war die Automatik bewusst vorsichtig (gleicher Nachname, aber andere Vornamen/Nummern). Anhaken, was wirklich dieselbe Person ist, dann zusammenführen.':'Keine Zweifelsfälle übrig – alles sauber ✔'}</div>
     <div class="repwrap">${groups.slice(0,60).map(g=>`<div class="rep"><div class="rh">${esc(g[0].name||g[0].org||'—')}<span style="color:var(--ink-3);font-weight:600">· ${g.length} Einträge</span><button class="mini-btn" style="margin-left:auto;border-color:var(--brand);color:var(--brand-ink);font-weight:800" data-dmerge="1">🔗 Angehakte zusammenführen</button></div>
@@ -2261,6 +2312,19 @@ async function openDupCheck(){
     ev.stopPropagation();b.disabled=true;b.textContent='Trenne …';
     const ok=await undoMerge(b.dataset.dundo);
     if(ok)openDupCheck();else{b.disabled=false;b.textContent='↩ Falsch – wieder trennen';}
+  }));
+  m.querySelectorAll('[data-kdm]').forEach(b=>b.addEventListener('click',async ev=>{
+    ev.stopPropagation();const c=kalP[+b.dataset.kdm];if(!c)return;
+    b.disabled=true;b.textContent='Führe zusammen …';
+    const base=await kalLeadZusammen(c);
+    toast(base?('🔗 Zusammengeführt: '+(base.name||base.org)):'Zusammenführen fehlgeschlagen');
+    render();openDupCheck();
+  }));
+  m.querySelectorAll('[data-kdn]').forEach(b=>b.addEventListener('click',async ev=>{
+    ev.stopPropagation();const c=kalP[+b.dataset.kdn];if(!c)return;
+    c.k.keinDup=[...new Set([...(c.k.keinDup||[]),c.m.id])];c.m.keinDup=[...new Set([...(c.m.keinDup||[]),c.k.id])];
+    histAdd(c.k,'👥 Kein Doppel: eigener Kunde, gehört nicht zu '+(c.m.name||c.m.org||'—'));
+    await dbPersistMany([c.k,c.m]);openDupCheck();
   }));
   m.querySelectorAll('[data-drep]').forEach(b=>b.addEventListener('click',async ev=>{
     ev.stopPropagation();
